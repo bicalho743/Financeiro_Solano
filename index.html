@@ -441,6 +441,23 @@
   .tag-conta.itau{background:#FFF1E0;color:#C25E00}
   .tag-conta.bb{background:#FFF9D6;color:#7A6500}
   .tag-conta.manual{background:#F0F0F0;color:#6B685F}
+  /* ---- contas do mês ---- */
+  .contas-lista{display:grid;grid-template-columns:repeat(2,1fr);gap:0 28px;margin-top:12px}
+  .conta-it{display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--linha-clara);
+            font-size:13.5px;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;color:var(--tinta)}
+  .conta-it input{width:16px;height:16px;accent-color:var(--verde);flex:none}
+  .conta-it .d{flex:1}
+  .conta-it .v{font-family:var(--serif);font-size:16px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .conta-it.pago .d,.conta-it.pago .v{color:var(--cinza);text-decoration:line-through}
+  .contas-pagas{margin-top:12px}
+  .contas-pagas summary{cursor:pointer;font-size:12.5px;color:var(--verde);padding:6px 0}
+  /* ---- dívidas e parcelas ---- */
+  .div-tab td.n,.div-tab th.n{text-align:right}
+  .div-tab tr.orc-t td{font-weight:600;border-top:1px solid var(--verde)}
+  .div-fim{font-size:11px;letter-spacing:.06em;color:var(--cinza)}
+  .barrinha{display:inline-block;width:70px;height:6px;background:var(--linha-clara);border-radius:3px;vertical-align:middle;margin-right:6px;overflow:hidden}
+  .barrinha i{display:block;height:100%;background:var(--verde)}
+  @media (max-width:700px){.contas-lista{grid-template-columns:1fr}}
 
   @media (max-width:700px){
     .topo{padding:16px 16px 12px;gap:12px}
@@ -544,6 +561,7 @@
   <nav class="conta-tabs" id="contaTabs">
     <button class="conta-tab ativa" data-conta="dash">Visão geral</button>
     <button class="conta-tab" data-conta="cpf">Lançamentos</button>
+    <button class="conta-tab" data-conta="dividas">Dívidas e parcelas</button>
     <span class="conta-sep">Conferir com o extrato:</span>
     <button class="conta-tab banco" data-conta="itau">Itaú</button>
     <button class="conta-tab banco" data-conta="bb">BB</button>
@@ -739,7 +757,8 @@
   ].map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},orcamento:null,versao:2};
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},orcamento:null,versao:2,
+               orcamentoMes:{},contas:{},dividas:null};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
   /* O que NÃO é gasto nem receita:
@@ -887,7 +906,17 @@
     "Clube":795.94,"Corrida":300,"Passeios":676.4,"Férias / viagem":2057.64,
     "Solano – pessoal":1608.2,"Tâmara – pessoal":1000,"Meninas":678.85,"Pet":180,"Vestuário":300
   };
-  const orcamento = () => dados.orcamento || ORCAMENTO_PADRAO;
+  // previsto do mês: aba FLUXO ANUAL (um valor por mês); sem ela, o da MÊS CORRENTE
+  const orcamentoDe = ym => (dados.orcamentoMes&&dados.orcamentoMes[ym]) || dados.orcamento || ORCAMENTO_PADRAO;
+  const orcamento = () => orcamentoDe(ui.mes);
+  function totaisPrevisto(ym){
+    const o=orcamentoDe(ym); let rec=0, desp=0;
+    Object.keys(o).forEach(c=>{
+      if(!GRUPO_DE[c]||GRUPO_DE[c]==="Fora dos cálculos") return;
+      if(GRUPO_DE[c]==="Receitas") rec+=o[c]; else desp+=Math.abs(o[c]);
+    });
+    return {rec:rec, desp:desp};
+  }
   const ehReceita = c => GRUPO_DE[c]==="Receitas";
 
   // entradas e gastos por categoria, líquidos (estorno abate o gasto da própria categoria)
@@ -907,7 +936,9 @@
   }
 
   function renderDashboard(){
-    const todosMeses=[...new Set(dados.lancamentos.map(l=>l.data.slice(0,7)))].sort();
+    // meses com lançamentos + meses que só têm previsão (planilha: Fluxo anual e contas do mês)
+    const todosMeses=[...new Set(dados.lancamentos.map(l=>l.data.slice(0,7))
+      .concat(Object.keys(dados.orcamentoMes||{}), Object.keys(dados.contas||{})))].sort();
     if(!ui.mes||(ui.mes!=="tudo"&&!todosMeses.includes(ui.mes))) ui.mes=todosMeses.length?mesPadrao(todosMeses):"tudo";
     renderPeriodo(todosMeses,false);
 
@@ -943,7 +974,10 @@
       const o=orcamento(), real={};
       base.forEach(l=>{ real[l.categoria]=(real[l.categoria]||0)+l.valor; });
       const alertas=[]; let linhas="", pR=0,rR=0,pD=0,rD=0;
-      const cel=v=>'<td style="color:'+corDif(v)+'">'+brl(v)+'</td>';
+      const futuro=!base.length;   // mês só com previsão: sem realizado para comparar
+      const tr='<td style="color:var(--linha)">—</td>';
+      const cel=v=>futuro?tr:'<td style="color:'+corDif(v)+'">'+brl(v)+'</td>';
+      const rv=v=>futuro?tr:'<td>'+brl(v)+'</td>';
       GRUPOS.forEach(gr=>{
         if(!gr.g||gr.g==="Fora dos cálculos") return;
         const rec=gr.g==="Receitas";
@@ -953,12 +987,12 @@
         const gp=itens.reduce((s,x)=>s+x.p,0), gr_=itens.reduce((s,x)=>s+x.r,0);
         if(rec){ pR+=gp; rR+=gr_; } else { pD+=gp; rD+=gr_; }
         const dif=(p,v)=>rec?v-p:p-v;
-        linhas+='<tr class="orc-g"><td>'+esc(gr.g)+'</td><td>'+brl(gp)+'</td><td>'+brl(gr_)+'</td>'+cel(dif(gp,gr_))+'</tr>';
+        linhas+='<tr class="orc-g"><td>'+esc(gr.g)+'</td><td>'+brl(gp)+'</td>'+rv(gr_)+cel(dif(gp,gr_))+'</tr>';
         itens.forEach(x=>{
           if(!rec&&x.p>0&&x.r>x.p*1.1&&x.r-x.p>50) alertas.push(x);
           linhas+='<tr class="orc-c"><td><span class="orc-nome" data-dcat="'+esc(x.c)+'" title="Ver lançamentos">'+ponto(x.c)+esc(x.c)+'</span></td>'+
             '<td><input class="orc-in" data-orc="'+esc(x.c)+'" value="'+(x.p?brl(x.p):"")+'" placeholder="—" inputmode="decimal" aria-label="Previsto de '+esc(x.c)+'"></td>'+
-            '<td>'+brl(x.r)+'</td>'+cel(dif(x.p,x.r))+'</tr>';
+            rv(x.r)+cel(dif(x.p,x.r))+'</tr>';
         });
       });
       // o que ainda não tem categoria entra nos totais, para bater com o topo
@@ -970,9 +1004,9 @@
           '<tr class="orc-c"><td><span class="orc-nome" data-dcat="Sem categoria">'+ponto("Sem categoria")+'Sem categoria</span></td><td></td><td>'+
           (scS?brl(scS)+' de gasto':'')+(scS&&scE?' · ':'')+(scE?brl(scE)+' de entrada':'')+'</td><td></td></tr>';
       }
-      linhas+='<tr class="orc-t"><td>Total de receitas</td><td>'+brl(pR)+'</td><td>'+brl(rR)+'</td>'+cel(rR-pR)+'</tr>'+
-        '<tr class="orc-t"><td>Total de despesas</td><td>'+brl(pD)+'</td><td>'+brl(rD)+'</td>'+cel(pD-rD)+'</tr>'+
-        '<tr class="orc-t forte"><td>Resultado</td><td style="color:'+corDif(pR-pD)+'">'+brl(pR-pD)+'</td><td style="color:'+corDif(rR-rD)+'">'+brl(rR-rD)+'</td>'+cel((rR-rD)-(pR-pD))+'</tr>';
+      linhas+='<tr class="orc-t"><td>Total de receitas</td><td>'+brl(pR)+'</td>'+rv(rR)+cel(rR-pR)+'</tr>'+
+        '<tr class="orc-t"><td>Total de despesas</td><td>'+brl(pD)+'</td>'+rv(rD)+cel(pD-rD)+'</tr>'+
+        '<tr class="orc-t forte"><td>Resultado</td><td style="color:'+corDif(pR-pD)+'">'+brl(pR-pD)+'</td>'+(futuro?tr:'<td style="color:'+corDif(rR-rD)+'">'+brl(rR-rD)+'</td>')+cel((rR-rD)-(pR-pD))+'</tr>';
       return {alertas:alertas, html:
         '<div class="tit-secao" style="margin-top:36px"><h3>Previsto × realizado · '+rotuloMes(ui.mes)+'</h3></div>'+
         '<p class="sub" style="margin:-8px 0 12px">Clique no previsto para alterar. Na diferença, verde é sobra e vermelho é estouro.</p>'+
@@ -990,15 +1024,53 @@
       (semCat?'<div class="it clic" data-dcat="Sem categoria"><span>'+semCat+' lançamento'+(semCat>1?"s":"")+' sem categoria — clique para classificar</span><span class="v">→</span></div>':"")+
       '</div>':"";
 
+    // contas a pagar e a receber do mês (abas Setembro, Outubro, Novembro… da planilha)
+    function contasHTML(){
+      const c=dados.contas&&dados.contas[ui.mes]; if(!c) return "";
+      const soma=a=>a.reduce((s,x)=>s+x.it.v,0);
+      const todos=c.itens.map((it,i)=>({it:it,i:i}));
+      const abertos=todos.filter(x=>!x.it.pago), pagos=todos.filter(x=>x.it.pago);
+      const aPagar=soma(abertos), jaPago=soma(pagos);
+      const receber=(c.receber||[]).reduce((s,r)=>s+r.v,0), fii=c.fii||0, ini=c.saldo||0;
+      const saldo=ini+aPagar+receber+fii;
+      const lin=x=>'<label class="conta-it'+(x.it.pago?' pago':'')+'"><input type="checkbox" data-contai="'+x.i+'"'+(x.it.pago?' checked':'')+
+        ' aria-label="Marcar '+esc(x.it.d)+' como pago"><span class="d">'+esc(x.it.d)+'</span>'+
+        '<span class="v" style="color:'+(x.it.v<0?'var(--tinta)':'#1E8A5F')+'">'+brl(x.it.v)+'</span></label>';
+      const origens=(c.receber||[]).map(r=>r.d).concat(fii?["FII"]:[]);
+      return '<div class="tit-secao" style="margin-top:36px"><h3>Contas do mês · '+rotuloMes(ui.mes)+'</h3></div>'+
+        '<p class="sub" style="margin:-8px 0 12px">Da aba '+esc(c.aba||"")+' da planilha. Marque o que já foi pago.</p>'+
+        '<section class="dash-geral" style="margin-top:0">'+
+          '<div class="g-num"><span class="rot">A pagar</span><div class="v">R$ '+brl(-aPagar)+'</div>'+
+            '<span class="kpi-sub">'+abertos.length+' conta'+(abertos.length===1?"":"s")+' em aberto</span></div>'+
+          '<div class="g-num"><span class="rot">A receber</span><div class="v" style="color:#1E8A5F">R$ '+brl(receber+fii)+'</div>'+
+            '<span class="kpi-sub">'+esc(origens.join(" + ")||"—")+'</span></div>'+
+          '<div class="g-num"><span class="rot">'+(saldo<0?"Vai faltar":"Vai sobrar")+'</span><div class="v" style="color:'+corDif(saldo)+'">R$ '+brl(saldo)+'</div>'+
+            '<span class="kpi-sub">'+(ini?'saldo de R$ '+brl(ini)+' + ':'')+'a receber − a pagar</span></div>'+
+        '</section>'+
+        '<div class="contas-lista">'+abertos.map(lin).join("")+'</div>'+
+        (pagos.length?'<details class="contas-pagas"><summary>'+pagos.length+' já paga'+(pagos.length===1?"":"s")+' · R$ '+brl(-jaPago)+'</summary>'+
+          '<div class="contas-lista">'+pagos.map(lin).join("")+'</div></details>':'');
+    }
+
+    // todos os meses: fluxo anual, previsto (aba FLUXO ANUAL) × realizado
     let tabelaMes="";
     if(ui.mes==="tudo"&&todosMeses.length>1){
       const val=dados.lancamentos.filter(valido);
-      tabelaMes='<div class="tit-secao" style="margin-top:40px"><h3>Mês a mês</h3></div>'+
-        '<div class="rolagem"><table class="dash-mes"><thead><tr><th>Mês</th><th>Entrou</th><th>Gastou</th><th>Saldo</th></tr></thead><tbody>'+
-        todosMeses.slice().reverse().map(m=>{
-          const x=entSai(val.filter(l=>l.data.slice(0,7)===m));
+      const comPrev=Object.keys(dados.orcamentoMes||{}).length>0;
+      let acP=0;
+      tabelaMes='<div class="tit-secao" style="margin-top:40px"><h3>'+(comPrev?"Fluxo anual — previsto × realizado":"Mês a mês")+'</h3></div>'+
+        '<div class="rolagem"><table class="dash-mes"><thead>'+
+        (comPrev?'<tr><th></th><th class="grp" colspan="4">Previsto</th><th class="grp" colspan="3">Realizado</th></tr>':'')+
+        '<tr><th>Mês</th>'+(comPrev?'<th>Receitas</th><th>Despesas</th><th>Resultado</th><th>Acumulado</th>':'')+
+        '<th>Entrou</th><th>Gastou</th><th>Saldo</th></tr></thead><tbody>'+
+        todosMeses.map(m=>{
+          const ls=val.filter(l=>l.data.slice(0,7)===m), x=entSai(ls), p=totaisPrevisto(m);
+          acP+=p.rec-p.desp;
+          const cor=v=>'<td style="color:'+corDif(v)+'">'+brl(v)+'</td>';
           return '<tr data-dmes="'+m+'" title="Ver o mês"><td>'+cap(rotuloMes(m))+(m>mesAtual()?' <span class="sub">(previsto)</span>':'')+'</td>'+
-            '<td>'+brl(x.tE)+'</td><td>'+brl(x.tS)+'</td><td style="color:'+corDif(x.tE-x.tS)+'">'+brl(x.tE-x.tS)+'</td></tr>';
+            (comPrev?'<td>'+brl(p.rec)+'</td><td>'+brl(p.desp)+'</td>'+cor(p.rec-p.desp)+cor(acP):'')+
+            (ls.length?'<td>'+brl(x.tE)+'</td><td>'+brl(x.tS)+'</td>'+cor(x.tE-x.tS)
+                      :'<td style="color:var(--linha)">—</td><td style="color:var(--linha)">—</td><td style="color:var(--linha)">—</td>')+'</tr>';
         }).join("")+'</tbody></table></div>';
     }
 
@@ -1017,7 +1089,7 @@
             'Pagamento de fatura, aplicações e transferências entre suas contas não entram.</p>'+
             '<button class="bt vazado" data-dadd="manual" style="font-size:12px;padding:6px 12px">+ Lançamento</button>'+
           '</div>'+
-          atencao+pr.html+
+          atencao+contasHTML()+pr.html+
           '<div class="paineis">'+
             '<div><div class="tit-secao"><h3>Onde mais gastou</h3></div>'+lista(r.sai,r.tS,"s")+'</div>'+
             '<div><div class="tit-secao"><h3>De onde veio</h3></div>'+lista(r.ent,r.tE,"e")+'</div>'+
@@ -1047,12 +1119,19 @@
       }
     };
     corpo.onchange=e=>{
+      const ck=e.target.closest("[data-contai]");
+      if(ck){
+        const it=dados.contas[ui.mes].itens[+ck.dataset.contai];
+        it.pago=ck.checked; salvar(); renderDashboard();
+        avisar(it.d+(it.pago?" marcada como paga.":" voltou para a pagar.")); return;
+      }
       const inp=e.target.closest("[data-orc]"); if(!inp) return;
       const c=inp.dataset.orc, o=Object.assign({},orcamento());
       let v=numero(String(inp.value||"0").replace("−","-"));
       if(!ehReceita(c)) v=Math.abs(v);
       if(v) o[c]=v; else delete o[c];
-      dados.orcamento=o; salvar(); renderDashboard();
+      if(dados.orcamentoMes&&dados.orcamentoMes[ui.mes]) dados.orcamentoMes[ui.mes]=o; else dados.orcamento=o;
+      salvar(); renderDashboard();
       avisar("Previsto de "+c+" atualizado.");
     };
   }
@@ -1082,6 +1161,9 @@
         dados.faturaAberta = d.faturaAberta||null;
         dados.faturaFechada= d.faturaFechada||null;
         dados.orcamento   = d.orcamento||null;
+        dados.orcamentoMes= d.orcamentoMes||{};
+        dados.contas      = d.contas||{};
+        dados.dividas     = d.dividas||null;
         dados.versao      = d.versao||0;
         migrar();
         // migração: remover lançamentos do cartão com data > hoje+6 meses (bug antigo)
@@ -1448,12 +1530,202 @@
       const g=gravarLinhas(porOrigem[o],o);
       ["novos","repetidos","prontos","corrigidos"].forEach(k=>tot[k]+=g[k]);
     });
-    const nPrev=lerOrcamentoPlanilha(wb);
+    const nPrev=lerOrcamentoPlanilha(wb), ano=anoPlanilha(wb);
+    const nFluxo=lerFluxoAnual(wb,ano), nContas=lerContasMes(wb,ano), temDiv=lerDividas(wb);
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
     ui.conta="dash"; ui.mes=null; ui.view="mes";
     salvar(); render();
-    avisar("Planilha: "+textoImport(tot)+(nPrev?" · previsto de "+nPrev+" itens atualizado":""));
+    avisar("Planilha: "+textoImport(tot)+
+      (nFluxo?" · previsto de "+nFluxo+" meses":nPrev?" · previsto de "+nPrev+" itens":"")+
+      (nContas?" · contas de "+nContas+" meses":"")+(temDiv?" · dívidas e parcelas":""));
   }
+  /* ---- outras abas da planilha ---- */
+  const MESES_ABREV=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+  // mês de uma célula de cabeçalho: data do Excel, "2026-10", "01/10/2026", "Out", "Out-27"
+  function celMes(v,ano){
+    if(typeof v==="number" && v>20000 && v<80000) return new Date(Math.round((v-25569)*864e5)).toISOString().slice(0,7);
+    if(v instanceof Date && !isNaN(v)) return new Date(v.getTime()+12*36e5).toISOString().slice(0,7);
+    const s=celTexto(v).toLowerCase();
+    let m=s.match(/^(\d{4})-(\d{2})/); if(m) return m[1]+"-"+m[2];
+    m=s.match(/^\d{2}\/(\d{2})\/(\d{4})/); if(m) return m[2]+"-"+m[1];
+    m=s.match(/^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-zç]*\.?(?:[\s\/-]*(\d{2,4}))?$/);
+    if(m){
+      const a=m[2]?(m[2].length===2?"20"+m[2]:m[2]):String(ano||new Date().getFullYear());
+      return a+"-"+String(MESES_ABREV.indexOf(m[1])+1).padStart(2,"0");
+    }
+    return null;
+  }
+  const abaLinhas = (wb,nome) => XLSX.utils.sheet_to_json(wb.Sheets[nome],{header:1,defval:"",blankrows:true});
+  function anoPlanilha(wb){
+    for(const n of wb.SheetNames.filter(n=>/FLUXO|RESUMO|CONSOLIDA/i.test(n))){
+      const m=abaLinhas(wb,n).slice(0,6).map(r=>r.join(" ")).join(" ").match(/20\d\d/);
+      if(m) return m[0];
+    }
+    return String(new Date().getFullYear());
+  }
+  // nome da linha (aba FLUXO ANUAL) → categoria do app. A ordem importa: a primeira que bater vale.
+  const ROTULOS=[
+    [/pula parcela|caixinha|outras receitas/i,"Outras receitas"],[/13[ºo°]?\s*sal/i,"13º salário"],
+    [/e-?\s?social/i,"Doméstica – e-Social"],[/vale.?transporte/i,"Doméstica – transporte"],
+    [/provis[ãa]o dom[ée]stica/i,"Doméstica – provisão"],[/dom[ée]stica/i,"Doméstica – salário"],
+    [/jardim|bab[áa]|diarista/i,"Diarista / jardim / extras"],
+    [/sal[áa]rio/i,"Salário"],[/rendimento|\bfii\b/i,"Rendimentos"],[/restitui/i,"Restituição IR"],
+    [/previd/i,"Previdência"],[/\biof\b/i,"IOF e taxas"],[/consignado/i,"Consignado"],
+    [/financiamento/i,"Financiamento casa"],[/cons[óo]rcio/i,"Consórcio"],
+    [/cemig|\bluz\b/i,"Luz (Cemig)"],[/[áa]gua|copasa/i,"Água (Copasa)"],[/internet/i,"Internet"],
+    [/iptu/i,"IPTU"],[/\bsky\b/i,"TV (Sky)"],[/\btim\b|celular/i,"Celular (TIM)"],[/assinatura/i,"Assinaturas"],
+    [/supermercado|feira|mercado/i,"Supermercado"],[/restaurante|lanche/i,"Bar / restaurante"],
+    [/material|passeios? escola/i,"Material / passeios escola"],[/escola/i,"Escola"],
+    [/unimed/i,"Unimed"],[/sa[úu]de/i,"Saúde fora do plano"],
+    [/uber|localiza/i,"Uber / Localiza"],[/gasolina/i,"Gasolina"],[/ipva|multa/i,"IPVA / multas"],
+    [/seguro/i,"Seguro auto"],[/carro/i,"Manutenção do carro"],
+    [/clube/i,"Clube"],[/corrida/i,"Corrida"],[/f[ée]rias/i,"Férias / viagem"],[/passeio|viagem/i,"Passeios"],
+    [/\bpet\b|veterin/i,"Pet"],[/vestu[áa]rio/i,"Vestuário"],[/reparo|casa/i,"Manutenção da casa"],
+    [/t[âãa]mara/i,"Tâmara – pessoal"],[/solano/i,"Solano – pessoal"],[/meninas|cec[íi]lia/i,"Meninas"]
+  ];
+  const catRotulo = r => { const x=ROTULOS.find(p=>p[0].test(r)); return x?x[1]:null; };
+
+  // FLUXO ANUAL: previsto de cada mês, linha a linha
+  function lerFluxoAnual(wb,ano){
+    const aba=wb.SheetNames.find(n=>/FLUXO ANUAL/i.test(n)); if(!aba) return 0;
+    const L=abaLinhas(wb,aba);
+    let cab=-1, ms=[];
+    for(let i=0;i<Math.min(15,L.length);i++){
+      const x=L[i].map(c=>celMes(c,ano));
+      if(x.filter(Boolean).length>=6){ cab=i; ms=x; break; }
+    }
+    if(cab<0) return 0;
+    let iRot=L[cab].findIndex(c=>/^item$/i.test(celTexto(c))); if(iRot<0) iRot=1;
+    const om={};
+    for(let i=cab+1;i<L.length;i++){
+      const r=L[i], rot=celTexto(r[iRot]);
+      if(!rot||/^▸|TOTAL|RESULTADO|^PROVIS[ÕO]ES$|EXCLUINDO|^\(-\)/i.test(rot)) continue;
+      const cat=catRotulo(rot); if(!cat) continue;
+      ms.forEach((m,j)=>{
+        const v=r[j]; if(!m||typeof v!=="number"||!v) return;
+        const o=om[m]=om[m]||{};
+        o[cat]=Math.round(((o[cat]||0)+(ehReceita(cat)?v:Math.abs(v)))*100)/100;
+      });
+    }
+    const n=Object.keys(om).length;
+    if(n) dados.orcamentoMes=om;
+    return n;
+  }
+
+  // abas de fechamento do mês (Setembro, Outubro, Novembro…): B = conta, C = a pagar, D = pago;
+  // E/F = SALDO e FII; J/K = a receber. As linhas 3–9 (transferências fixas do início do mês) já contam como pagas.
+  function lerContasMes(wb,ano){
+    const nomes=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+    const contas={};
+    wb.SheetNames.forEach(nome=>{
+      const k=nomes.findIndex(m=>nome.trim().toLowerCase().startsWith(m)); if(k<0) return;
+      const ym=ano+"-"+String(k+1).padStart(2,"0");
+      const c={aba:nome.trim(), itens:[], receber:[], fii:0, saldo:0};
+      abaLinhas(wb,nome).forEach((r,i)=>{
+        if(i<2) return;
+        const d=celTexto(r[1]), C=r[2], D=r[3];
+        if(d && (typeof C==="number"||typeof D==="number")){
+          const pago = typeof C!=="number" || (i<9 && typeof D==="number");
+          c.itens.push({d:d, v:typeof C==="number"?C:-Math.abs(D), pago:pago});
+        }
+        const e=celTexto(r[4]).toLowerCase(), F=r[5];
+        if(typeof F==="number"){ if(e==="saldo") c.saldo=F; else if(e==="fii") c.fii=F; }
+        const j=celTexto(r[9]), K=r[10];
+        if(j && typeof K==="number" && K) c.receber.push({d:j, v:K});
+      });
+      // o SALDO fica na linha 2
+      const L=abaLinhas(wb,nome);
+      if(L[1] && /saldo/i.test(celTexto(L[1][4])) && typeof L[1][5]==="number") c.saldo=L[1][5];
+      if(L[1] && celTexto(L[1][9]) && typeof L[1][10]==="number" && !c.receber.some(x=>x.d===celTexto(L[1][9])))
+        c.receber.unshift({d:celTexto(L[1][9]), v:L[1][10]});
+      if(c.itens.length){
+        // mantém o que já foi marcado como pago no app
+        const velho=(dados.contas||{})[ym];
+        if(velho) c.itens.forEach(it=>{ const v=velho.itens.find(x=>x.d===it.d&&x.v===it.v); if(v&&v.pago) it.pago=true; });
+        contas[ym]=c;
+      }
+    });
+    const n=Object.keys(contas).length;
+    if(n) dados.contas=Object.assign({}, dados.contas||{}, contas);
+    return n;
+  }
+
+  // PARCELAMENTOS CARTÃO, CONSÓRCIO, CONSIGNADOS e CONSOLIDA
+  function lerDividas(wb){
+    const aba=re=>wb.SheetNames.find(n=>re.test(n));
+    const dv={parcelas:[], consorcio:[], consignados:[], consolida:null, quitacao:[]};
+    const valsDe=(r,ms)=>{ const o={}; ms.forEach((m,j)=>{ if(m && typeof r[j]==="number" && r[j]) o[m]=Math.round(r[j]*100)/100; }); return o; };
+    let a=aba(/PARCELAMENTO/i);
+    if(a){
+      const L=abaLinhas(wb,a), cab=L.findIndex(r=>r.some(c=>/^descri/i.test(celTexto(c))));
+      if(cab>=0){
+        const h=L[cab].map(celTexto), ms=L[cab].map(c=>celMes(c));
+        const iCar=h.findIndex(x=>/^cart/i.test(x)), iDes=h.findIndex(x=>/^descri/i.test(x)),
+              iCat=h.findIndex(x=>/^categoria/i.test(x)), iSub=h.findIndex(x=>/^subcat/i.test(x));
+        for(let i=cab+1;i<L.length;i++){
+          const r=L[i], car=celTexto(r[iCar]), d=celTexto(r[iDes]);
+          if(/TOTAL|FATURA/i.test(car)) break;
+          if(!d) continue;
+          const vals=valsDe(r,ms);
+          if(Object.keys(vals).length) dv.parcelas.push({cartao:car, desc:d, cat:catPlanilha(r[iCat],iSub>=0?r[iSub]:"")||"", vals:vals});
+        }
+      }
+    }
+    a=aba(/CONS[ÓO]RCIO/i);
+    if(a){
+      const L=abaLinhas(wb,a), cab=L.findIndex(r=>/ve[íi]culo/i.test(celTexto(r[0])));
+      if(cab>=0){
+        const ms=L[cab].map(c=>celMes(c));
+        for(let i=cab+1;i<L.length;i++){
+          const r=L[i], nome=celTexto(r[0]);
+          if(!nome) continue; if(/TOTAL/i.test(nome)) break;
+          dv.consorcio.push({nome:nome, situacao:celTexto(r[1]), parcelas:typeof r[2]==="number"?r[2]:null,
+            quitacao:typeof r[3]==="number"?r[3]:null, vals:valsDe(r,ms)});
+        }
+      }
+    }
+    a=aba(/CONSIGNADO/i);
+    if(a){
+      const L=abaLinhas(wb,a), tot={};
+      const hc=L.findIndex(r=>r.some(c=>/total parcelas/i.test(celTexto(c))));
+      if(hc>=0){
+        const iT=L[hc].map(celTexto).findIndex(x=>/total parcelas/i.test(x));
+        for(let i=hc+1;i<L.length;i++){ const k=celTexto(L[i][0]); if(!k) break; tot[k]=L[i][iT]; }
+      }
+      const hs=L.findIndex(r=>r.some(c=>/parcela atual/i.test(celTexto(c))));
+      if(hs>=0){
+        const h=L[hs].map(celTexto), ix=re=>h.findIndex(x=>re.test(x));
+        const iP=ix(/^pmt/i), iA=ix(/parcela atual/i), iR=ix(/restantes/i), iS=ix(/saldo devedor/i),
+              iQ=ix(/para quitar/i), iV=ix(/vencimento/i), iPc=ix(/quitado/i);
+        for(let i=hs+1;i<L.length;i++){
+          const r=L[i], k=celTexto(r[0]);
+          if(!k||/^TOTA/i.test(k)) break;
+          dv.consignados.push({contrato:k, pmt:+r[iP]||0, atual:+r[iA]||0, total:+tot[k]||null, restantes:+r[iR]||0,
+            saldo:+r[iS]||0, quitar:+r[iQ]||0, venc:celMes(r[iV]), pct:+r[iPc]||0});
+        }
+      }
+    }
+    a=aba(/CONSOLIDA/i);
+    if(a){
+      const L=abaLinhas(wb,a), hm=L.findIndex(r=>r.slice(1).filter(c=>celMes(c)).length>=6);
+      if(hm>=0){
+        const ms=L[hm].map(c=>celMes(c)), linhas=[];
+        for(let i=hm+1;i<L.length;i++){
+          const nome=celTexto(L[i][0]); if(!nome) continue;
+          if(/QUITA/i.test(nome)){
+            for(let j=i+1;j<L.length;j++){ const n2=celTexto(L[j][0]); if(n2 && typeof L[j][1]==="number") dv.quitacao.push({nome:n2, v:L[j][1]}); }
+            break;
+          }
+          if(/^total$/i.test(nome)) continue;
+          const vals=valsDe(L[i],ms); if(Object.keys(vals).length) linhas.push({nome:nome, vals:vals});
+        }
+        dv.consolida={meses:ms.filter(Boolean), linhas:linhas};
+      }
+    }
+    if(dv.parcelas.length||dv.consorcio.length||dv.consignados.length||dv.consolida){ dados.dividas=dv; return true; }
+    return false;
+  }
+
   // previsto da aba MÊS CORRENTE (colunas CATEGORIA / ITEM, PREVISTO, cat, subcat)
   function lerOrcamentoPlanilha(wb){
     const aba=wb.SheetNames.find(n=>/M[ÊE]S CORRENTE/i.test(n)); if(!aba) return 0;
@@ -1888,11 +2160,94 @@
     $("#abas").innerHTML=h;
   }
 
+  /* ================= dívidas e parcelas ================= */
+  function renderDividas(){
+    const corpo=$("#corpo");
+    $("#abas").innerHTML='<div class="periodo"><span class="sub" style="margin:0">Consignados, consórcio, financiamento e compras parceladas — da planilha de orçamento</span></div>';
+    const dv=dados.dividas;
+    if(!dv){
+      corpo.innerHTML='<div class="vazio"><p class="num">Nada por aqui ainda</p><p>Use <b>Importar › Planilha de orçamento</b> '+
+        'para trazer as abas de consórcio, consignados e parcelamentos do cartão.</p></div>';
+      return;
+    }
+    const hoje=mesAtual();
+    const info=vals=>{
+      const todos=Object.keys(vals).sort(), fut=todos.filter(m=>m>=hoje);
+      return {mensal:vals[hoje]!=null?vals[hoje]:(fut.length?vals[fut[0]]:0), restam:fut.length,
+              falta:fut.reduce((s,m)=>s+vals[m],0), fim:todos[todos.length-1], total:todos.length, pagas:todos.length-fut.length};
+    };
+    const n=v=>'<td class="n">'+brl(v)+'</td>';
+    const fimTxt=ym=>ym?cap(abrevMes(ym)):"—";
+    let h="";
+
+    const cs=dv.consolida;
+    if(cs && cs.linhas.length){
+      const ms=cs.meses.filter(m=>m>=hoje).slice(0,12);
+      const tot=m=>cs.linhas.reduce((s,l)=>s+(l.vals[m]||0),0);
+      const ult=ms[ms.length-1];
+      h+='<section class="dash-geral">'+
+        '<div class="g-num"><span class="rot">Compromissos em '+rotuloMes(hoje)+'</span><div class="v">R$ '+brl(tot(hoje))+'</div>'+
+          '<span class="kpi-sub">'+esc(cs.linhas.map(l=>cap(l.nome.trim().toLowerCase())).join(" + "))+'</span></div>'+
+        '<div class="g-num"><span class="rot">Em '+(ult?rotuloMes(ult):"12 meses")+'</span><div class="v">R$ '+brl(ult?tot(ult):0)+'</div>'+
+          '<span class="kpi-sub">'+(ult&&tot(ult)<tot(hoje)?'R$ '+brl(tot(hoje)-tot(ult))+' a menos por mês':'')+'</span></div>'+
+        '<div class="g-num"><span class="rot">Para quitar tudo hoje</span><div class="v" style="color:#C0392B">R$ '+brl(dv.quitacao.reduce((s,q)=>s+q.v,0))+'</div>'+
+          '<span class="kpi-sub">'+esc(dv.quitacao.map(q=>cap(q.nome.toLowerCase())+" "+brl(q.v)).join(" · "))+'</span></div>'+
+      '</section>'+
+      '<div class="tit-secao" style="margin-top:34px"><h3>Saída mensal com dívidas — próximos 12 meses</h3></div>'+
+      '<div class="rolagem"><table class="matriz div-tab"><thead><tr><th></th>'+ms.map(m=>'<th class="n">'+abrevMes(m)+'</th>').join("")+'</tr></thead><tbody>'+
+      cs.linhas.map(l=>'<tr><td>'+esc(cap(l.nome.trim().toLowerCase()))+'</td>'+ms.map(m=>n(l.vals[m]||0)).join("")+'</tr>').join("")+
+      '<tr class="orc-t"><td>Total</td>'+ms.map(m=>n(tot(m))).join("")+'</tr></tbody></table></div>';
+    }
+
+    if(dv.parcelas.length){
+      const it=dv.parcelas.map(p=>Object.assign({p:p},info(p.vals)));
+      const ativos=it.filter(x=>x.restam>0).sort((a,b)=>b.falta-a.falta), fim=it.filter(x=>x.restam===0);
+      const linha=x=>'<tr><td>'+esc(x.p.desc)+'</td><td class="fraco">'+esc(x.p.cartao)+'</td>'+
+        '<td class="fraco">'+(x.p.cat?ponto(x.p.cat)+esc(x.p.cat):"")+'</td>'+n(x.mensal)+
+        '<td class="n"><span class="barrinha"><i style="width:'+Math.round(x.pagas/x.total*100)+'%"></i></span>'+x.pagas+'/'+x.total+'</td>'+
+        '<td class="n">'+x.restam+'</td>'+n(x.falta)+'<td class="n div-fim">'+fimTxt(x.fim)+'</td></tr>';
+      const soma=(a,k)=>a.reduce((s,x)=>s+x[k],0);
+      h+='<div class="tit-secao" style="margin-top:40px"><h3>Compras parceladas no cartão</h3></div>'+
+        '<div class="rolagem"><table class="matriz div-tab"><thead><tr><th>Compra</th><th>Cartão</th><th>Categoria</th>'+
+        '<th class="n">Parcela</th><th class="n">Pagas</th><th class="n">Restam</th><th class="n">Falta pagar</th><th class="n">Última</th></tr></thead><tbody>'+
+        ativos.map(linha).join("")+
+        '<tr class="orc-t"><td colspan="3">Total em aberto</td>'+n(soma(ativos,"mensal"))+'<td></td><td></td>'+n(soma(ativos,"falta"))+'<td></td></tr>'+
+        '</tbody></table></div>'+
+        (fim.length?'<details class="contas-pagas"><summary>'+fim.length+' parcelamento'+(fim.length>1?"s":"")+' já quitado'+(fim.length>1?"s":"")+'</summary>'+
+          '<div class="rolagem"><table class="matriz div-tab"><tbody>'+fim.map(linha).join("")+'</tbody></table></div></details>':'');
+    }
+
+    if(dv.consorcio.length){
+      h+='<div class="tit-secao" style="margin-top:40px"><h3>Consórcio</h3></div>'+
+        '<div class="rolagem"><table class="matriz div-tab"><thead><tr><th>Veículo</th><th>Situação</th><th class="n">Parcela</th>'+
+        '<th class="n">Restam</th><th class="n">Falta pagar</th><th class="n">Última</th><th class="n">Valor de quitação</th></tr></thead><tbody>'+
+        dv.consorcio.map(c=>{ const x=info(c.vals);
+          return '<tr><td>'+esc(c.nome)+'</td><td class="fraco">'+esc(c.situacao)+'</td>'+n(x.mensal)+'<td class="n">'+x.restam+'</td>'+
+            n(x.falta)+'<td class="n div-fim">'+fimTxt(x.fim)+'</td>'+(c.quitacao!=null?n(c.quitacao):'<td></td>')+'</tr>'; }).join("")+
+        '</tbody></table></div>';
+    }
+
+    if(dv.consignados.length){
+      const t=k=>dv.consignados.reduce((s,c)=>s+c[k],0);
+      h+='<div class="tit-secao" style="margin-top:40px"><h3>Consignados</h3></div>'+
+        '<div class="rolagem"><table class="matriz div-tab"><thead><tr><th>Contrato</th><th class="n">Parcela</th><th class="n">Quitado</th>'+
+        '<th class="n">Restam</th><th class="n">Saldo devedor</th><th class="n">Termina</th></tr></thead><tbody>'+
+        dv.consignados.map(c=>'<tr><td>'+esc(c.contrato)+'</td>'+n(c.pmt)+
+          '<td class="n"><span class="barrinha"><i style="width:'+Math.round(c.pct*100)+'%"></i></span>'+
+            (c.total?c.atual+'/'+c.total:Math.round(c.pct*100)+'%')+'</td>'+
+          '<td class="n">'+c.restantes+'</td>'+n(c.saldo)+'<td class="n div-fim">'+fimTxt(c.venc)+'</td></tr>').join("")+
+        '<tr class="orc-t"><td>Total</td>'+n(t("pmt"))+'<td></td><td></td>'+n(t("saldo"))+'<td></td></tr></tbody></table></div>';
+    }
+
+    corpo.innerHTML=h+'<div class="rodape"><span>Para atualizar, importe de novo a planilha de orçamento.</span><span>Família Bicalho</span></div>';
+  }
+
   /* ================= desenho da tela ================= */
   function render(){
     const corpo=$("#corpo"); corpo.onclick=null; corpo.onkeydown=null; corpo.onchange=null;
     marcarConta();
     if(ui.conta==="dash"){ renderDashboard(); return; }
+    if(ui.conta==="dividas"){ renderDividas(); return; }
     if(!ui.view) ui.view="mes";
 
     const meses=mesesComDados();
@@ -2496,6 +2851,7 @@
       dados.saldos={};
       dados.regras=REGRAS_PADRAO.slice();
       dados.prolabore=0; dados.orcamento=null; dados.versao=2;
+      dados.orcamentoMes={}; dados.contas={}; dados.dividas=null;
       dados.faturaAberta=null; dados.faturaFechada=null;
       ui={mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,conta:ui.conta||"dash"};
       salvar(); render();
@@ -2528,6 +2884,9 @@
         dados.faturaAberta = remoto.faturaAberta||null;
         dados.faturaFechada= remoto.faturaFechada||null;
         dados.orcamento   = remoto.orcamento||null;
+        dados.orcamentoMes= remoto.orcamentoMes||{};
+        dados.contas      = remoto.contas||{};
+        dados.dividas     = remoto.dividas||null;
         dados.versao      = remoto.versao||0;
         migrar();
         render();
