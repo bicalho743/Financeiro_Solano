@@ -103,6 +103,10 @@
   .dash-lin .vl{font-family:var(--serif);font-size:17px;font-variant-numeric:tabular-nums;text-align:right}
   .dash-lin .pc{font-size:11.5px;color:var(--cinza);min-width:38px;text-align:right}
   .dash-lin .br{grid-column:1/-1;height:6px;background:var(--linha-clara);border-radius:3px;overflow:hidden}
+  .dash-lin .ic,.cat-info{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:11.5px;color:var(--cinza);margin-top:-3px}
+  .ic-p{padding:1px 8px;border-radius:9px;background:#EEF3EF;color:var(--verde);font-weight:500}
+  .ic-p.acima{background:#FBF2EF;color:#C0392B}
+  .ic-p.sem{background:none;color:var(--cinza);opacity:.6;padding:0;font-weight:400}
   .dash-lin .br i{display:block;height:100%;border-radius:3px}
   .dash-vazio{font-size:13px;color:var(--cinza);padding:10px 4px}
   .dash-nota{font-size:12px;color:var(--cinza);margin-top:14px;line-height:1.5}
@@ -458,6 +462,66 @@
   .barrinha{display:inline-block;width:70px;height:6px;background:var(--linha-clara);border-radius:3px;vertical-align:middle;margin-right:6px;overflow:hidden}
   .barrinha i{display:block;height:100%;background:var(--verde)}
   @media (max-width:700px){.contas-lista{grid-template-columns:1fr}}
+  /* ---- previsão do mês ---- */
+  .prev-meses{display:flex;flex-wrap:wrap;gap:6px}
+  .prev-meses button{border:1px solid var(--linha);background:#fff;padding:7px 14px;border-radius:3px;font-size:13px;color:var(--cinza)}
+  .prev-meses button.on{background:var(--verde);color:#fff;border-color:var(--verde)}
+  .prev-meses button.novo{border-style:dashed;color:var(--verde)}
+  .pv-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(280px,1fr);gap:34px;margin-top:26px;align-items:start}
+  .pv-lado{position:sticky;top:12px}
+  .pv-grid>div,.pv-grid>aside{min-width:0}
+  .pv-contas{min-width:560px}
+  .pv-tab{width:100%;border-collapse:collapse;table-layout:fixed}
+  .pv-tab th{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--cinza);font-weight:500;
+             text-align:left;padding:0 6px 8px;border-bottom:1px solid var(--verde)}
+  .pv-tab th.n{text-align:right}
+  .pv-tab td{padding:2px 4px;border-bottom:1px solid var(--linha-clara);vertical-align:middle}
+  .pv-tab col.c-data{width:128px} .pv-tab col.c-val{width:118px} .pv-tab col.c-acao{width:62px}
+  .pv-tab td.valor{width:auto}
+  .pv-tab td.valor .campo{text-align:right;font-family:var(--serif);font-size:16px}
+  .pv-tab input[type=date].campo{font-size:12.5px;color:var(--cinza);padding:4px 2px}
+  .pv-tab .campo.pos{color:#1E8A5F}
+  .pv-tab td.acao{text-align:right;white-space:nowrap}
+  .pv-tab .apagar{opacity:.35}.pv-tab tr:hover .apagar{opacity:1}
+  .pv-pagar{border:1px solid var(--linha);background:#fff;color:#1E8A5F;border-radius:50%;width:24px;height:24px;font-size:12px;line-height:1}
+  .pv-pagar:hover{background:#1E8A5F;color:#fff;border-color:#1E8A5F}
+  .pv-resumo{background:var(--marfim);border:1px solid var(--linha-clara);border-radius:4px;padding:14px 18px;margin-bottom:24px}
+  .pv-l{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;font-size:13.5px;margin:0;
+        text-transform:none;letter-spacing:0;color:var(--tinta)}
+  .pv-l b{font-family:var(--serif);font-size:19px;font-weight:500;font-variant-numeric:tabular-nums}
+  .pv-l input{width:140px;text-align:right;font-family:var(--serif);font-size:17px;background:#fff;border:1px solid var(--linha)!important}
+  .pv-tot{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--tinta);margin-top:6px;padding-top:10px;font-size:13.5px}
+  .pv-tot b{font-family:var(--serif);font-size:30px;font-weight:500;font-variant-numeric:tabular-nums}
+  /* ---- fluxo anual ---- */
+  .fx-tab{border-collapse:collapse;min-width:1560px;width:100%}
+  .fx-tab th,.fx-tab td{padding:1px 2px;border-bottom:1px solid var(--linha-clara);font-size:13px;white-space:nowrap}
+  .fx-tab thead th{background:#fff;text-align:right;padding:8px 6px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+                   color:var(--cinza);font-weight:500;border-bottom:1px solid var(--verde)}
+  .fx-tab td:first-child,.fx-tab th:first-child{position:sticky;left:0;background:#fff;z-index:1;min-width:250px;text-align:left}
+  .fx-tab .fx-rot{display:flex;align-items:center}
+  .fx-tab .fx-rot .campo{min-width:210px}
+  .fx-tab .fx-rot .apagar{opacity:0}.fx-tab tr:hover .fx-rot .apagar{opacity:1}
+  .fx-tab td.valor{width:auto}
+  .fx-tab td.valor .campo{width:94px;text-align:right;font-family:var(--serif);font-size:14.5px}
+  .fx-tab .fx-cat select{width:128px;font-size:11.5px;color:var(--cinza);padding:3px 2px}
+  .fx-tab tr.fx-g td{background:var(--marfim);font-weight:600;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;padding:9px 8px}
+  .fx-tab tr.fx-sub td{font-weight:600;border-bottom:1px solid var(--linha);text-align:right;font-family:var(--serif);font-size:14.5px;padding:7px 6px}
+  .fx-tab tr.fx-sub td:first-child{font-family:var(--sans);font-size:12.5px;color:var(--cinza)}
+  .fx-tab tr.fx-t td{font-weight:600;border-top:1px solid var(--verde);text-align:right;font-family:var(--serif);font-size:15.5px;padding:8px 6px}
+  .fx-tab tr.fx-t td:first-child{font-family:var(--sans);font-size:13px}
+  .fx-tab tr.fx-r td{text-align:right;font-family:var(--serif);font-size:14.5px;padding:7px 6px;color:var(--cinza)}
+  .fx-tab tr.fx-r td:first-child{font-family:var(--sans);font-size:12.5px}
+  .fx-tab td.fx-tt{font-weight:600;font-family:var(--serif);font-size:14.5px;text-align:right;padding-right:8px}
+  @media (max-width:900px){.pv-grid{grid-template-columns:1fr}.pv-lado{position:static}}
+  /* ---- dívidas mês a mês ---- */
+  .dv-tab{min-width:1100px}
+  .dv-tab td.fx-calc{text-align:right;font-family:var(--serif);font-size:14.5px;color:var(--cinza);padding:7px 6px}
+  .dv-tab .dv-car{width:96px;font-size:12px;color:var(--cinza)}
+  .dv-tab .dv-num .campo{width:70px;text-align:right}
+  .dv-tab input[type=month].campo{font-size:12px;color:var(--cinza);width:130px}
+  .dv-tab tr.fx-sub td:first-child,.dv-tab tr.fx-t td:first-child{text-align:left}
+  .dv-tab tr.fora-total td .campo,.dv-tab tr.fora-total td.fx-tt{color:var(--cinza);opacity:.55}
+  .dv-tab .fx-rot input[type=checkbox]{width:15px;height:15px;accent-color:var(--verde);margin:0 6px 0 4px;flex:none}
 
   @media (max-width:700px){
     .topo{padding:16px 16px 12px;gap:12px}
@@ -561,6 +625,8 @@
   <nav class="conta-tabs" id="contaTabs">
     <button class="conta-tab ativa" data-conta="dash">Visão geral</button>
     <button class="conta-tab" data-conta="cpf">Lançamentos</button>
+    <button class="conta-tab" data-conta="prev">Previsão do mês</button>
+    <button class="conta-tab" data-conta="fluxo">Fluxo anual</button>
     <button class="conta-tab" data-conta="dividas">Dívidas e parcelas</button>
     <span class="conta-sep">Conferir com o extrato:</span>
     <button class="conta-tab banco" data-conta="itau">Itaú</button>
@@ -758,7 +824,7 @@
 
   /* ================= estado ================= */
   let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},orcamento:null,versao:2,
-               orcamentoMes:{},contas:{},dividas:null};
+               orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
   /* O que NÃO é gasto nem receita:
@@ -907,8 +973,31 @@
     "Solano – pessoal":1608.2,"Tâmara – pessoal":1000,"Meninas":678.85,"Pet":180,"Vestuário":300
   };
   // previsto do mês: aba FLUXO ANUAL (um valor por mês); sem ela, o da MÊS CORRENTE
-  const orcamentoDe = ym => (dados.orcamentoMes&&dados.orcamentoMes[ym]) || dados.orcamento || ORCAMENTO_PADRAO;
+  // o fluxo anual (editável no app) manda; sem ele, valores antigos ou os da aba MÊS CORRENTE
+  function orcDoFluxo(ym){
+    const fx=dados.fluxo; if(!fx||!fx.meses.includes(ym)) return null;
+    const o={};
+    fx.linhas.forEach(l=>{
+      if(l.tipo==="g"||!l.cat) return;
+      const v=+l.v[ym]||0; if(!v) return;
+      o[l.cat]=Math.round(((o[l.cat]||0)+(l.lado==="rec"?v:Math.abs(v)))*100)/100;
+    });
+    return o;
+  }
+  const orcamentoDe = ym => orcDoFluxo(ym) || (dados.orcamentoMes&&dados.orcamentoMes[ym]) || dados.orcamento || ORCAMENTO_PADRAO;
   const orcamento = () => orcamentoDe(ui.mes);
+  // previsto de uma categoria no período: o mês, ou a soma dos meses informados
+  function previstoCat(c, mes, meses){
+    if(mes!=="tudo") return +(orcamentoDe(mes)[c]||0);
+    return (meses||[]).reduce((s,m)=>s+(+(orcamentoDe(m)[c]||0)),0);
+  }
+  // "12 lançamentos · 87% do previsto"
+  function infoCat(n, v, p, entrada){
+    const pct = p ? Math.round(Math.abs(v)/Math.abs(p)*100) : null;
+    return '<span>'+n+' lançamento'+(n===1?"":"s")+'</span>'+
+      (pct==null ? '<span class="ic-p sem">sem previsto</span>'
+        : '<span class="ic-p'+(!entrada&&pct>100?' acima':'')+'" title="Previsto: R$ '+brl(Math.abs(p))+'">'+pct+'% do previsto</span>');
+  }
   function totaisPrevisto(ym){
     const o=orcamentoDe(ym); let rec=0, desp=0;
     Object.keys(o).forEach(c=>{
@@ -938,7 +1027,7 @@
   function renderDashboard(){
     // meses com lançamentos + meses que só têm previsão (planilha: Fluxo anual e contas do mês)
     const todosMeses=[...new Set(dados.lancamentos.map(l=>l.data.slice(0,7))
-      .concat(Object.keys(dados.orcamentoMes||{}), Object.keys(dados.contas||{})))].sort();
+      .concat(dados.fluxo?dados.fluxo.meses:Object.keys(dados.orcamentoMes||{}), Object.keys(dados.previsoes||{})))].sort();
     if(!ui.mes||(ui.mes!=="tudo"&&!todosMeses.includes(ui.mes))) ui.mes=todosMeses.length?mesPadrao(todosMeses):"tudo";
     renderPeriodo(todosMeses,false);
 
@@ -949,6 +1038,9 @@
     const r=entSai(base), saldo=r.tE-r.tS;
     const semCat=base.filter(l=>l.categoria==="Sem categoria").length;
     const LIM=8;
+    const nCat={};
+    base.forEach(l=>{ const k=l.categoria==="Sem categoria"?(l.valor>0?"+":"-"):l.categoria; nCat[k]=(nCat[k]||0)+1; });
+    const mesesLanc=[...new Set(base.map(l=>l.data.slice(0,7)))];
     const corDif=v=>v<-0.004?"#C0392B":v>0.004?"#1E8A5F":"var(--cinza)";
 
     function lista(obj,total,tipo){
@@ -961,7 +1053,9 @@
         '<div class="dash-lin" data-dcat="'+esc(c)+'" data-dtipo="'+tipo+'" title="Ver lançamentos">'+
           '<span class="nm">'+ponto(c)+esc(c)+'</span>'+
           '<span class="vl" style="color:'+(tipo==="e"?"#1E8A5F":"var(--tinta)")+'">'+brl(v)+'</span>'+
-          '<span class="pc">'+(total?Math.round(v/total*100):0)+'%</span>'+
+          '<span class="pc" title="Parte do total">'+(total?Math.round(v/total*100):0)+'%</span>'+
+          '<span class="ic">'+infoCat(c==="Sem categoria"?(nCat[tipo==="e"?"+":"-"]||0):(nCat[c]||0), v,
+            c==="Sem categoria"?0:previstoCat(c,ui.mes,mesesLanc), tipo==="e")+'</span>'+
           '<span class="br"><i style="width:'+Math.max(2,Math.abs(v)/max*100).toFixed(1)+'%;background:'+(tipo==="e"?"#1E8A5F":cor(c))+'"></i></span>'+
         '</div>').join("")+
         (tudo.length>LIM?'<button class="ver-mais" data-dver="'+chave+'">'+(aberto?"Mostrar menos":"Ver todas ("+tudo.length+")")+'</button>':"");
@@ -975,6 +1069,7 @@
       base.forEach(l=>{ real[l.categoria]=(real[l.categoria]||0)+l.valor; });
       const alertas=[]; let linhas="", pR=0,rR=0,pD=0,rD=0;
       const futuro=!base.length;   // mês só com previsão: sem realizado para comparar
+      const doFluxo=!!orcDoFluxo(ui.mes);
       const tr='<td style="color:var(--linha)">—</td>';
       const cel=v=>futuro?tr:'<td style="color:'+corDif(v)+'">'+brl(v)+'</td>';
       const rv=v=>futuro?tr:'<td>'+brl(v)+'</td>';
@@ -991,7 +1086,8 @@
         itens.forEach(x=>{
           if(!rec&&x.p>0&&x.r>x.p*1.1&&x.r-x.p>50) alertas.push(x);
           linhas+='<tr class="orc-c"><td><span class="orc-nome" data-dcat="'+esc(x.c)+'" title="Ver lançamentos">'+ponto(x.c)+esc(x.c)+'</span></td>'+
-            '<td><input class="orc-in" data-orc="'+esc(x.c)+'" value="'+(x.p?brl(x.p):"")+'" placeholder="—" inputmode="decimal" aria-label="Previsto de '+esc(x.c)+'"></td>'+
+            (doFluxo?'<td>'+(x.p?brl(x.p):'<span style="color:var(--linha)">—</span>')+'</td>'
+              :'<td><input class="orc-in" data-orc="'+esc(x.c)+'" value="'+(x.p?brl(x.p):"")+'" placeholder="—" inputmode="decimal" aria-label="Previsto de '+esc(x.c)+'"></td>')+
             rv(x.r)+cel(dif(x.p,x.r))+'</tr>';
         });
       });
@@ -1009,7 +1105,7 @@
         '<tr class="orc-t forte"><td>Resultado</td><td style="color:'+corDif(pR-pD)+'">'+brl(pR-pD)+'</td>'+(futuro?tr:'<td style="color:'+corDif(rR-rD)+'">'+brl(rR-rD)+'</td>')+cel((rR-rD)-(pR-pD))+'</tr>';
       return {alertas:alertas, html:
         '<div class="tit-secao" style="margin-top:36px"><h3>Previsto × realizado · '+rotuloMes(ui.mes)+'</h3></div>'+
-        '<p class="sub" style="margin:-8px 0 12px">Clique no previsto para alterar. Na diferença, verde é sobra e vermelho é estouro.</p>'+
+        '<p class="sub" style="margin:-8px 0 12px">'+(doFluxo?'O previsto vem do <b>Fluxo anual</b> — altere lá. ':'Clique no previsto para alterar. ')+'Na diferença, verde é sobra e vermelho é estouro.</p>'+
         '<div class="rolagem"><table class="dash-mes orc-tab"><thead><tr><th>Categoria</th><th>Previsto</th><th>Realizado</th><th>Diferença</th></tr></thead>'+
         '<tbody>'+linhas+'</tbody></table></div>'+
         '<button class="ver-mais" data-orctodas="1">'+(ui.orcTodas?"Mostrar só as categorias com valor":"Mostrar todas as categorias (para definir previsto)")+'</button>'};
@@ -1024,39 +1120,27 @@
       (semCat?'<div class="it clic" data-dcat="Sem categoria"><span>'+semCat+' lançamento'+(semCat>1?"s":"")+' sem categoria — clique para classificar</span><span class="v">→</span></div>':"")+
       '</div>':"";
 
-    // contas a pagar e a receber do mês (abas Setembro, Outubro, Novembro… da planilha)
+    // resumo da previsão do mês (aba "Previsão do mês")
     function contasHTML(){
-      const c=dados.contas&&dados.contas[ui.mes]; if(!c) return "";
-      const soma=a=>a.reduce((s,x)=>s+x.it.v,0);
-      const todos=c.itens.map((it,i)=>({it:it,i:i}));
-      const abertos=todos.filter(x=>!x.it.pago), pagos=todos.filter(x=>x.it.pago);
-      const aPagar=soma(abertos), jaPago=soma(pagos);
-      const receber=(c.receber||[]).reduce((s,r)=>s+r.v,0), fii=c.fii||0, ini=c.saldo||0;
-      const saldo=ini+aPagar+receber+fii;
-      const lin=x=>'<label class="conta-it'+(x.it.pago?' pago':'')+'"><input type="checkbox" data-contai="'+x.i+'"'+(x.it.pago?' checked':'')+
-        ' aria-label="Marcar '+esc(x.it.d)+' como pago"><span class="d">'+esc(x.it.d)+'</span>'+
-        '<span class="v" style="color:'+(x.it.v<0?'var(--tinta)':'#1E8A5F')+'">'+brl(x.it.v)+'</span></label>';
-      const origens=(c.receber||[]).map(r=>r.d).concat(fii?["FII"]:[]);
-      return '<div class="tit-secao" style="margin-top:36px"><h3>Contas do mês · '+rotuloMes(ui.mes)+'</h3></div>'+
-        '<p class="sub" style="margin:-8px 0 12px">Da aba '+esc(c.aba||"")+' da planilha. Marque o que já foi pago.</p>'+
+      const p=dados.previsoes&&dados.previsoes[ui.mes]; if(!p) return "";
+      const t=totaisPrev(p);
+      return '<div class="tit-secao" style="margin-top:36px"><h3>Previsão do mês · '+rotuloMes(ui.mes)+'</h3></div>'+
         '<section class="dash-geral" style="margin-top:0">'+
-          '<div class="g-num"><span class="rot">A pagar</span><div class="v">R$ '+brl(-aPagar)+'</div>'+
-            '<span class="kpi-sub">'+abertos.length+' conta'+(abertos.length===1?"":"s")+' em aberto</span></div>'+
-          '<div class="g-num"><span class="rot">A receber</span><div class="v" style="color:#1E8A5F">R$ '+brl(receber+fii)+'</div>'+
-            '<span class="kpi-sub">'+esc(origens.join(" + ")||"—")+'</span></div>'+
-          '<div class="g-num"><span class="rot">'+(saldo<0?"Vai faltar":"Vai sobrar")+'</span><div class="v" style="color:'+corDif(saldo)+'">R$ '+brl(saldo)+'</div>'+
-            '<span class="kpi-sub">'+(ini?'saldo de R$ '+brl(ini)+' + ':'')+'a receber − a pagar</span></div>'+
+          '<div class="g-num"><span class="rot">A pagar</span><div class="v">R$ '+brl(-t.aPagar)+'</div>'+
+            '<span class="kpi-sub">'+p.itens.filter(x=>x.aPagar!=null&&x.aPagar<0).length+' contas em aberto</span></div>'+
+          '<div class="g-num"><span class="rot">A receber</span><div class="v" style="color:#1E8A5F">R$ '+brl(t.receber)+'</div>'+
+            '<span class="kpi-sub">'+esc(p.receitas.filter(r=>r.v).map(r=>r.d).join(" + ")||"—")+'</span></div>'+
+          '<div class="g-num"><span class="rot">'+(t.resultado<0?"Déficit":"Superávit")+'</span><div class="v" style="color:'+corDif(t.resultado)+'">R$ '+brl(t.resultado)+'</div>'+
+            '<span class="kpi-sub">saldo + a receber − a pagar</span></div>'+
         '</section>'+
-        '<div class="contas-lista">'+abertos.map(lin).join("")+'</div>'+
-        (pagos.length?'<details class="contas-pagas"><summary>'+pagos.length+' já paga'+(pagos.length===1?"":"s")+' · R$ '+brl(-jaPago)+'</summary>'+
-          '<div class="contas-lista">'+pagos.map(lin).join("")+'</div></details>':'');
+        '<button class="ver-mais" data-abrirprev="'+ui.mes+'">Abrir a previsão de '+rotuloMes(ui.mes)+' →</button>';
     }
 
     // todos os meses: fluxo anual, previsto (aba FLUXO ANUAL) × realizado
     let tabelaMes="";
     if(ui.mes==="tudo"&&todosMeses.length>1){
       const val=dados.lancamentos.filter(valido);
-      const comPrev=Object.keys(dados.orcamentoMes||{}).length>0;
+      const comPrev=!!dados.fluxo||Object.keys(dados.orcamentoMes||{}).length>0;
       let acP=0;
       tabelaMes='<div class="tit-secao" style="margin-top:40px"><h3>'+(comPrev?"Fluxo anual — previsto × realizado":"Mês a mês")+'</h3></div>'+
         '<div class="rolagem"><table class="dash-mes"><thead>'+
@@ -1102,6 +1186,8 @@
     corpo.onclick=e=>{
       const dv=e.target.closest("[data-dver]");
       if(dv){ ui[dv.dataset.dver]=!ui[dv.dataset.dver]; renderDashboard(); return; }
+      const ap=e.target.closest("[data-abrirprev]");
+      if(ap){ ui.conta="prev"; ui.prevMes=ap.dataset.abrirprev; render(); window.scrollTo(0,0); return; }
       const ot=e.target.closest("[data-orctodas]");
       if(ot){ ui.orcTodas=!ui.orcTodas; renderDashboard(); return; }
       const dm=e.target.closest("[data-dmes]");
@@ -1119,12 +1205,6 @@
       }
     };
     corpo.onchange=e=>{
-      const ck=e.target.closest("[data-contai]");
-      if(ck){
-        const it=dados.contas[ui.mes].itens[+ck.dataset.contai];
-        it.pago=ck.checked; salvar(); renderDashboard();
-        avisar(it.d+(it.pago?" marcada como paga.":" voltou para a pagar.")); return;
-      }
       const inp=e.target.closest("[data-orc]"); if(!inp) return;
       const c=inp.dataset.orc, o=Object.assign({},orcamento());
       let v=numero(String(inp.value||"0").replace("−","-"));
@@ -1163,6 +1243,8 @@
         dados.orcamento   = d.orcamento||null;
         dados.orcamentoMes= d.orcamentoMes||{};
         dados.contas      = d.contas||{};
+        dados.previsoes   = d.previsoes||{};
+        dados.fluxo       = d.fluxo||null;
         dados.dividas     = d.dividas||null;
         dados.versao      = d.versao||0;
         migrar();
@@ -1531,13 +1613,13 @@
       ["novos","repetidos","prontos","corrigidos"].forEach(k=>tot[k]+=g[k]);
     });
     const nPrev=lerOrcamentoPlanilha(wb), ano=anoPlanilha(wb);
-    const nFluxo=lerFluxoAnual(wb,ano), nContas=lerContasMes(wb,ano), temDiv=lerDividas(wb);
+    const nFluxo=lerFluxoAnual(wb,ano), abasPrev=lerPrevisoes(wb,ano), temDiv=lerDividas(wb);
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
     ui.conta="dash"; ui.mes=null; ui.view="mes";
     salvar(); render();
     avisar("Planilha: "+textoImport(tot)+
-      (nFluxo?" · previsto de "+nFluxo+" meses":nPrev?" · previsto de "+nPrev+" itens":"")+
-      (nContas?" · contas de "+nContas+" meses":"")+(temDiv?" · dívidas e parcelas":""));
+      (nFluxo?" · fluxo anual ("+nFluxo+" linhas)":nPrev?" · previsto de "+nPrev+" itens":"")+
+      (abasPrev.length?" · previsão de "+abasPrev.join(", "):"")+(temDiv?" · dívidas e parcelas":""));
   }
   /* ---- outras abas da planilha ---- */
   const MESES_ABREV=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
@@ -1585,7 +1667,7 @@
   ];
   const catRotulo = r => { const x=ROTULOS.find(p=>p[0].test(r)); return x?x[1]:null; };
 
-  // FLUXO ANUAL: previsto de cada mês, linha a linha
+  // FLUXO ANUAL: as linhas da aba, com os valores de cada mês (receitas +, despesas −)
   function lerFluxoAnual(wb,ano){
     const aba=wb.SheetNames.find(n=>/FLUXO ANUAL/i.test(n)); if(!aba) return 0;
     const L=abaLinhas(wb,aba);
@@ -1596,64 +1678,59 @@
     }
     if(cab<0) return 0;
     let iRot=L[cab].findIndex(c=>/^item$/i.test(celTexto(c))); if(iRot<0) iRot=1;
-    const om={};
-    for(let i=cab+1;i<L.length;i++){
-      const r=L[i], rot=celTexto(r[iRot]);
-      if(!rot||/^▸|TOTAL|RESULTADO|^PROVIS[ÕO]ES$|EXCLUINDO|^\(-\)/i.test(rot)) continue;
-      const cat=catRotulo(rot); if(!cat) continue;
-      ms.forEach((m,j)=>{
-        const v=r[j]; if(!m||typeof v!=="number"||!v) return;
-        const o=om[m]=om[m]||{};
-        o[cat]=Math.round(((o[cat]||0)+(ehReceita(cat)?v:Math.abs(v)))*100)/100;
-      });
+    const limpa=t=>t.replace(/^[^\wÀ-ÿ(]+/,"").trim();
+    const linhas=[]; let lado="desp", fim=false;
+    for(let i=cab+1;i<L.length && !fim;i++){
+      const r=L[i], bruto=celTexto(r[iRot]); if(!bruto) continue;
+      if(/📥|📤/.test(bruto)){ lado=/📥|RECEITA/i.test(bruto)?"rec":"desp"; linhas.push({tipo:"g", rot:limpa(bruto), lado:lado}); continue; }
+      if(/RESULTADO DO M/i.test(bruto)){ fim=true; continue; }
+      if(/^▸|TOTAL|RESULTADO|EXCLUINDO|^\(-\)/i.test(bruto)) continue;
+      const v={};
+      ms.forEach((m,j)=>{ if(m && typeof r[j]==="number" && r[j]) v[m]=Math.round(r[j]*100)/100; });
+      linhas.push({tipo:"i", rot:limpa(bruto), cat:catRotulo(bruto)||"", lado:lado, v:v});
     }
-    const n=Object.keys(om).length;
-    if(n) dados.orcamentoMes=om;
-    return n;
+    if(!linhas.some(l=>l.tipo==="i")) return 0;
+    dados.fluxo={ano:ano, meses:ms.filter(Boolean), linhas:linhas};
+    return linhas.filter(l=>l.tipo==="i").length;
   }
 
-  // abas de fechamento do mês (Setembro, Outubro, Novembro…): B = conta, C = a pagar, D = pago;
-  // E/F = SALDO e FII; J/K = a receber. As linhas 3–9 (transferências fixas do início do mês) já contam como pagas.
-  function lerContasMes(wb,ano){
+  // abas de previsão do mês (Setembro, Outubro, Novembro…), no formato da planilha:
+  // A data · B detalhes · C a pagar · D pago; linhas 3–9 = separado no início do mês (fora do "a pagar");
+  // E/F = SALDO e FII · J/K = receitas esperadas · demais valores soltos = anotações
+  function lerPrevisoes(wb,ano){
     const nomes=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
-    const contas={};
+    const lidos=[];
     wb.SheetNames.forEach(nome=>{
       const k=nomes.findIndex(m=>nome.trim().toLowerCase().startsWith(m)); if(k<0) return;
       const ym=ano+"-"+String(k+1).padStart(2,"0");
-      const c={aba:nome.trim(), itens:[], receber:[], fii:0, saldo:0};
+      const p={aba:nome.trim(), saldo:0, fixos:[], itens:[], receitas:[], notas:[]};
+      const num=x=>typeof x==="number";
       abaLinhas(wb,nome).forEach((r,i)=>{
-        if(i<2) return;
-        const d=celTexto(r[1]), C=r[2], D=r[3];
-        if(d && (typeof C==="number"||typeof D==="number")){
-          const pago = typeof C!=="number" || (i<9 && typeof D==="number");
-          c.itens.push({d:d, v:typeof C==="number"?C:-Math.abs(D), pago:pago});
+        if(i<1) return;
+        const d=celTexto(r[1]);
+        if(i>=2 && d){
+          const x={data:celData(r[0])||"", d:d, aPagar:num(r[2])?r[2]:null, pago:num(r[3])?Math.abs(r[3]):null};
+          (i<9?p.fixos:p.itens).push(x);
         }
-        const e=celTexto(r[4]).toLowerCase(), F=r[5];
-        if(typeof F==="number"){ if(e==="saldo") c.saldo=F; else if(e==="fii") c.fii=F; }
+        const e=celTexto(r[4]), F=r[5], g=celTexto(r[6]);
+        if(num(F)){
+          if(/^saldo$/i.test(e)) p.saldo=F;
+          else if(/^fii$/i.test(e)) p.receitas.push({d:"FII", v:F});
+          else if(!/^(a pagar|a receber|deficit|d[ée]ficit)/i.test(e)) p.notas.push({d:e||g||"", v:F});
+        }
         const j=celTexto(r[9]), K=r[10];
-        if(j && typeof K==="number" && K) c.receber.push({d:j, v:K});
+        if(j) p.receitas.push({d:j, v:num(K)?K:null});
+        else if(num(K)) p.notas.push({d:"", v:K});
       });
-      // o SALDO fica na linha 2
-      const L=abaLinhas(wb,nome);
-      if(L[1] && /saldo/i.test(celTexto(L[1][4])) && typeof L[1][5]==="number") c.saldo=L[1][5];
-      if(L[1] && celTexto(L[1][9]) && typeof L[1][10]==="number" && !c.receber.some(x=>x.d===celTexto(L[1][9])))
-        c.receber.unshift({d:celTexto(L[1][9]), v:L[1][10]});
-      if(c.itens.length){
-        // mantém o que já foi marcado como pago no app
-        const velho=(dados.contas||{})[ym];
-        if(velho) c.itens.forEach(it=>{ const v=velho.itens.find(x=>x.d===it.d&&x.v===it.v); if(v&&v.pago) it.pago=true; });
-        contas[ym]=c;
-      }
+      if(p.itens.length||p.fixos.length){ (dados.previsoes=dados.previsoes||{})[ym]=p; lidos.push(nome.trim()); }
     });
-    const n=Object.keys(contas).length;
-    if(n) dados.contas=Object.assign({}, dados.contas||{}, contas);
-    return n;
+    return lidos;
   }
 
   // PARCELAMENTOS CARTÃO, CONSÓRCIO, CONSIGNADOS e CONSOLIDA
   function lerDividas(wb){
     const aba=re=>wb.SheetNames.find(n=>re.test(n));
-    const dv={parcelas:[], consorcio:[], consignados:[], consolida:null, quitacao:[]};
+    const dv={parcelas:[], consorcio:[], consignados:[], consolida:null, quitacao:[], faturaAvulsos:{}};
     const valsDe=(r,ms)=>{ const o={}; ms.forEach((m,j)=>{ if(m && typeof r[j]==="number" && r[j]) o[m]=Math.round(r[j]*100)/100; }); return o; };
     let a=aba(/PARCELAMENTO/i);
     if(a){
@@ -1664,10 +1741,18 @@
               iCat=h.findIndex(x=>/^categoria/i.test(x)), iSub=h.findIndex(x=>/^subcat/i.test(x));
         for(let i=cab+1;i<L.length;i++){
           const r=L[i], car=celTexto(r[iCar]), d=celTexto(r[iDes]);
-          if(/TOTAL|FATURA/i.test(car)) break;
+          if(/FATURA/i.test(car) && !/TOTAL/i.test(car)){ dv.faturaAvulsos=valsDe(r,ms); continue; }
+          if(/TOTAL PARCEL/i.test(car)){
+            // a fórmula do total (ex.: SUM(N7:N22)) diz quais linhas contam; as de fora vêm desmarcadas
+            const j0=ms.findIndex(Boolean), cel=j0>=0?wb.Sheets[a][XLSX.utils.encode_cell({r:i,c:j0})]:null;
+            const mf=cel&&cel.f?String(cel.f).match(/SUM\(\$?[A-Z]+\$?(\d+):\$?[A-Z]+\$?(\d+)\)/i):null;
+            if(mf) dv.parcelas.forEach(p=>{ if(p._linha<+mf[1]||p._linha>+mf[2]) p.foraTotal=true; });
+            continue;
+          }
+          if(/TOTAL|^\*/i.test(car)) continue;
           if(!d) continue;
           const vals=valsDe(r,ms);
-          if(Object.keys(vals).length) dv.parcelas.push({cartao:car, desc:d, cat:catPlanilha(r[iCat],iSub>=0?r[iSub]:"")||"", vals:vals});
+          if(Object.keys(vals).length) dv.parcelas.push({cartao:car, desc:d, cat:catPlanilha(r[iCat],iSub>=0?r[iSub]:"")||"", vals:vals, _linha:i+1});
         }
       }
     }
@@ -1722,6 +1807,7 @@
         dv.consolida={meses:ms.filter(Boolean), linhas:linhas};
       }
     }
+    dv.parcelas.forEach(p=>{ delete p._linha; });
     if(dv.parcelas.length||dv.consorcio.length||dv.consignados.length||dv.consolida){ dados.dividas=dv; return true; }
     return false;
   }
@@ -2160,86 +2246,435 @@
     $("#abas").innerHTML=h;
   }
 
-  /* ================= dívidas e parcelas ================= */
-  function renderDividas(){
-    const corpo=$("#corpo");
-    $("#abas").innerHTML='<div class="periodo"><span class="sub" style="margin:0">Consignados, consórcio, financiamento e compras parceladas — da planilha de orçamento</span></div>';
-    const dv=dados.dividas;
-    if(!dv){
-      corpo.innerHTML='<div class="vazio"><p class="num">Nada por aqui ainda</p><p>Use <b>Importar › Planilha de orçamento</b> '+
-        'para trazer as abas de consórcio, consignados e parcelamentos do cartão.</p></div>';
+  /* ================= previsão do mês ================= */
+  const brlS = v => (v>0?"+":"")+brl(v);
+  // após editar um campo, redesenha e devolve o foco ao campo seguinte (Tab continua funcionando)
+  function manterFoco(fn){
+    setTimeout(()=>{
+      const a=document.activeElement, k=a&&a.dataset?a.dataset.foco:null;
+      fn();
+      if(k){ const b=document.querySelector('[data-foco="'+k+'"]'); if(b){ b.focus(); try{ b.select(); }catch(_){} } }
+    },0);
+  }
+  function totaisPrev(p){
+    const soma=(a,f)=>(a||[]).reduce((s,x)=>s+(+f(x)||0),0);
+    const aPagar=soma(p.itens,x=>x.aPagar), pago=soma(p.itens,x=>x.pago), receber=soma(p.receitas,x=>x.v);
+    return {aPagar:aPagar, pago:pago, receber:receber, resultado:(+p.saldo||0)+aPagar+receber};
+  }
+  const mesesPrev = () => Object.keys(dados.previsoes||{}).sort();
+  function proxMes(ym){ const [a,m]=ym.split("-").map(Number); return m===12?(a+1)+"-01":a+"-"+String(m+1).padStart(2,"0"); }
+
+  function novoMesPrev(){
+    const ms=mesesPrev(), ult=ms[ms.length-1], base=ult?dados.previsoes[ult]:null;
+    const ym=ult?proxMes(ult):mesAtual();
+    const [a,m]=ym.split("-").map(Number), dias=new Date(a,m,0).getDate();
+    const mover=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||"")?ym+"-"+String(Math.min(+d.slice(8),dias)).padStart(2,"0"):"";
+    // copia as linhas do último mês: o que foi pago vira previsto; nada marcado como pago
+    const copia=l=>(l||[]).map(x=>({data:mover(x.data), d:x.d, aPagar:x.aPagar!=null?x.aPagar:(x.pago?-x.pago:null), pago:null}));
+    dados.previsoes[ym]={aba:"criado no app", saldo:0, fixos:copia(base&&base.fixos), itens:copia(base&&base.itens),
+      receitas:(base?base.receitas:[]).map(r=>({d:r.d, v:r.v})), notas:[]};
+    ui.prevMes=ym; salvar(); render();
+    avisar(cap(rotuloMes(ym))+" criado"+(ult?" a partir de "+rotuloMes(ult):"")+".");
+  }
+
+  function renderPrevisao(){
+    const corpo=$("#corpo"), ms=mesesPrev();
+    if(!ms.includes(ui.prevMes))
+      ui.prevMes = ms.includes(mesAtual()) ? mesAtual() : (ms.filter(m=>m>=mesAtual())[0] || ms[ms.length-1] || null);
+    $("#abas").innerHTML='<div class="prev-meses" role="tablist">'+
+      ms.map(m=>'<button role="tab" data-pmes="'+m+'" class="'+(m===ui.prevMes?"on":"")+'" aria-selected="'+(m===ui.prevMes)+'">'+cap(rotuloMes(m))+'</button>').join("")+
+      '<button data-pnovo="1" class="novo">+ Novo mês</button></div>'+
+      (ui.prevMes?'<button class="bt vazado" data-papagar="1" style="font-size:12px;padding:6px 12px">Apagar '+esc(rotuloMes(ui.prevMes))+'</button>':'');
+    if(!ui.prevMes){
+      corpo.innerHTML='<div class="vazio"><p class="num">Nenhuma previsão ainda</p><p>Clique em <b>+ Novo mês</b> ou importe a planilha de orçamento (abas Setembro, Outubro…).</p></div>';
       return;
     }
-    const hoje=mesAtual();
-    const info=vals=>{
-      const todos=Object.keys(vals).sort(), fut=todos.filter(m=>m>=hoje);
-      return {mensal:vals[hoje]!=null?vals[hoje]:(fut.length?vals[fut[0]]:0), restam:fut.length,
-              falta:fut.reduce((s,m)=>s+vals[m],0), fim:todos[todos.length-1], total:todos.length, pagas:todos.length-fut.length};
+    const p=dados.previsoes[ui.prevMes];
+    const val=(v,sinal)=>v==null?"":(sinal?brlS(v):brl(v));
+    const linha=(lista,x,i)=>{
+      const at=k=>' data-pv="'+lista+'" data-i="'+i+'" data-k="'+k+'" data-foco="'+lista+':'+i+':'+k+'"';
+      return '<tr>'+
+        '<td><input type="date" class="campo"'+at("data")+' value="'+esc(x.data||"")+'" aria-label="Data"></td>'+
+        '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes"></td>'+
+        '<td class="valor"><input class="campo'+(x.aPagar>0?' pos':'')+'"'+at("aPagar")+' value="'+val(x.aPagar,true)+'" placeholder="—" inputmode="decimal" aria-label="A pagar"></td>'+
+        '<td class="valor"><input class="campo"'+at("pago")+' value="'+val(x.pago)+'" placeholder="—" inputmode="decimal" aria-label="Pago"></td>'+
+        '<td class="acao">'+(x.aPagar!=null&&x.aPagar<0?'<button class="pv-pagar" data-ppagar="'+lista+':'+i+'" title="Marcar como pago">✓</button>':'')+
+          '<button class="apagar" data-pdel="'+lista+':'+i+'" title="Apagar linha" aria-label="Apagar linha">×</button></td></tr>';
     };
-    const n=v=>'<td class="n">'+brl(v)+'</td>';
-    const fimTxt=ym=>ym?cap(abrevMes(ym)):"—";
-    let h="";
+    const tabela=(lista,titulo,nota)=>
+      '<div class="tit-secao" style="margin:0 0 6px"><h3>'+titulo+'</h3></div>'+(nota?'<p class="sub" style="margin:0 0 10px">'+nota+'</p>':'')+
+      '<div class="rolagem"><table class="pv-tab pv-contas"><colgroup><col class="c-data"><col><col class="c-val"><col class="c-val"><col class="c-acao"></colgroup>'+
+      '<thead><tr><th>Data</th><th>Detalhes</th><th class="n">A pagar</th><th class="n">Pago</th><th></th></tr></thead><tbody>'+
+      p[lista].map((x,i)=>linha(lista,x,i)).join("")+'</tbody></table></div>'+
+      '<button class="ver-mais" data-padd="'+lista+'">+ Adicionar linha</button>';
+    const lista2=(lista,titulo,rot)=>
+      '<div class="tit-secao" style="margin:26px 0 6px"><h3>'+titulo+'</h3></div>'+
+      '<table class="pv-tab"><colgroup><col><col class="c-val"><col style="width:34px"></colgroup><tbody>'+
+      p[lista].map((x,i)=>{ const at=k=>' data-pv="'+lista+'" data-i="'+i+'" data-k="'+k+'" data-foco="'+lista+':'+i+':'+k+'"';
+        return '<tr><td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="'+rot+'"></td>'+
+          '<td class="valor"><input class="campo'+(lista==="receitas"?' pos':'')+'"'+at("v")+' value="'+val(x.v)+'" placeholder="—" inputmode="decimal"></td>'+
+          '<td class="acao"><button class="apagar" data-pdel="'+lista+':'+i+'" aria-label="Apagar">×</button></td></tr>'; }).join("")+
+      '</tbody></table><button class="ver-mais" data-padd="'+lista+'">+ Adicionar</button>';
+    const t=totaisPrev(p);
+    corpo.innerHTML=
+      '<p class="nota-linha">'+esc(p.aba==="criado no app"?"Mês criado no app.":"Veio da aba "+p.aba+" da planilha.")+
+        ' Tudo aqui é editável e fica salvo. <b>A pagar</b>: digite o valor normal (vira saída); para entrada use +. '+
+        'O ✓ move o valor para <b>Pago</b>. Importar a planilha de novo substitui os meses que estiverem nela.</p>'+
+      '<div class="pv-grid"><div>'+
+        tabela("itens","Contas a pagar")+
+        '<div style="height:30px"></div>'+
+        tabela("fixos","Separado no início do mês","Transferências fixas — não entram no “a pagar” (como as linhas 3 a 9 da planilha).")+
+      '</div><aside class="pv-lado">'+
+        '<div class="pv-resumo">'+
+          '<label class="pv-l">Saldo em conta<input class="campo" data-pv="saldo" data-foco="saldo" value="'+(p.saldo?brl(p.saldo):"")+'" placeholder="0,00" inputmode="decimal"></label>'+
+          '<div class="pv-l"><span>A pagar</span><b id="pvAPagar">'+brl(t.aPagar)+'</b></div>'+
+          '<div class="pv-l"><span>A receber</span><b id="pvReceber" style="color:#1E8A5F">'+brl(t.receber)+'</b></div>'+
+          '<div class="pv-tot"><span id="pvRot">'+(t.resultado<0?"Déficit":"Superávit")+'</span>'+
+            '<b id="pvRes" style="color:'+(t.resultado<0?"#C0392B":"#1E8A5F")+'">R$ '+brl(t.resultado)+'</b></div>'+
+          '<p class="sub" id="pvPago" style="margin-top:8px">Já pago no mês: R$ '+brl(t.pago)+'</p>'+
+        '</div>'+
+        lista2("receitas","Receitas esperadas","Descrição")+
+        lista2("notas","Anotações","Descrição")+
+      '</aside></div>';
 
-    const cs=dv.consolida;
-    if(cs && cs.linhas.length){
-      const ms=cs.meses.filter(m=>m>=hoje).slice(0,12);
-      const tot=m=>cs.linhas.reduce((s,l)=>s+(l.vals[m]||0),0);
-      const ult=ms[ms.length-1];
-      h+='<section class="dash-geral">'+
-        '<div class="g-num"><span class="rot">Compromissos em '+rotuloMes(hoje)+'</span><div class="v">R$ '+brl(tot(hoje))+'</div>'+
-          '<span class="kpi-sub">'+esc(cs.linhas.map(l=>cap(l.nome.trim().toLowerCase())).join(" + "))+'</span></div>'+
-        '<div class="g-num"><span class="rot">Em '+(ult?rotuloMes(ult):"12 meses")+'</span><div class="v">R$ '+brl(ult?tot(ult):0)+'</div>'+
-          '<span class="kpi-sub">'+(ult&&tot(ult)<tot(hoje)?'R$ '+brl(tot(hoje)-tot(ult))+' a menos por mês':'')+'</span></div>'+
-        '<div class="g-num"><span class="rot">Para quitar tudo hoje</span><div class="v" style="color:#C0392B">R$ '+brl(dv.quitacao.reduce((s,q)=>s+q.v,0))+'</div>'+
-          '<span class="kpi-sub">'+esc(dv.quitacao.map(q=>cap(q.nome.toLowerCase())+" "+brl(q.v)).join(" · "))+'</span></div>'+
-      '</section>'+
-      '<div class="tit-secao" style="margin-top:34px"><h3>Saída mensal com dívidas — próximos 12 meses</h3></div>'+
-      '<div class="rolagem"><table class="matriz div-tab"><thead><tr><th></th>'+ms.map(m=>'<th class="n">'+abrevMes(m)+'</th>').join("")+'</tr></thead><tbody>'+
-      cs.linhas.map(l=>'<tr><td>'+esc(cap(l.nome.trim().toLowerCase()))+'</td>'+ms.map(m=>n(l.vals[m]||0)).join("")+'</tr>').join("")+
-      '<tr class="orc-t"><td>Total</td>'+ms.map(m=>n(tot(m))).join("")+'</tr></tbody></table></div>';
+    const atualizar=()=>{
+      const t=totaisPrev(p);
+      $("#pvAPagar").textContent=brl(t.aPagar); $("#pvReceber").textContent=brl(t.receber);
+      $("#pvRot").textContent=t.resultado<0?"Déficit":"Superávit";
+      $("#pvRes").textContent="R$ "+brl(t.resultado); $("#pvRes").style.color=t.resultado<0?"#C0392B":"#1E8A5F";
+      $("#pvPago").textContent="Já pago no mês: R$ "+brl(t.pago);
+    };
+    corpo.onchange=e=>{
+      const el=e.target.closest("[data-pv]"); if(!el) return;
+      const lista=el.dataset.pv, k=el.dataset.k, txt=String(el.value||"").trim();
+      const n=txt===""?null:numero(txt.replace("−","-"));
+      if(lista==="saldo"){ p.saldo=n||0; el.value=p.saldo?brl(p.saldo):""; }
+      else{
+        const x=p[lista][+el.dataset.i];
+        if(k==="d"||k==="data") x[k]=el.value;
+        else if(k==="aPagar"){ x.aPagar = n==null?null : (/^\+/.test(txt)?Math.abs(n):-Math.abs(n)); }
+        else if(k==="pago"){ x.pago = n==null?null:Math.abs(n); el.value=val(x.pago); }
+        else if(k==="v"){ x.v=n; el.value=val(x.v); }
+      }
+      salvar(); atualizar();
+      if(k==="aPagar") manterFoco(renderPrevisao);
+    };
+    corpo.onclick=e=>{
+      const ad=e.target.closest("[data-padd]");
+      if(ad){
+        const l=ad.dataset.padd;
+        p[l].push(l==="receitas"||l==="notas"?{d:"",v:null}:{data:ui.prevMes+"-01",d:"",aPagar:null,pago:null});
+        salvar(); renderPrevisao();
+        const f=document.querySelector('[data-foco="'+l+':'+(p[l].length-1)+':d"]'); if(f) f.focus();
+        return;
+      }
+      const del=e.target.closest("[data-pdel]");
+      if(del){ const [l,i]=del.dataset.pdel.split(":"); p[l].splice(+i,1); salvar(); renderPrevisao(); return; }
+      const pg=e.target.closest("[data-ppagar]");
+      if(pg){
+        const [l,i]=pg.dataset.ppagar.split(":"), x=p[l][+i];
+        x.pago=Math.round(((x.pago||0)+Math.abs(x.aPagar))*100)/100; x.aPagar=null;
+        salvar(); renderPrevisao(); avisar(x.d+" marcado como pago."); return;
+      }
+    };
+  }
+
+  /* ================= fluxo anual (aba FLUXO ANUAL) ================= */
+  function fluxoDoZero(){
+    const ano=String(new Date().getFullYear()), meses=[];
+    for(let m=1;m<=12;m++) meses.push(ano+"-"+String(m).padStart(2,"0"));
+    const linhas=[];
+    GRUPOS.forEach(gr=>{
+      if(!gr.g||gr.g==="Fora dos cálculos") return;
+      const lado=gr.g==="Receitas"?"rec":"desp";
+      linhas.push({tipo:"g", rot:gr.g.toUpperCase(), lado:lado});
+      gr.cats.forEach(c=>{
+        const base=orcamentoDe(mesAtual())[c]||0, v={};
+        if(base) meses.forEach(m=>{ v[m]=lado==="rec"?base:-Math.abs(base); });
+        linhas.push({tipo:"i", rot:c, cat:c, lado:lado, v:v});
+      });
+    });
+    dados.fluxo={ano:ano, meses:meses, linhas:linhas}; salvar(); render();
+  }
+
+  function renderFluxo(){
+    const corpo=$("#corpo"), fx=dados.fluxo;
+    $("#abas").innerHTML='<div class="periodo"><span class="sub" style="margin:0">Expectativa de receitas e gastos, mês a mês. '+
+      'Clique num valor para mudar; o previsto da Visão geral acompanha.</span></div>';
+    if(!fx){
+      corpo.innerHTML='<div class="vazio"><p class="num">Sem fluxo anual ainda</p><p>Importe a planilha de orçamento (aba FLUXO ANUAL) '+
+        'ou <button class="ver-mais" data-fxzero="1" style="padding:0">comece um fluxo a partir das categorias</button>.</p></div>';
+      corpo.onclick=e=>{ if(e.target.closest("[data-fxzero]")) fluxoDoZero(); };
+      return;
     }
+    const ms=fx.meses, nC=ms.length+3;
+    const soma=(o,m)=>+o[m]||0;
+    const tot={rec:{}, desp:{}};
+    let h='', grupo=null;
+    const fecha=()=>{
+      if(!grupo) return;
+      h+='<tr class="fx-sub"><td>▸ Subtotal '+esc(grupo.rot.toLowerCase())+
+        ' <button class="ver-mais" data-fxadd="'+grupo.ult+'" style="padding:0 0 0 8px">+ linha</button></td><td></td>'+
+        ms.map(m=>'<td>'+brl(grupo.s[m]||0)+'</td>').join("")+'<td>'+brl(ms.reduce((s,m)=>s+(grupo.s[m]||0),0))+'</td></tr>';
+    };
+    fx.linhas.forEach((l,i)=>{
+      if(l.tipo==="g"){ fecha(); grupo={rot:l.rot, lado:l.lado, s:{}, ult:i};
+        h+='<tr class="fx-g"><td colspan="'+nC+'">'+(l.lado==="rec"?"📥 ":"📤 ")+esc(l.rot)+'</td></tr>'; return; }
+      if(!grupo) grupo={rot:"", lado:l.lado||"desp", s:{}, ult:i};
+      grupo.ult=i;
+      ms.forEach(m=>{ const v=soma(l.v,m); grupo.s[m]=(grupo.s[m]||0)+v; tot[l.lado==="rec"?"rec":"desp"][m]=(tot[l.lado==="rec"?"rec":"desp"][m]||0)+v; });
+      h+='<tr><td><div class="fx-rot"><input class="campo" data-fx="rot" data-i="'+i+'" value="'+esc(l.rot)+'" aria-label="Item">'+
+          '<button class="apagar" data-fxdel="'+i+'" title="Apagar linha" aria-label="Apagar linha">×</button></div></td>'+
+        '<td class="fx-cat"><select class="campo" data-fx="cat" data-i="'+i+'" title="Categoria usada no previsto × realizado">'+opcoesCat(l.cat||"","—")+'</select></td>'+
+        ms.map(m=>'<td class="valor"><input class="campo" data-fx="v" data-i="'+i+'" data-m="'+m+'" data-foco="fx:'+i+':'+m+'" value="'+(l.v[m]?brl(l.v[m]):"")+
+          '" placeholder="·" inputmode="decimal" aria-label="'+esc(l.rot)+' em '+abrevMes(m)+'"></td>').join("")+
+        '<td class="fx-tt">'+brl(ms.reduce((s,m)=>s+soma(l.v,m),0))+'</td></tr>';
+    });
+    fecha();
+    const linhaT=(rot,f,cls,totAno)=>'<tr class="'+(cls||"fx-t")+'"><td>'+rot+'</td><td></td>'+ms.map(m=>{ const v=f(m);
+      return '<td style="color:'+(cls==="fx-r"?"var(--cinza)":v<-0.004?"#C0392B":"inherit")+'">'+(v==null?"—":brl(v))+'</td>'; }).join("")+
+      '<td>'+(totAno!=null?brl(totAno):ms.every(m=>f(m)==null)?"":brl(ms.reduce((s,m)=>s+(f(m)||0),0)))+'</td></tr>';
+    let ac=0; const acum={}; ms.forEach(m=>{ ac+=(tot.rec[m]||0)+(tot.desp[m]||0); acum[m]=ac; });
+    const val=dados.lancamentos.filter(l=>!l.ignorado&&ehMov(l));
+    const real={}; ms.forEach(m=>{ const ls=val.filter(l=>l.data.slice(0,7)===m); if(ls.length){ const x=entSai(ls); real[m]=x.tE-x.tS; } });
+    h+=linhaT("Total de receitas",m=>tot.rec[m]||0)+linhaT("Total de despesas",m=>tot.desp[m]||0)+
+       linhaT("Resultado do mês",m=>(tot.rec[m]||0)+(tot.desp[m]||0))+linhaT("Resultado acumulado",m=>acum[m],"fx-t",ac)+
+       linhaT("Realizado (lançamentos)",m=>real[m]!=null?real[m]:null,"fx-r");
+    corpo.innerHTML='<div class="rolagem" style="margin-top:22px"><table class="fx-tab"><thead><tr><th>Item</th><th style="text-align:left">Categoria</th>'+
+      ms.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'<th>Total ano</th></tr></thead><tbody>'+h+'</tbody></table></div>'+
+      '<p class="nota-linha">Despesas: digite o valor normal (vira saída). Para lançar um valor positivo numa despesa, use +. '+
+      'Importar a planilha de novo substitui o fluxo anual.</p>';
 
-    if(dv.parcelas.length){
-      const it=dv.parcelas.map(p=>Object.assign({p:p},info(p.vals)));
-      const ativos=it.filter(x=>x.restam>0).sort((a,b)=>b.falta-a.falta), fim=it.filter(x=>x.restam===0);
-      const linha=x=>'<tr><td>'+esc(x.p.desc)+'</td><td class="fraco">'+esc(x.p.cartao)+'</td>'+
-        '<td class="fraco">'+(x.p.cat?ponto(x.p.cat)+esc(x.p.cat):"")+'</td>'+n(x.mensal)+
-        '<td class="n"><span class="barrinha"><i style="width:'+Math.round(x.pagas/x.total*100)+'%"></i></span>'+x.pagas+'/'+x.total+'</td>'+
-        '<td class="n">'+x.restam+'</td>'+n(x.falta)+'<td class="n div-fim">'+fimTxt(x.fim)+'</td></tr>';
-      const soma=(a,k)=>a.reduce((s,x)=>s+x[k],0);
-      h+='<div class="tit-secao" style="margin-top:40px"><h3>Compras parceladas no cartão</h3></div>'+
-        '<div class="rolagem"><table class="matriz div-tab"><thead><tr><th>Compra</th><th>Cartão</th><th>Categoria</th>'+
-        '<th class="n">Parcela</th><th class="n">Pagas</th><th class="n">Restam</th><th class="n">Falta pagar</th><th class="n">Última</th></tr></thead><tbody>'+
-        ativos.map(linha).join("")+
-        '<tr class="orc-t"><td colspan="3">Total em aberto</td>'+n(soma(ativos,"mensal"))+'<td></td><td></td>'+n(soma(ativos,"falta"))+'<td></td></tr>'+
-        '</tbody></table></div>'+
-        (fim.length?'<details class="contas-pagas"><summary>'+fim.length+' parcelamento'+(fim.length>1?"s":"")+' já quitado'+(fim.length>1?"s":"")+'</summary>'+
-          '<div class="rolagem"><table class="matriz div-tab"><tbody>'+fim.map(linha).join("")+'</tbody></table></div></details>':'');
+    corpo.onchange=e=>{
+      const el=e.target.closest("[data-fx]"); if(!el) return;
+      const l=fx.linhas[+el.dataset.i], k=el.dataset.fx;
+      if(k==="rot"){ l.rot=el.value.trim(); if(!l.cat) l.cat=catRotulo(l.rot)||""; }
+      else if(k==="cat") l.cat=el.value;
+      else{
+        const t=String(el.value||"").trim();
+        if(!t) delete l.v[el.dataset.m];
+        else{ let n=numero(t.replace("−","-")); if(l.lado!=="rec" && !/^\+/.test(t)) n=-Math.abs(n); l.v[el.dataset.m]=Math.round(n*100)/100; }
+      }
+      salvar(); manterFoco(renderFluxo);
+    };
+    corpo.onclick=e=>{
+      const ad=e.target.closest("[data-fxadd]");
+      if(ad){
+        const i=+ad.dataset.fxadd, ref=fx.linhas[i];
+        fx.linhas.splice(i+1,0,{tipo:"i", rot:"", cat:"", lado:ref.lado||"desp", v:{}});
+        salvar(); renderFluxo();
+        const f=document.querySelector('[data-fx="rot"][data-i="'+(i+1)+'"]'); if(f) f.focus();
+        return;
+      }
+      const del=e.target.closest("[data-fxdel]");
+      if(del){
+        const l=fx.linhas[+del.dataset.fxdel];
+        confirmar("Apagar a linha?", esc(l.rot||"(sem nome)")+" sai do fluxo anual.", "Apagar").then(ok=>{
+          if(!ok) return; fx.linhas.splice(+del.dataset.fxdel,1); salvar(); renderFluxo(); });
+      }
+    };
+  }
+
+  /* ================= dívidas e parcelas (mês a mês, editável) ================= */
+  function dividasVazias(){
+    return {parcelas:[], consorcio:[], consignados:[], quitacao:[{nome:"Financ. casa", v:0}], faturaAvulsos:{},
+      consolida:{meses:[], linhas:[{nome:"Consignado",vals:{}},{nome:"Consórcio",vals:{}},{nome:"Cartão",vals:{}},{nome:"Financ. casa",vals:{}}]}};
+  }
+  const somaMes = (lista,m) => lista.reduce((s,x)=>s+(+x.vals[m]||0),0);
+  // meses a mostrar: do mês atual até o último com valor (mínimo e máximo de colunas)
+  function janelaMeses(ini, listaVals, min, max){
+    let ult=ini;
+    listaVals.forEach(v=>Object.keys(v||{}).forEach(m=>{ if(m>ult && v[m]) ult=m; }));
+    const ms=[]; let m=ini;
+    while((ms.length<min||m<=ult) && ms.length<max){ ms.push(m); m=proxMes(m); }
+    return ms;
+  }
+  function novaParcelada(){
+    if(!dados.dividas) dados.dividas=dividasVazias();
+    const prox=proxMes(mesAtual());
+    modal('<h3 class="modal-tit">Nova compra parcelada</h3><form onsubmit="return false">'+
+      '<label>Descrição<input name="desc" required placeholder="Ex: Geladeira"></label>'+
+      '<div class="modal-duo"><label>Cartão<input name="cartao" value="infinite"></label>'+
+        '<label>Categoria<select name="cat">'+opcoesCat("","—")+'</select></label></div>'+
+      '<div class="modal-duo"><label>Valor da parcela (R$)<input name="valor" required inputmode="decimal" placeholder="199,90"></label>'+
+        '<label>Nº de parcelas<input name="n" type="number" min="1" max="72" value="10" required></label></div>'+
+      '<label>Primeira parcela<input name="ini" type="month" value="'+prox+'" required></label>'+
+      '<div class="modal-acoes"><button type="button" class="bt vazado" data-modal="cancelar">Cancelar</button>'+
+        '<button type="button" class="bt" data-modal="ok">Adicionar</button></div></form>'
+    ).then(f=>{
+      if(!f) return;
+      const v=Math.abs(numero(String(f.valor||"0"))), n=Math.max(1,Math.min(72,parseInt(f.n,10)||1));
+      if(!v){ avisar("Valor inválido.",true); return; }
+      const vals={}; let m=/^\d{4}-\d{2}$/.test(f.ini||"")?f.ini:prox;
+      for(let k=0;k<n;k++){ vals[m]=v; m=proxMes(m); }
+      dados.dividas.parcelas.push({cartao:(f.cartao||"").trim(), desc:(f.desc||"").trim(), cat:f.cat||"", vals:vals});
+      salvar(); ui.conta="dividas"; render();
+      avisar("Compra parcelada adicionada: "+n+"× R$ "+brl(v)+".");
+    });
+  }
+
+  function renderDividas(){
+    const corpo=$("#corpo");
+    $("#abas").innerHTML='<div class="periodo"><span class="sub" style="margin:0">Mês a mês e editável — clique num valor para mudar; fica salvo.</span></div>'+
+      '<button class="bt" data-dvnova="1" style="font-size:12px;padding:6px 12px">+ Compra parcelada</button>';
+    if(!dados.dividas){
+      corpo.innerHTML='<div class="vazio"><p class="num">Nada por aqui ainda</p><p>Importe a planilha de orçamento ou '+
+        '<button class="ver-mais" data-dvzero="1" style="padding:0">comece do zero</button>.</p></div>';
+      corpo.onclick=e=>{ if(e.target.closest("[data-dvzero]")){ dados.dividas=dividasVazias(); salvar(); renderDividas(); } };
+      return;
     }
+    const dv=dados.dividas, hoje=mesAtual();
+    dv.faturaAvulsos=dv.faturaAvulsos||{}; dv.quitacao=dv.quitacao||[];
+    if(!dv.consolida) dv.consolida=dividasVazias().consolida;
+    const inp=(at,foco,v,cls)=>'<td class="valor'+(cls?" "+cls:"")+'"><input class="campo" '+at+' data-foco="'+foco+'" value="'+(v?brl(v):"")+
+      '" placeholder="·" inputmode="decimal"></td>';
+    const txt=(at,foco,v,ph,cls)=>'<input class="campo'+(cls?" "+cls:"")+'" '+at+' data-foco="'+foco+'" value="'+esc(v==null?"":v)+'" placeholder="'+(ph||"")+'">';
+    const falta=vals=>Object.keys(vals).filter(m=>m>=hoje).reduce((s,m)=>s+(+vals[m]||0),0);
+    const ultimo=vals=>{ const k=Object.keys(vals).filter(m=>vals[m]).sort(); return k[k.length-1]; };
+    const ms12=[]; for(let m=hoje; ms12.length<12; m=proxMes(m)) ms12.push(m);
 
-    if(dv.consorcio.length){
-      h+='<div class="tit-secao" style="margin-top:40px"><h3>Consórcio</h3></div>'+
-        '<div class="rolagem"><table class="matriz div-tab"><thead><tr><th>Veículo</th><th>Situação</th><th class="n">Parcela</th>'+
-        '<th class="n">Restam</th><th class="n">Falta pagar</th><th class="n">Última</th><th class="n">Valor de quitação</th></tr></thead><tbody>'+
-        dv.consorcio.map(c=>{ const x=info(c.vals);
-          return '<tr><td>'+esc(c.nome)+'</td><td class="fraco">'+esc(c.situacao)+'</td>'+n(x.mensal)+'<td class="n">'+x.restam+'</td>'+
-            n(x.falta)+'<td class="n div-fim">'+fimTxt(x.fim)+'</td>'+(c.quitacao!=null?n(c.quitacao):'<td></td>')+'</tr>'; }).join("")+
-        '</tbody></table></div>';
-    }
+    // linhas do consolidado: Cartão e Consórcio somam as tabelas abaixo; as outras são digitadas
+    const auto=l=>/cart/i.test(l.nome)&&dv.parcelas.length?"cartao":/cons[óo]rcio/i.test(l.nome)&&dv.consorcio.length?"consorcio":null;
+    const noTotal=dv.parcelas.filter(p=>!p.foraTotal);
+    const valLinha=(l,m)=>{ const a=auto(l); return a==="cartao"?somaMes(noTotal,m):a==="consorcio"?somaMes(dv.consorcio,m):(+l.vals[m]||0); };
+    const totM=m=>dv.consolida.linhas.reduce((s,l)=>s+valLinha(l,m),0);
 
-    if(dv.consignados.length){
-      const t=k=>dv.consignados.reduce((s,c)=>s+c[k],0);
-      h+='<div class="tit-secao" style="margin-top:40px"><h3>Consignados</h3></div>'+
-        '<div class="rolagem"><table class="matriz div-tab"><thead><tr><th>Contrato</th><th class="n">Parcela</th><th class="n">Quitado</th>'+
-        '<th class="n">Restam</th><th class="n">Saldo devedor</th><th class="n">Termina</th></tr></thead><tbody>'+
-        dv.consignados.map(c=>'<tr><td>'+esc(c.contrato)+'</td>'+n(c.pmt)+
-          '<td class="n"><span class="barrinha"><i style="width:'+Math.round(c.pct*100)+'%"></i></span>'+
-            (c.total?c.atual+'/'+c.total:Math.round(c.pct*100)+'%')+'</td>'+
-          '<td class="n">'+c.restantes+'</td>'+n(c.saldo)+'<td class="n div-fim">'+fimTxt(c.venc)+'</td></tr>').join("")+
-        '<tr class="orc-t"><td>Total</td>'+n(t("pmt"))+'<td></td><td></td>'+n(t("saldo"))+'<td></td></tr></tbody></table></div>';
-    }
+    const qCartao=noTotal.reduce((s,p)=>s+falta(p.vals),0);
+    const qConsorcio=dv.consorcio.reduce((s,c)=>s+(+c.quitacao||0),0);
+    const qConsig=dv.consignados.reduce((s,c)=>s+(+c.saldo||0),0);
+    const outras=dv.quitacao.map((q,i)=>({q:q,i:i})).filter(x=>!/cart|cons[óo]rcio|consig/i.test(x.q.nome));
+    const qOutras=outras.reduce((s,x)=>s+(+x.q.v||0),0);
 
-    corpo.innerHTML=h+'<div class="rodape"><span>Para atualizar, importe de novo a planilha de orçamento.</span><span>Família Bicalho</span></div>';
+    let h='<section class="dash-geral">'+
+      '<div class="g-num"><span class="rot">Compromissos em '+rotuloMes(hoje)+'</span><div class="v">R$ '+brl(totM(hoje))+'</div>'+
+        '<span class="kpi-sub">'+esc(dv.consolida.linhas.map(l=>cap(l.nome.trim().toLowerCase())).join(" + "))+'</span></div>'+
+      '<div class="g-num"><span class="rot">Em '+rotuloMes(ms12[11])+'</span><div class="v">R$ '+brl(totM(ms12[11]))+'</div>'+
+        '<span class="kpi-sub">'+(totM(ms12[11])<totM(hoje)?'R$ '+brl(totM(hoje)-totM(ms12[11]))+' a menos por mês':'')+'</span></div>'+
+      '<div class="g-num"><span class="rot">Para quitar tudo hoje</span><div class="v" style="color:#C0392B">R$ '+brl(qCartao+qConsorcio+qConsig+qOutras)+'</div>'+
+        '<span class="kpi-sub">Cartão '+brl(qCartao)+' · Consórcio '+brl(qConsorcio)+' · Consignados '+brl(qConsig)+
+        outras.map(x=>' · '+esc(x.q.nome)+' '+brl(+x.q.v||0)).join("")+'</span></div>'+
+    '</section>';
+
+    // 1) saída mensal consolidada
+    h+='<div class="tit-secao" style="margin-top:34px"><h3>Saída mensal com dívidas — próximos 12 meses</h3></div>'+
+      '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Compromisso</th>'+ms12.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'</tr></thead><tbody>'+
+      dv.consolida.linhas.map((l,i)=>{ const a=auto(l);
+        return '<tr><td>'+esc(cap(l.nome.trim().toLowerCase()))+
+          (a?' <span class="sub" style="display:inline">(soma '+(a==="cartao"?"dos parcelamentos":"do consórcio")+')</span>':'')+'</td>'+
+          ms12.map(m=>a?'<td class="fx-calc">'+brl(valLinha(l,m))+'</td>':inp('data-dv="l" data-i="'+i+'" data-m="'+m+'"',"l:"+i+":"+m,l.vals[m])).join("")+'</tr>';
+      }).join("")+
+      '<tr class="fx-t"><td>Total</td>'+ms12.map(m=>'<td>'+brl(totM(m))+'</td>').join("")+'</tr></tbody></table></div>';
+
+    // 2) parcelamentos no cartão
+    const ativos=[], quitados=[];
+    dv.parcelas.forEach((p,i)=>{ const k=Object.keys(p.vals); (k.length===0||k.some(m=>m>=hoje&&p.vals[m])?ativos:quitados).push(i); });
+    const msP=janelaMeses(hoje, ativos.map(i=>dv.parcelas[i].vals).concat([dv.faturaAvulsos]), 12, 36);
+    const totP=m=>ativos.reduce((s,i)=>s+(dv.parcelas[i].foraTotal?0:(+dv.parcelas[i].vals[m]||0)),0);
+    h+='<div class="tit-secao" style="margin-top:40px"><h3>Parcelamentos no cartão — mês a mês</h3></div>'+
+      '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Descrição</th><th style="text-align:left">Cartão</th><th style="text-align:left">Categoria</th>'+
+      msP.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'<th>Falta pagar</th></tr></thead><tbody>'+
+      ativos.map(i=>{ const p=dv.parcelas[i], at=k=>'data-dv="pc" data-i="'+i+'" data-k="'+k+'"';
+        return '<tr'+(p.foraTotal?' class="fora-total"':'')+'><td><div class="fx-rot">'+
+            '<input type="checkbox" data-dv="pt" data-i="'+i+'"'+(p.foraTotal?'':' checked')+' title="Conta no total" aria-label="Conta no total">'+
+            txt(at("desc"),"pc:"+i+":desc",p.desc,"Descrição")+
+            '<button class="apagar" data-dvdel="p:'+i+'" title="Apagar" aria-label="Apagar">×</button></div></td>'+
+          '<td>'+txt(at("cartao"),"pc:"+i+":cartao",p.cartao,"cartão","dv-car")+'</td>'+
+          '<td class="fx-cat"><select class="campo" '+at("cat")+'>'+opcoesCat(p.cat||"","—")+'</select></td>'+
+          msP.map(m=>inp('data-dv="p" data-i="'+i+'" data-m="'+m+'"',"p:"+i+":"+m,p.vals[m])).join("")+
+          '<td class="fx-tt">'+brl(falta(p.vals))+'</td></tr>';
+      }).join("")+
+      '<tr class="fx-sub"><td colspan="3">▸ Total parcelamento cartão</td>'+msP.map(m=>'<td>'+brl(totP(m))+'</td>').join("")+
+        '<td>'+brl(qCartao)+'</td></tr>'+
+      '<tr><td colspan="3" style="font-size:12.5px;color:var(--cinza)">▸ Fatura do cartão (avulsos/mês)</td>'+
+        msP.map(m=>inp('data-dv="f" data-m="'+m+'"',"f:"+m,dv.faturaAvulsos[m])).join("")+'<td></td></tr>'+
+      '<tr class="fx-t"><td colspan="3">▸▸ Total cartão (parcela + fatura)</td>'+
+        msP.map(m=>'<td>'+brl(totP(m)+(+dv.faturaAvulsos[m]||0))+'</td>').join("")+'<td></td></tr>'+
+      '</tbody></table></div>'+
+      '<button class="ver-mais" data-dvnova="1">+ Compra parcelada</button>'+
+      (quitados.length?'<details class="contas-pagas"><summary>'+quitados.length+' parcelamento'+(quitados.length>1?"s":"")+' já quitado'+(quitados.length>1?"s":"")+'</summary>'+
+        '<div class="rolagem"><table class="matriz div-tab"><tbody>'+quitados.map(i=>{ const p=dv.parcelas[i], k=Object.keys(p.vals);
+          return '<tr><td>'+esc(p.desc)+'</td><td class="fraco">'+esc(p.cartao||"")+'</td><td class="n">'+k.length+'× · R$ '+
+            brl(k.reduce((s,m)=>s+(+p.vals[m]||0),0))+'</td><td class="n div-fim">última '+(ultimo(p.vals)?cap(abrevMes(ultimo(p.vals))):"—")+'</td>'+
+            '<td class="acao"><button class="apagar" data-dvdel="p:'+i+'" aria-label="Apagar">×</button></td></tr>'; }).join("")+
+        '</tbody></table></div></details>':'');
+
+    // 3) consórcio
+    h+='<div class="tit-secao" style="margin-top:40px"><h3>Consórcio — mês a mês</h3></div>'+
+      '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Veículo</th><th style="text-align:left">Situação</th><th>Quitação</th>'+
+      ms12.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'<th>Falta pagar</th><th>Última</th></tr></thead><tbody>'+
+      dv.consorcio.map((c,i)=>{ const at=k=>'data-dv="cc" data-i="'+i+'" data-k="'+k+'"';
+        return '<tr><td><div class="fx-rot">'+txt(at("nome"),"cc:"+i+":nome",c.nome,"Veículo")+
+            '<button class="apagar" data-dvdel="c:'+i+'" aria-label="Apagar">×</button></div></td>'+
+          '<td>'+txt(at("situacao"),"cc:"+i+":situacao",c.situacao,"situação","dv-car")+'</td>'+
+          inp(at("quitacao"),"cc:"+i+":quitacao",c.quitacao)+
+          ms12.map(m=>inp('data-dv="c" data-i="'+i+'" data-m="'+m+'"',"c:"+i+":"+m,c.vals[m])).join("")+
+          '<td class="fx-tt">'+brl(falta(c.vals))+'</td><td class="fx-tt div-fim">'+(ultimo(c.vals)?cap(abrevMes(ultimo(c.vals))):"—")+'</td></tr>';
+      }).join("")+
+      '</tbody></table></div><button class="ver-mais" data-dvadd="c">+ Consórcio</button>';
+
+    // 4) consignados
+    const tg=k=>dv.consignados.reduce((s,c)=>s+(+c[k]||0),0);
+    h+='<div class="tit-secao" style="margin-top:40px"><h3>Consignados</h3></div>'+
+      '<div class="rolagem"><table class="fx-tab dv-tab" style="min-width:820px"><thead><tr><th>Contrato</th><th>Parcela</th><th>Parcela atual</th>'+
+      '<th>Total de parcelas</th><th>Restam</th><th>Saldo devedor</th><th>Termina</th></tr></thead><tbody>'+
+      dv.consignados.map((c,i)=>{ const at=k=>'data-dv="g" data-i="'+i+'" data-k="'+k+'"';
+        const restam=c.total?Math.max(0,c.total-c.atual+1):(c.restantes||0);
+        return '<tr><td><div class="fx-rot">'+txt(at("contrato"),"g:"+i+":contrato",c.contrato,"Contrato")+
+            '<button class="apagar" data-dvdel="g:'+i+'" aria-label="Apagar">×</button></div></td>'+
+          inp(at("pmt"),"g:"+i+":pmt",c.pmt)+
+          '<td class="valor dv-num">'+txt(at("atual"),"g:"+i+":atual",c.atual||"","")+'</td>'+
+          '<td class="valor dv-num">'+txt(at("total"),"g:"+i+":total",c.total||"","")+'</td>'+
+          '<td class="fx-calc">'+restam+'</td>'+
+          inp(at("saldo"),"g:"+i+":saldo",c.saldo)+
+          '<td class="valor"><input type="month" class="campo" '+at("venc")+' data-foco="g:'+i+':venc" value="'+esc(c.venc||"")+'"></td></tr>';
+      }).join("")+
+      '<tr class="fx-t"><td>Total</td><td>'+brl(tg("pmt"))+'</td><td></td><td></td><td></td><td>'+brl(tg("saldo"))+'</td><td></td></tr>'+
+      '</tbody></table></div><button class="ver-mais" data-dvadd="g">+ Consignado</button>';
+
+    // 5) outros valores para quitar (ex.: financiamento da casa)
+    h+='<div class="tit-secao" style="margin-top:40px"><h3>Outros valores para quitar</h3></div>'+
+      '<table class="pv-tab" style="max-width:520px"><colgroup><col><col class="c-val"><col style="width:34px"></colgroup><tbody>'+
+      outras.map(x=>{ const at=k=>'data-dv="q" data-i="'+x.i+'" data-k="'+k+'"';
+        return '<tr><td>'+txt(at("nome"),"q:"+x.i+":nome",x.q.nome,"Dívida")+'</td>'+inp(at("v"),"q:"+x.i+":v",x.q.v)+
+          '<td class="acao"><button class="apagar" data-dvdel="q:'+x.i+'" aria-label="Apagar">×</button></td></tr>'; }).join("")+
+      '</tbody></table><button class="ver-mais" data-dvadd="q">+ Adicionar</button>';
+
+    corpo.innerHTML=h+'<div class="rodape"><span>Importar a planilha de novo substitui estes valores pelos dela.</span><span>Família Bicalho</span></div>';
+
+    corpo.onchange=e=>{
+      const el=e.target.closest("[data-dv]"); if(!el) return;
+      const t=el.dataset.dv, i=+el.dataset.i, k=el.dataset.k, m=el.dataset.m, tx=String(el.value||"").trim();
+      const n=tx===""?null:numero(tx.replace("−","-"));
+      const setV=(o,abs)=>{ if(n==null||n===0) delete o[m]; else o[m]=Math.round((abs?Math.abs(n):n)*100)/100; };
+      if(t==="p") setV(dv.parcelas[i].vals,true);
+      else if(t==="pc") dv.parcelas[i][k]=k==="cat"?el.value:tx;
+      else if(t==="pt"){ if(el.checked) delete dv.parcelas[i].foraTotal; else dv.parcelas[i].foraTotal=true; }
+      else if(t==="f") setV(dv.faturaAvulsos,false);
+      else if(t==="c") setV(dv.consorcio[i].vals,true);
+      else if(t==="cc") dv.consorcio[i][k]=k==="quitacao"?(n==null?null:Math.abs(n)):tx;
+      else if(t==="l") setV(dv.consolida.linhas[i].vals,true);
+      else if(t==="g") dv.consignados[i][k]=k==="contrato"?tx:k==="venc"?(el.value||null):(n==null?0:Math.abs(n));
+      else if(t==="q") dv.quitacao[i][k]=k==="nome"?tx:(n==null?0:Math.abs(n));
+      salvar(); manterFoco(renderDividas);
+    };
+    corpo.onclick=e=>{
+      if(e.target.closest("[data-dvnova]")){ novaParcelada(); return; }
+      const d=e.target.closest("[data-dvdel]");
+      if(d){
+        const [t,i]=d.dataset.dvdel.split(":"), arr={p:dv.parcelas,c:dv.consorcio,g:dv.consignados,q:dv.quitacao}[t], x=arr[+i];
+        confirmar("Apagar?", esc(x.desc||x.nome||x.contrato||"Esta linha")+" sai da lista.", "Apagar").then(ok=>{
+          if(!ok) return; arr.splice(+i,1); salvar(); renderDividas(); });
+        return;
+      }
+      const a=e.target.closest("[data-dvadd]");
+      if(a){
+        const t=a.dataset.dvadd;
+        if(t==="c") dv.consorcio.push({nome:"", situacao:"", parcelas:null, quitacao:null, vals:{}});
+        if(t==="g") dv.consignados.push({contrato:"", pmt:0, atual:1, total:null, restantes:0, saldo:0, quitar:0, venc:null, pct:0});
+        if(t==="q") dv.quitacao.push({nome:"", v:0});
+        salvar(); renderDividas();
+      }
+    };
   }
 
   /* ================= desenho da tela ================= */
@@ -2248,6 +2683,8 @@
     marcarConta();
     if(ui.conta==="dash"){ renderDashboard(); return; }
     if(ui.conta==="dividas"){ renderDividas(); return; }
+    if(ui.conta==="prev"){ renderPrevisao(); return; }
+    if(ui.conta==="fluxo"){ renderFluxo(); return; }
     if(!ui.view) ui.view="mes";
 
     const meses=mesesComDados();
@@ -2283,8 +2720,10 @@
     const diasNeg = serie.filter(d=>d.saldo<0);
     const fundo = diasNeg.length?Math.min(...diasNeg.map(d=>d.saldo)):0;
 
-    const porCat={};
-    baseGasto.forEach(l=>{ porCat[l.categoria]=(porCat[l.categoria]||0)+l.valor; });
+    const porCat={}, nPorCat={};
+    baseGasto.forEach(l=>{ porCat[l.categoria]=(porCat[l.categoria]||0)+l.valor; nPorCat[l.categoria]=(nPorCat[l.categoria]||0)+1; });
+    const info=(c,v,ent)=>natureza?infoCat(nPorCat[c]||0, v, c==="Sem categoria"?0:previstoCat(c,ui.mes,meses), ent)
+                                  :'<span>'+(nPorCat[c]||0)+' lançamento'+(nPorCat[c]===1?"":"s")+'</span>';
     const saidas=Object.entries(porCat).filter(e=>e[1]<0).sort((a,b)=>a[1]-b[1]);
     const entradas=Object.entries(porCat).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
     const maiorSaida=saidas.length?Math.abs(saidas[0][1]):1;
@@ -2344,13 +2783,13 @@
       '<div class="paineis">'+
         '<div>'+
           '<div class="tit-secao"><h3>'+(natureza?"Onde gastei":"Para onde foi")+'</h3></div>'+
-          (vSai.length?vSai.map(([c,v])=>catLinha(c,v,Math.abs(v)/maiorSaida,false)).join(""):'<p class="sub">Sem gastos neste período.</p>')+
+          (vSai.length?vSai.map(([c,v])=>catLinha(c,v,Math.abs(v)/maiorSaida,false,info(c,v,false))).join(""):'<p class="sub">Sem gastos neste período.</p>')+
           verMais("sai",saidas.length,ui.verTodasSai)+
         '</div>'+
         '<div>'+
           (semSaldo?"":'<div class="tit-secao"><h3>Saldo dia a dia</h3></div>'+grafico(serie,inicial)+'<div style="height:26px"></div>')+
           '<div class="tit-secao"><h3>De onde veio</h3></div>'+
-          (vEnt.length?vEnt.map(([c,v])=>catLinha(c,v,v/maiorEnt,true)).join(""):'<p class="sub">Sem entradas neste período.</p>')+
+          (vEnt.length?vEnt.map(([c,v])=>catLinha(c,v,v/maiorEnt,true,info(c,v,true))).join(""):'<p class="sub">Sem entradas neste período.</p>')+
           verMais("ent",entradas.length,ui.verTodasEnt)+
         '</div>'+
       '</div>'+
@@ -2563,10 +3002,11 @@
       '<div class="num" style="color:'+c+'"><small>R$</small>'+brl(val)+'</div>'+
       '<p class="sub">'+sub+'</p></div>';
   }
-  function catLinha(c,v,frac,entrada){
+  function catLinha(c,v,frac,entrada,info){
     return '<div class="cat-linha" role="button" tabindex="0" title="Ver lançamentos de '+esc(c)+'" data-filtrar="'+esc(c)+'">'+
       '<span class="cat-nome">'+ponto(c)+esc(c)+'</span>'+
       '<span class="cat-val'+(entrada?" pos":"")+'">'+brl(Math.abs(v))+'</span>'+
+      (info?'<span class="cat-info">'+info+'</span>':'')+
       '<span class="cat-barra"><i style="width:'+(Math.max(frac,.02)*100).toFixed(1)+'%;background:'+cor(c)+'"></i></span></div>';
   }
   function selectFiltro(id,valor,vazio,ops){
@@ -2802,6 +3242,17 @@
 
   // barra de período e vistas
   $("#abas").addEventListener("click",e=>{
+    const pm=e.target.closest("[data-pmes]");
+    if(pm){ ui.prevMes=pm.dataset.pmes; render(); return; }
+    if(e.target.closest("[data-pnovo]")){ novoMesPrev(); return; }
+    if(e.target.closest("[data-dvnova]")){ novaParcelada(); return; }
+    if(e.target.closest("[data-papagar]")){
+      const ym=ui.prevMes;
+      confirmar("Apagar "+rotuloMes(ym)+"?","A previsão de "+rotuloMes(ym)+" sai do app. Os lançamentos do mês continuam.","Apagar").then(ok=>{
+        if(!ok) return; delete dados.previsoes[ym]; ui.prevMes=null; salvar(); render(); avisar(cap(rotuloMes(ym))+" apagado.");
+      });
+      return;
+    }
     const v=e.target.closest("[data-view]");
     if(v){ ui.view=v.dataset.view; render(); return; }
     const p=e.target.closest("[data-passo]");
@@ -2851,7 +3302,7 @@
       dados.saldos={};
       dados.regras=REGRAS_PADRAO.slice();
       dados.prolabore=0; dados.orcamento=null; dados.versao=2;
-      dados.orcamentoMes={}; dados.contas={}; dados.dividas=null;
+      dados.orcamentoMes={}; dados.contas={}; dados.dividas=null; dados.previsoes={}; dados.fluxo=null;
       dados.faturaAberta=null; dados.faturaFechada=null;
       ui={mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,conta:ui.conta||"dash"};
       salvar(); render();
@@ -2886,6 +3337,8 @@
         dados.orcamento   = remoto.orcamento||null;
         dados.orcamentoMes= remoto.orcamentoMes||{};
         dados.contas      = remoto.contas||{};
+        dados.previsoes   = remoto.previsoes||{};
+        dados.fluxo       = remoto.fluxo||null;
         dados.dividas     = remoto.dividas||null;
         dados.versao      = remoto.versao||0;
         migrar();
