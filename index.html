@@ -735,6 +735,7 @@
     {g:"Saúde", cor:"#B03A2E", cats:["Unimed","Farmácia","Saúde fora do plano"]},
     {g:"Transporte", cor:"#0B7A83", cats:["Uber / Localiza","Gasolina","IPVA / multas","Seguro auto","Manutenção do carro"]},
     {g:"Lazer e pessoal", cor:"#C2185B", cats:["Clube","Corrida","Passeios","Férias / viagem","Solano – pessoal","Tâmara – pessoal","Meninas","Pet","Vestuário"]},
+    {g:"Transferências", cor:"#8D6E63", cats:["Transferências Tâmara"]},
     {g:"Fora dos cálculos", cor:"#95A5A6", cats:["Cartão de crédito","Aplicação e resgate","Transferência entre minhas contas"]},
     {g:"", cor:"#B0AEA6", cats:["Sem categoria"]}
   ];
@@ -770,7 +771,11 @@
 
   // Regras iniciais, tiradas do histórico da aba LANÇAMENTOS. A primeira que bater vale,
   // então as mais específicas vêm antes. Novas regras são aprendidas quando você corrige.
-  const REGRAS_PADRAO = [
+  // transferências para a Tâmara: "mercado - transferido Tâmara", "Casa - transferido Tâmara", Pix para a Tâmara
+  const ehTransfTamara = (h,v) => /transferid[oa]\s+t[âãa]mara/i.test(h) || (v<0 && /pix\s+transf\s+t[âãa]mara/i.test(h));
+  const REGRAS_TRANSF = [["TRANSFERIDO TÂMARA","Transferências Tâmara"],["TRANSFERIDO TAMARA","Transferências Tâmara"],
+    ["TRANSFERIDA TÂMARA","Transferências Tâmara"],["PIX TRANSF TAMARA","Transferências Tâmara"]];
+  const REGRAS_PADRAO = REGRAS_TRANSF.concat([
     // fora dos cálculos
     ["PAGTO CARTAO","Cartão de crédito"],["PAG FATURA","Cartão de crédito"],["FATURA CARTAO","Cartão de crédito"],
     ["CARTÃO CRÉDITO","Cartão de crédito"],["CARTAO CREDITO","Cartão de crédito"],["ITAU BLACK","Cartão de crédito"],
@@ -820,10 +825,10 @@
     ["X DEVELOPER","Solano – pessoal"],["GOOGLE ONE","Solano – pessoal"],["KIWIFY","Solano – pessoal"],["VIDEOHOBBY","Solano – pessoal"],
     ["YAPAY","Solano – pessoal"],["BASTTER","Solano – pessoal"],
     ["TAMARA","Tâmara – pessoal"]
-  ].map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
+  ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},orcamento:null,versao:2,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},orcamento:null,versao:3,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -850,6 +855,14 @@
       const tem=new Set(dados.regras.map(r=>String(r.termo).toUpperCase()));
       REGRAS_PADRAO.forEach(r=>{ if(!tem.has(r.termo.toUpperCase())) dados.regras.push(Object.assign({},r)); });
       dados.versao=2;
+    }
+    if(dados.versao<3){
+      const tem=new Set(dados.regras.map(r=>String(r.termo).toUpperCase()));
+      REGRAS_TRANSF.slice().reverse().forEach(([t,c])=>{ if(!tem.has(t)) dados.regras.unshift({termo:t,categoria:c,vinculo:"PF",padrao:true}); });
+      let n=0;
+      dados.lancamentos.forEach(l=>{ if(ehTransfTamara(l.hist,l.valor) && l.categoria!=="Transferências Tâmara"){ l.categoria="Transferências Tâmara"; n++; } });
+      dados.versao=3; dados._migrou=true;
+      if(n) setTimeout(()=>avisar(n+" lançamento"+(n===1?"":"s")+" reclassificado"+(n===1?"":"s")+" como Transferências Tâmara."),800);
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -1248,6 +1261,7 @@
         dados.dividas     = d.dividas||null;
         dados.versao      = d.versao||0;
         migrar();
+        if(dados._migrou){ delete dados._migrou; await salvarImediato(); }
         // migração: remover lançamentos do cartão com data > hoje+6 meses (bug antigo)
         const limiteMs = Date.now() + 180*24*60*60*1000;
         let corrigidos = 0;
@@ -1602,8 +1616,9 @@
       const iso=celData(r[iD]); if(!iso) continue;
       const valor=celNum(r[iV]); if(!valor) continue;
       const banco=iB>=0?celTexto(r[iB]):"", o=origemPlanilha(banco);
-      const cat=catPlanilha(r[iC], iS>=0?r[iS]:"");
+      let cat=catPlanilha(r[iC], iS>=0?r[iS]:"");
       const hist=(iH>=0?celTexto(r[iH]):"") || [celTexto(r[iC]),iS>=0?celTexto(r[iS]):""].filter(Boolean).join(" / ") || "Lançamento da planilha";
+      if(ehTransfTamara(hist,valor)) cat="Transferências Tâmara";
       (porOrigem[o]=porOrigem[o]||[]).push({iso:iso,hist:hist,valor:valor,
         doc:(o==="cartao"||o==="manual")?banco:"", categoria:cat||undefined});
     }
@@ -3301,7 +3316,7 @@
       dados.lancamentos=[];
       dados.saldos={};
       dados.regras=REGRAS_PADRAO.slice();
-      dados.prolabore=0; dados.orcamento=null; dados.versao=2;
+      dados.prolabore=0; dados.orcamento=null; dados.versao=3;
       dados.orcamentoMes={}; dados.contas={}; dados.dividas=null; dados.previsoes={}; dados.fluxo=null;
       dados.faturaAberta=null; dados.faturaFechada=null;
       ui={mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,conta:ui.conta||"dash"};
@@ -3342,6 +3357,7 @@
         dados.dividas     = remoto.dividas||null;
         dados.versao      = remoto.versao||0;
         migrar();
+        if(dados._migrou){ delete dados._migrou; salvar(); }
         render();
         avisar("Dados carregados da nuvem.");
       }
