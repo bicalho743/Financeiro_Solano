@@ -1150,7 +1150,7 @@
           '<div class="g-num"><span class="rot">A receber</span><div class="v" style="color:#1E8A5F">R$ '+brl(t.receber)+'</div>'+
             '<span class="kpi-sub">'+esc((receitasFluxo(ui.mes)?"Fluxo anual: ":"")+(receitasPrev(p,ui.mes).filter(r=>r.v).map(r=>r.d).join(" + ")||"—"))+'</span></div>'+
           '<div class="g-num"><span class="rot">'+(t.resultado<0?"Déficit":"Superávit")+'</span><div class="v" style="color:'+corDif(t.resultado)+'">R$ '+brl(t.resultado)+'</div>'+
-            '<span class="kpi-sub">saldo + a receber − a pagar</span></div>'+
+            '<span class="kpi-sub">saldo em conta − a pagar</span></div>'+
         '</section>'+
         '<button class="ver-mais" data-abrirprev="'+ui.mes+'">Abrir a previsão de '+rotuloMes(ui.mes)+' →</button>';
     }
@@ -2288,7 +2288,7 @@
   function totaisPrev(p,ym){
     const soma=(a,f)=>(a||[]).reduce((s,x)=>s+(+f(x)||0),0);
     const aPagar=soma(p.itens,x=>x.aPagar), pago=soma(p.itens,x=>x.pago), receber=soma(receitasPrev(p,ym),x=>x.v);
-    return {aPagar:aPagar, pago:pago, receber:receber, resultado:(+p.saldo||0)+aPagar+receber};
+    return {aPagar:aPagar, pago:pago, receber:receber, resultado:(+p.saldo||0)+aPagar};
   }
   const mesesPrev = () => Object.keys(dados.previsoes||{}).sort();
   function proxMes(ym){ const [a,m]=ym.split("-").map(Number); return m===12?(a+1)+"-01":a+"-"+String(m+1).padStart(2,"0"); }
@@ -2369,7 +2369,8 @@
           '<div class="pv-l"><span>A receber</span><b id="pvReceber" style="color:#1E8A5F">'+brl(t.receber)+'</b></div>'+
           '<div class="pv-tot"><span id="pvRot">'+(t.resultado<0?"Déficit":"Superávit")+'</span>'+
             '<b id="pvRes" style="color:'+(t.resultado<0?"#C0392B":"#1E8A5F")+'">R$ '+brl(t.resultado)+'</b></div>'+
-          '<p class="sub" id="pvPago" style="margin-top:8px">Já pago no mês: R$ '+brl(t.pago)+'</p>'+
+          '<p class="sub" style="margin-top:8px">Superávit = saldo em conta − a pagar (a receber não entra).</p>'+
+          '<p class="sub" id="pvPago" style="margin-top:4px">Já pago no mês: R$ '+brl(t.pago)+'</p>'+
         '</div>'+
         receitasHTML+
         lista2("notas","Anotações","Descrição")+
