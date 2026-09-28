@@ -1,13 +1,14 @@
 // Supabase Edge Function (Financeiro Solano): resumo diário no WhatsApp + planilha do mês para baixar.
 // Todo dia: monta o texto do mês, gera o .xlsx no formato da aba LANÇAMENTOS, guarda no Storage
 // e manda pelo CallMeBot o texto com o link (o CallMeBot só envia texto, não anexo).
+// O link aponta para esta própria função (?planilha=AAAA-MM&k=...), que gera a planilha na hora:
+// link curto, sem token JWT (que quebrava ao copiar) e sempre com os dados atuais.
 //
 // Secrets (Edge Functions › Secrets):
 //   LC_USER_ID        seu id em Authentication › Users
 //   WA_TELEFONE       55 + DDD + número, ex: 5531999998888
 //   CALLMEBOT_APIKEY  apikey do CallMeBot
 //   CRON_SECRET       senha qualquer, a mesma do agendamento
-// Opcionais: BUCKET (padrão "exportacoes"), LINK_DIAS (validade do link, padrão 7)
 // SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY já existem nas Edge Functions.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -164,6 +165,21 @@ function montarTexto(ls: Lanc[], ym: string, hoje: string, link: string | null, 
   return linhas.join("\n");
 }
 
+// chave do link: HMAC do mês com o CRON_SECRET (só quem recebeu o link consegue baixar)
+async function chaveLink(ym: string): Promise<string> {
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(Deno.env.get("CRON_SECRET") || ""),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode("planilha:" + ym)));
+  return [...sig.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function lerDados(sb: any) {
+  const { data, error } = await sb.from("livro_caixa").select("valor")
+    .eq("user_id", Deno.env.get("LC_USER_ID")!).eq("chave", CHAVE).maybeSingle();
+  if (error) throw error;
+  return data ? (data.valor.lancamentos || []) as Lanc[] : null;
+}
+
 async function enviarWhatsApp(texto: string) {
   let fone = (Deno.env.get("WA_TELEFONE") || "").replace(/[^\d+]/g, "");
   if (!fone.startsWith("+")) fone = "+" + fone;
@@ -176,33 +192,28 @@ async function enviarWhatsApp(texto: string) {
 }
 
 Deno.serve(async (req) => {
-  if (req.headers.get("x-cron-secret") !== Deno.env.get("CRON_SECRET")) return new Response("não autorizado", { status: 401 });
+  const q = new URL(req.url).searchParams;
   try {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SECRET_KEY"))!);
-    const { data, error } = await sb.from("livro_caixa").select("valor")
-      .eq("user_id", Deno.env.get("LC_USER_ID")!).eq("chave", CHAVE).maybeSingle();
-    if (error) throw error;
-    if (!data) return new Response("sem dados", { status: 404 });
-    const ls: Lanc[] = data.valor.lancamentos || [];
-    const hoje = hojeSP(), ym = mesDoResumo(hoje);
-    const q = new URL(req.url).searchParams;
 
-    // planilha do mês no Storage (bucket privado) + link temporário
-    let link: string | null = null;
-    const nLinhas = ls.filter((l) => !l.ignorado && l.data.slice(0, 7) === ym).length;
-    if (nLinhas) {
-      const bucket = Deno.env.get("BUCKET") || "exportacoes";
-      await sb.storage.createBucket(bucket, { public: false }).catch(() => null); // já existe: ignora
-      const caminho = ym + "/lancamentos-" + ym + ".xlsx";                          // um arquivo por mês, atualizado todo dia
-      const { error: eUp } = await sb.storage.from(bucket).upload(caminho, planilhaMes(ls, ym), {
-        upsert: true, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      if (eUp) throw eUp;
-      const dias = +(Deno.env.get("LINK_DIAS") || 7);
-      const { data: s, error: eS } = await sb.storage.from(bucket).createSignedUrl(caminho, dias * 86400,
-        { download: "lancamentos-" + ym + ".xlsx" });
-      if (eS) throw eS;
-      link = s.signedUrl;
+    // download da planilha pelo link do WhatsApp
+    const pl = q.get("planilha");
+    if (pl) {
+      if (!/^\d{4}-\d{2}$/.test(pl) || q.get("k") !== await chaveLink(pl)) return new Response("link inválido", { status: 403 });
+      const ls = await lerDados(sb);
+      if (!ls) return new Response("sem dados", { status: 404 });
+      return new Response(planilhaMes(ls, pl), { headers: {
+        "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "content-disposition": 'attachment; filename="lancamentos-' + pl + '.xlsx"' } });
     }
+
+    // resumo diário (agendamento)
+    if (req.headers.get("x-cron-secret") !== Deno.env.get("CRON_SECRET")) return new Response("não autorizado", { status: 401 });
+    const ls = await lerDados(sb);
+    if (!ls) return new Response("sem dados", { status: 404 });
+    const hoje = hojeSP(), ym = mesDoResumo(hoje);
+    const nLinhas = ls.filter((l) => !l.ignorado && l.data.slice(0, 7) === ym).length;
+    const link = nLinhas ? Deno.env.get("SUPABASE_URL") + "/functions/v1/resumo-whatsapp?planilha=" + ym + "&k=" + await chaveLink(ym) : null;
 
     const texto = q.get("curto") === "1" ? "Teste do Financeiro: envio funcionando." : montarTexto(ls, ym, hoje, link, nLinhas);
     if (q.get("teste") === "1") return new Response(texto, { headers: { "content-type": "text/plain; charset=utf-8" } });
