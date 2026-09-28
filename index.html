@@ -614,7 +614,9 @@
       <div class="menu-wrap">
         <button class="bt vazado bt-icone" id="btMais" aria-haspopup="true" aria-expanded="false" aria-label="Mais opções">⋯</button>
         <div class="menu menu-dir" id="menuMais" hidden>
-          <button id="btExportar">Exportar planilha (CSV)</button>
+          <button id="btCopiarPl">Copiar para a planilha</button>
+          <button id="btExportar">Exportar planilha (.xlsx)</button>
+          <button id="btExportarCsv">Exportar CSV completo</button>
           <button id="btBackup">Salvar backup</button>
           <button id="btRestaurar">Restaurar backup</button>
           <hr>
@@ -1501,7 +1503,7 @@
     const livres=new Map(), porDoc=new Map();
     dados.lancamentos.forEach(l=>{
       if(l.origem!==origem) return;
-      const k=fp(l.data,l.valor,l.hist); livres.set(k,(livres.get(k)||0)+1);
+      const k=fp(l.data,l.valor,l.hist); if(!livres.has(k)) livres.set(k,[]); livres.get(k).push(l);
       if(l.doc&&!l.manual) porDoc.set(l.data+"|"+l.doc+"|"+String(l.hist).slice(0,42),l);
     });
     const ids=new Set(dados.lancamentos.map(l=>l.id));
@@ -1511,7 +1513,8 @@
       const valor=Math.round(it.valor*100)/100;
       if(!iso||!hist||!valor) return;
       const k=fp(iso,valor,hist);
-      if(livres.get(k)>0){ livres.set(k,livres.get(k)-1); repetidos++; return; }
+      const ja=livres.get(k);
+      if(ja&&ja.length){ const l=ja.shift(); if(it.tipo) l.tipo=it.tipo; repetidos++; return; }
       // mesmo documento com valor diferente: o banco corrigiu, atualiza sem perder categoria/observação
       if(doc && origem!=="cartao"){
         const velho=porDoc.get(iso+"|"+doc+"|"+hist.slice(0,42));
@@ -1522,7 +1525,7 @@
       const categoria=it.categoria||classificar(hist,valor).categoria;
       if(categoria!=="Sem categoria") prontos++;
       dados.lancamentos.push({id:id,data:iso,hist:hist,valor:valor,doc:doc,categoria:categoria,
-                              vinculo:"PF",obs:"",origem:origem});
+                              vinculo:"PF",obs:"",origem:origem,...(it.tipo?{tipo:it.tipo}:{})});
       ids.add(id); novos++; meses.add(iso.slice(0,7));
     });
     return {novos:novos,repetidos:repetidos,prontos:prontos,corrigidos:corrigidos,meses:[...meses]};
@@ -1634,6 +1637,11 @@
     const c=linhas[cab].map(x=>celTexto(x).toUpperCase());
     const iD=c.indexOf("DATA"), iH=c.findIndex(x=>x.startsWith("HIST")), iV=c.findIndex(x=>x.startsWith("VALOR")),
           iB=c.findIndex(x=>x.startsWith("BANCO")), iC=c.indexOf("CATEGORIA"), iS=c.indexOf("SUBCATEGORIA");
+    // coluna FIXO / VARIÁVEL: pelo cabeçalho ou, se não tiver nome, pela coluna cujos valores são FIXO/VARIÁVEL
+    const ehTipo=v=>/^(FIXO|VARI[ÁA]VEL)$/i.test(celTexto(v));
+    let iT=c.findIndex(x=>/^TIPO|FIXO|VARI[ÁA]VEL/.test(x));
+    if(iT<0){ const larg=Math.max(...linhas.slice(cab+1,cab+80).map(r=>r.length),0);
+      for(let j=0;j<larg&&iT<0;j++) if(linhas.slice(cab+1,cab+80).some(r=>ehTipo(r[j]))) iT=j; }
     const porOrigem={};
     for(let i=cab+1;i<linhas.length;i++){
       const r=linhas[i];
@@ -1643,8 +1651,9 @@
       let cat=catPlanilha(r[iC], iS>=0?r[iS]:"");
       const hist=(iH>=0?celTexto(r[iH]):"") || [celTexto(r[iC]),iS>=0?celTexto(r[iS]):""].filter(Boolean).join(" / ") || "Lançamento da planilha";
       if(ehTransfTamara(hist,valor)) cat="Transferências Tâmara";
+      const tipo=iT>=0&&ehTipo(r[iT])?(/^FIXO$/i.test(celTexto(r[iT]))?"FIXO":"VARIÁVEL"):undefined;
       (porOrigem[o]=porOrigem[o]||[]).push({iso:iso,hist:hist,valor:valor,
-        doc:(o==="cartao"||o==="manual")?banco:"", categoria:cat||undefined});
+        doc:(o==="cartao"||o==="manual")?banco:"", categoria:cat||undefined, tipo:tipo});
     }
     const tot={novos:0,repetidos:0,prontos:0,corrigidos:0};
     Object.keys(porOrigem).forEach(o=>{
@@ -2204,6 +2213,64 @@
     a.href=URL.createObjectURL(b); a.download=nome;
     document.body.appendChild(a); a.click();
     setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},400);
+  }
+  /* ---- exportação no formato da aba LANÇAMENTOS da planilha ----
+     colunas (a partir da coluna B): DATA | HISTÓRICO | VALOR | BANCO | CATEGORIA | SUBCATEGORIA | FIXO/VARIÁVEL | MÊS */
+  const MES_PL=["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
+  const CAT_PARA_PL=(()=>{
+    const m={};
+    Object.entries(MAPA_PLANILHA).forEach(([k,c])=>{ const [g,sub]=k.split("|"); if(sub&&!m[c]) m[c]=[g,sub]; });
+    Object.assign(m,{
+      "Supermercado":["supermercado","supermercado"],"IPTU":["casa","IPTU"],"Água (Copasa)":["casa","Água"],
+      "Transferências Tâmara":["diversos","tâmara"],
+      "Salário":["receita","salário"],"13º salário":["receita","13º salário"],"Rendimentos":["receita","rendimentos"],
+      "Restituição IR":["receita","restituição IR"],"Reembolso e estorno":["receita","reembolso"],"Outras receitas":["receita","outras"],
+      "Aplicação e resgate":["investimento","aplicação/resgate"],"Transferência entre minhas contas":["transferência","entre contas"],
+      "Cartão de crédito":["cartão","fatura"],"Sem categoria":["",""]
+    });
+    return m;
+  })();
+  const pareceBanco = h => /^(PIX|PAY|RSCSS|RSHOP|RSCCS|DEV PIX|REND|SISPAG|INT |DA |TED|DOC|COR |JUROS|DDA|SAQUE|FATURA|FINANC|CONTRB|TAR|ON |BOLETO|COMPRA|Pix -|Compra com)/i.test(h);
+  function bancoPL(l){
+    const d=celTexto(l.doc);
+    if(l.origem==="itau") return "itaú";
+    if(l.origem==="bb") return "BB";
+    if(l.origem==="cartao") return /infinite|altus|bb/i.test(d)?d:"infinite";
+    return d||"";
+  }
+  // FIXO/VARIÁVEL: o que veio da planilha guarda o valor; o resto: lançado à mão no dia 1º = FIXO, extrato = VARIÁVEL
+  const tipoPL = l => l.tipo || (l.data.slice(8,10)==="01" && !pareceBanco(l.hist) ? "FIXO" : "VARIÁVEL");
+  function linhasPlanilha(){
+    return filtrados().filter(l=>!l.ignorado).slice().sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0).map(l=>{
+      const [g,sub]=CAT_PARA_PL[l.categoria]||["",l.categoria.toLowerCase()];
+      return {data:l.data, hist:l.hist, valor:l.valor, banco:bancoPL(l), cat:g, sub:sub, tipo:tipoPL(l), mes:MES_PL[+l.data.slice(5,7)-1]};
+    });
+  }
+  async function copiarParaPlanilha(){
+    const ls=linhasPlanilha();
+    if(!ls.length){ avisar("Não há lançamentos para copiar com esses filtros.",true); return; }
+    const limpa=t=>String(t).replace(/[\t\r\n]+/g," ");
+    const tsv=ls.map(x=>[x.data.split("-").reverse().join("/"),limpa(x.hist),x.valor.toFixed(2).replace(".",","),
+      x.banco,x.cat,x.sub,x.tipo,x.mes].join("\t")).join("\r\n");
+    try{ await navigator.clipboard.writeText(tsv); avisar(ls.length+" lançamentos copiados. Na planilha, clique na coluna DATA (B) e cole."); }
+    catch(e){ baixar("lancamentos-"+(ui.mes||"")+".txt",tsv,"text/plain;charset=utf-8"); avisar("Não consegui copiar; baixei um arquivo .txt para você abrir e colar.",true); }
+  }
+  function exportarPlanilha(){
+    const ls=linhasPlanilha();
+    if(!ls.length){ avisar("Não há lançamentos para exportar com esses filtros.",true); return; }
+    const aoa=[["◀  VOLTAR AO ÍNDICE"],[],["","  LANÇAMENTOS  —  EXTRATO DETALHADO"]];
+    ls.forEach(x=>{ const [a,m,d]=x.data.split("-").map(Number);
+      aoa.push(["",Date.UTC(a,m-1,d)/864e5+25569,x.hist,x.valor,x.banco,x.cat,x.sub,x.tipo,x.mes]); });
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    for(let i=4;i<=aoa.length;i++){
+      if(ws["B"+i]) ws["B"+i].z="dd/mm/yyyy";
+      if(ws["D"+i]) ws["D"+i].z="#,##0.00_);[Red](#,##0.00)";
+    }
+    ws["!cols"]=[{wch:4},{wch:12},{wch:40},{wch:12},{wch:10},{wch:20},{wch:18},{wch:10},{wch:6}];
+    ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:3}},{s:{r:2,c:1},e:{r:2,c:8}}];
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"LANÇAMENTOS");
+    XLSX.writeFile(wb,"lancamentos-"+(ui.mes==="tudo"?"completo":ui.mes)+".xlsx");
+    avisar("Planilha exportada com "+ls.length+" lançamentos, no formato da aba LANÇAMENTOS.");
   }
   function exportarCSV(){
     const lista=filtrados();
@@ -3344,7 +3411,9 @@
   $("#btImpPlanilha").onclick=()=>abrirImport("planilha");
   $("#arqCsv").onchange=e=>{ if(e.target.files[0]) lerArquivo(e.target.files[0]); e.target.value=""; };
   $("#btBackup").onclick=exportarBackup;
-  $("#btExportar").onclick=exportarCSV;
+  $("#btExportar").onclick=exportarPlanilha;
+  $("#btExportarCsv").onclick=exportarCSV;
+  $("#btCopiarPl").onclick=copiarParaPlanilha;
   $("#btLimpar").onclick=()=>{
     modal(
       '<h3 class="modal-tit">Limpar todo o histórico?</h3>'+
