@@ -3,9 +3,10 @@
 Todo dia às 8h (Brasília) o Supabase:
 1. monta o resumo do mês (entrou, gastou, sobrou, onde mais gastou);
 2. gera a planilha do mês no formato da aba **LANÇAMENTOS** (a mesma do botão *Exportar planilha* do app);
-3. guarda a planilha no Storage (bucket privado `exportacoes`, criado sozinho) e manda no WhatsApp o texto com o **link para baixar**.
+3. manda no WhatsApp o texto com o **link para baixar** a planilha.
 
-O CallMeBot só envia texto, por isso a planilha vai como link (vale 7 dias; o arquivo do mês é atualizado todo dia).
+O CallMeBot só envia texto, por isso a planilha vai como link. O link aponta para a própria função, que gera a planilha na hora
+(sempre com os dados atuais). Ele tem uma chave derivada do `CRON_SECRET`: trocar a senha invalida os links antigos.
 No dia 1º o resumo e a planilha são do mês que acabou de fechar.
 
 ## 1. CallMeBot (se ainda não ativou)
@@ -30,7 +31,6 @@ Edge Functions › **Secrets**:
 | `WA_TELEFONE` | `55` + DDD + número, ex: `5531999998888` |
 | `CALLMEBOT_APIKEY` | a apikey do passo 1 |
 | `CRON_SECRET` | uma senha qualquer |
-| `LINK_DIAS` *(opcional)* | validade do link em dias (padrão 7) |
 
 ## 4. Testar
 ```
@@ -61,4 +61,4 @@ Se já existir um agendamento com esse nome: `select cron.unschedule('resumo-wha
 
 ## Limites
 - O resumo e a planilha só têm o que já foi importado no app.
-- O link é privado (assinado) mas quem tiver o link consegue baixar enquanto ele valer; não encaminhe a mensagem.
+- Quem tiver o link consegue baixar a planilha do mês; não encaminhe a mensagem.
