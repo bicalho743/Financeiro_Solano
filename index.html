@@ -528,6 +528,38 @@
   .dv-tab tr.fx-sub td:first-child,.dv-tab tr.fx-t td:first-child{text-align:left}
   .dv-tab tr.fora-total td .campo,.dv-tab tr.fora-total td.fx-tt{color:var(--cinza);opacity:.55}
   .dv-tab .fx-rot input[type=checkbox]{width:15px;height:15px;accent-color:var(--verde);margin:0 6px 0 4px;flex:none}
+  /* ---- conferência com o banco ---- */
+  .conf{margin-top:22px;border:1px solid var(--linha);border-radius:4px;background:#fff;padding:16px 20px}
+  .conf-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px 22px;align-items:start}
+  .conf-grid label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza);display:flex;flex-direction:column;gap:5px;margin:0}
+  .conf-grid input{font-family:var(--serif);font-size:18px;border:1px solid var(--linha);border-radius:3px;padding:6px 8px;background:#fff;
+    text-transform:none;letter-spacing:0;color:var(--tinta);width:100%;box-sizing:border-box}
+  .conf-grid input[type=date]{font-family:var(--sans);font-size:14px;padding:8px}
+  .conf-f{font-size:11.5px;letter-spacing:0;text-transform:none;color:var(--cinza);display:block;margin-top:2px}
+  .conf-v{font-family:var(--serif);font-size:24px;font-variant-numeric:tabular-nums;line-height:1.3}
+  .conf-pistas{margin-top:14px;border-top:1px solid var(--linha-clara);padding-top:8px;font-size:13.5px;line-height:1.5}
+  .conf-p{padding:7px 0}.conf-p+.conf-p{border-top:1px dashed var(--linha-clara)}
+  .conf-p summary{cursor:pointer}
+  .conf-p b{font-weight:600}
+  .conf-achou{background:#EEF6F1;border-radius:3px;padding:9px 12px!important;border:none!important}
+  .conf-comb{font-size:12.5px;margin-top:3px}
+  .conf-comb span,.conf-lin{cursor:pointer}.conf-comb span:hover,.conf-lin:hover span{text-decoration:underline}
+  .conf-lin{display:flex;justify-content:space-between;gap:12px;padding:3px 0 3px 14px;font-size:12.5px;color:var(--cinza)}
+  .conf-lin b{font-family:var(--serif);font-size:14px;font-weight:500;white-space:nowrap;color:var(--tinta)}
+  .conf-par{border-left:2px solid var(--ouro);margin:4px 0 4px 6px}
+  @media (max-width:700px){.conf-grid{grid-template-columns:1fr 1fr}.conf{padding:14px}}
+  /* ---- metas e caixinhas ---- */
+  .mt-tab{min-width:1020px}
+  .mt-tab td{padding:4px 4px}
+  .mt-tab .mt-nome{font-size:14px;font-weight:500}
+  .mt-tab .mt-obs{font-size:11.5px;color:var(--cinza);padding-top:0}
+  .mt-tab select.campo{font-size:12.5px}
+  .mt-tab input[type=month].campo{font-size:12.5px;color:var(--cinza)}
+  .mt-tab .mt-aporte{color:#1E8A5F}
+  .mt-tab td.mt-calc{text-align:right;font-family:var(--serif);font-size:16px;padding:7px 6px;white-space:nowrap}
+  .mt-barra{height:4px;background:var(--linha-clara);border-radius:2px;margin-top:5px;overflow:hidden}
+  .mt-barra i{display:block;height:100%;background:#1E8A5F}
+  .mt-tab tr.mt-desejo .mt-nome{font-style:italic}
 
   @media (max-width:700px){
     .topo{padding:16px 16px 12px;gap:12px}
@@ -636,6 +668,7 @@
     <button class="conta-tab" data-conta="prev">Previsão do mês</button>
     <button class="conta-tab" data-conta="fluxo">Fluxo anual</button>
     <button class="conta-tab" data-conta="dividas">Dívidas e parcelas</button>
+    <button class="conta-tab" data-conta="metas">Metas e caixinhas</button>
     <span class="conta-sep">Conferir com o extrato:</span>
     <button class="conta-tab banco" data-conta="itau">Itaú</button>
     <button class="conta-tab banco" data-conta="bb">BB</button>
@@ -837,7 +870,7 @@
 
   /* ================= estado ================= */
   let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},orcamento:null,versao:4,
-               orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null};
+               orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
   /* O que NÃO é gasto nem receita:
@@ -1280,6 +1313,8 @@
         dados.previsoes   = d.previsoes||{};
         dados.fluxo       = d.fluxo||null;
         dados.dividas     = d.dividas||null;
+        dados.metas       = d.metas||[];
+        dados.conferencia = d.conferencia||{};
         dados.versao      = d.versao||0;
         migrar();
         if(dados._migrou){ delete dados._migrou; await salvarImediato(); }
@@ -1445,7 +1480,7 @@
       const r=linhas[i].map(c=>celTexto(c).toLowerCase());
       if(r.some(c=>c==="data"||c.startsWith("data ")||c==="dt") && r.some(ehHist)){ cab=i; break; }
     }
-    let iData,iHist,iVal,iDoc=-1,iDet=-1,iCred=-1,iDeb=-1,ini;
+    let iData,iHist,iVal,iDoc=-1,iDet=-1,iCred=-1,iDeb=-1,iSal=-1,ini;
     if(cab>=0){
       const c=linhas[cab].map(x=>celTexto(x).toLowerCase());
       iData=c.findIndex(x=>x==="data"||x.startsWith("data ")||x==="dt");
@@ -1455,6 +1490,7 @@
       iDoc=c.findIndex(x=>/documento|docto|n[°º]/.test(x));
       iVal=c.findIndex(x=>/^valor/.test(x)); if(iVal<0) iVal=c.findIndex(x=>x.includes("valor"));
       iCred=c.findIndex(x=>/cr[ée]dito/.test(x)); iDeb=c.findIndex(x=>/d[ée]bito/.test(x));
+      iSal=c.findIndex((x,i)=>i!==iVal&&/^saldo/.test(x));
       ini=cab+1;
     } else {
       // sem cabeçalho (CSV do Itaú): data ; descrição ; valor
@@ -1465,7 +1501,9 @@
     if(iData<0||iHist<0||(iVal<0&&iCred<0&&iDeb<0))
       return {erro:"Não reconheci as colunas de data, descrição e valor desse arquivo."};
 
-    const itens=[]; let saldoAnt=null;
+    const itens=[]; let saldoAnt=null, saldoDia=null, saldoCol=null;
+    // saldo do fim do extrato: linha "SALDO DO DIA"/"SALDO" mais recente; sem ela, a coluna de saldo da última data
+    const guarda=(atual,iso,v)=>(v==null||isNaN(v))?atual:(!atual||iso>atual.iso?{iso:iso,valor:v}:atual);
     for(let i=ini;i<linhas.length;i++){
       const r=linhas[i];
       const iso=celData(r[iData]); if(!iso) continue;
@@ -1474,11 +1512,17 @@
       if(!hist) continue;
       const v = iVal>=0 ? celNum(r[iVal]) : (Math.abs(celNum(r[iCred])||0) - Math.abs(celNum(r[iDeb])||0));
       const ch=hist.toUpperCase().replace(/\s+/g,"");
-      if(/^S(AL)?DO/.test(ch)){ if(/^SALDOANTERIOR/.test(ch)) saldoAnt={iso:iso,valor:v}; continue; }
+      const sv = iSal>=0 && celTexto(r[iSal])!=="" ? celNum(r[iSal]) : null;
+      if(/^S(AL)?DO/.test(ch)){
+        if(/^SALDOANTERIOR/.test(ch)) saldoAnt={iso:iso,valor:v};
+        else saldoDia=guarda(saldoDia,iso,sv!=null?sv:v);
+        continue;
+      }
+      if(sv!=null) saldoCol=guarda(saldoCol,iso,sv);
       if(!v) continue;
       itens.push({iso:iso,hist:hist,valor:v,doc:iDoc>=0?celTexto(r[iDoc]):""});
     }
-    return {itens:itens,saldoAnt:saldoAnt};
+    return {itens:itens,saldoAnt:saldoAnt,saldoFim:saldoDia||saldoCol};
   }
 
   /* OFX ("Money"), que o Itaú e o BB oferecem no download do extrato */
@@ -1491,7 +1535,12 @@
       return {iso:d.length>=8?d.slice(0,4)+"-"+d.slice(4,6)+"-"+d.slice(6,8):null,
               hist:celTexto(tag(b,"MEMO")||tag(b,"NAME")), valor:numero(tag(b,"TRNAMT")), doc:tag(b,"CHECKNUM")};
     }).filter(x=>x.iso&&x.hist&&x.valor);
-    return {itens:itens,saldoAnt:null};
+    // saldo informado pelo banco no fim do arquivo (<LEDGERBAL>)
+    const lb=texto.match(/<LEDGERBAL>([\s\S]*?)(<\/LEDGERBAL>|$)/i);
+    let saldoFim=null;
+    if(lb){ const v=tag(lb[1],"BALAMT"), d=tag(lb[1],"DTASOF");
+      if(v&&d.length>=8) saldoFim={iso:d.slice(0,4)+"-"+d.slice(4,6)+"-"+d.slice(6,8), valor:numero(v)}; }
+    return {itens:itens,saldoAnt:null,saldoFim:saldoFim};
   }
 
   /* Grava itens {iso,hist,valor,doc[,categoria]} de uma origem (itau, bb, cartao, manual).
@@ -1551,6 +1600,10 @@
     if(r.saldoAnt && origem!=="cartao"){
       const d=new Date(r.saldoAnt.iso+"T12:00:00"); d.setDate(d.getDate()+1);
       dados.saldos[origem+":"+d.toISOString().slice(0,7)]=r.saldoAnt.valor;
+    }
+    if(r.saldoFim && origem!=="cartao" && !isNaN(r.saldoFim.valor)){
+      const c=(dados.conferencia=dados.conferencia||{})[origem];
+      if(!c||r.saldoFim.iso>=c.data) dados.conferencia[origem]={data:r.saldoFim.iso, valor:r.saldoFim.valor, fonte:"extrato"};
     }
     const g=gravarLinhas(itens,origem);
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
@@ -2171,6 +2224,132 @@
     lista.forEach(l=>{porDia[l.data]=(porDia[l.data]||0)+l.valor;});
     let s=inicial;
     return Object.keys(porDia).sort().map(d=>{s+=porDia[d];return {data:d,mov:porDia[d],saldo:s};});
+  }
+
+  /* ================= saldo inicial e conferência com o banco ================= */
+  const cent = v => Math.round(v*100)/100;
+  const hojeISO = () => new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+  const fimDoMes = ym => { const [a,m]=ym.split("-").map(Number); return ym+"-"+String(new Date(a,m,0).getDate()).padStart(2,"0"); };
+  const diaMes = iso => iso.slice(8,10)+"/"+iso.slice(5,7);
+  const normH = h => String(h).toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g,"");
+  // veio do extrato do banco (e não digitado à mão / linha fixa da planilha)
+  const pareceExtrato = l => l.tipo!=="FIXO" && pareceBanco(l.hist);
+  function movConta(origem,de,ate){
+    return cent(dados.lancamentos.reduce((s,l)=>l.origem===origem&&!l.ignorado&&l.data>=de&&l.data<ate?s+l.valor:s,0));
+  }
+  // saldo no 1º dia do mês: o informado (linha SALDO ANTERIOR do extrato ou digitado);
+  // sem ele, o último mês informado + os lançamentos entre um e outro
+  function saldoInicio(origem,ym){
+    const k=origem+":"+ym;
+    if(dados.saldos[k]!=null&&dados.saldos[k]!=="") return {v:+dados.saldos[k], fonte:"informado"};
+    const ant=Object.keys(dados.saldos).filter(x=>x.startsWith(origem+":")&&x.slice(origem.length+1)<ym&&dados.saldos[x]!=null&&dados.saldos[x]!=="").sort().pop();
+    if(ant){ const m=ant.slice(origem.length+1); return {v:cent(+dados.saldos[ant]+movConta(origem,m+"-01",ym+"-01")), fonte:"calculado", de:m}; }
+    return {v:0, fonte:"nenhum"};
+  }
+
+  function blocoConferencia(origem,ym,base,ini){
+    const conf=(dados.conferencia||{})[origem];
+    const temConf=conf&&conf.data&&conf.data.slice(0,7)===ym;
+    const D=temConf?conf.data:(ui.confData&&ui.confData.slice(0,7)===ym)?ui.confData:(hojeISO()<fimDoMes(ym)?(hojeISO()>=ym+"-01"?hojeISO():fimDoMes(ym)):fimDoMes(ym));
+    const ate=base.filter(l=>l.data<=D);
+    const app=cent(ini.v+ate.reduce((s,l)=>s+l.valor,0));
+    const real=temConf?+conf.valor:null;
+    const dif=real==null?null:cent(real-app);
+    const [a,m]=ym.split("-").map(Number), vesp=new Date(a,m-1,0), vespTxt=String(vesp.getDate()).padStart(2,"0")+"/"+String(vesp.getMonth()+1).padStart(2,"0");
+    const fonteIni = ini.fonte==="informado"?"do extrato / digitado":ini.fonte==="calculado"?"calculado desde "+rotuloMes(ini.de):"não informado — começou do zero";
+    const linhaL = l => '<div class="conf-lin" data-cbusca="'+esc(l.hist)+'" title="Ver na lista"><span>'+diaMes(l.data)+' · '+esc(l.hist)+
+      (l.ignorado?' <i>(ignorado)</i>':'')+'</span><b>'+brl(l.valor)+'</b></div>';
+
+    let pistas="";
+    if(dif!=null && Math.abs(dif)>=0.01){
+      const p=[];
+      if(ini.fonte==="nenhum")
+        p.push('<div class="conf-p"><b>Falta o saldo do início do mês.</b> Digite acima o saldo de '+vespTxt+
+          ' (linha “SALDO ANTERIOR” do extrato). Sem ele o app parte de zero e nunca bate.</div>');
+      // lançamentos que não vieram do extrato
+      const manuais=ate.filter(l=>!pareceExtrato(l));
+      if(manuais.length)
+        p.push('<details class="conf-p"><summary><b>'+manuais.length+' lançamento'+(manuais.length===1?"":"s")+' digitado'+(manuais.length===1?"":"s")+
+          ' ou da planilha</b> (não vieram do extrato): R$ '+brl(cent(manuais.reduce((s,l)=>s+l.valor,0)))+
+          '. Se algum não saiu desta conta, ainda não foi debitado ou foi debitado com outro nome, o saldo não bate.</summary>'+
+          manuais.slice().sort((x,y)=>x.valor-y.valor).map(linhaL).join("")+'</details>');
+      // possíveis duplicados: mesmo valor, até 10 dias, e descrição estendida ou um do extrato + um digitado
+      const dups=[];
+      for(let i=0;i<ate.length;i++) for(let j=i+1;j<ate.length;j++){
+        const x=ate[i], y=ate[j];
+        if(x.valor!==y.valor) continue;
+        if(Math.abs(new Date(x.data)-new Date(y.data))>10*864e5) continue;
+        const nx=normH(x.hist), ny=normH(y.hist);
+        const estendida=nx!==ny&&(nx.startsWith(ny)||ny.startsWith(nx));
+        if(estendida||pareceExtrato(x)!==pareceExtrato(y)) dups.push([x,y]);
+      }
+      if(dups.length)
+        p.push('<details class="conf-p" open><summary><b>'+dups.length+' possíve'+(dups.length===1?"l":"is")+' duplicado'+(dups.length===1?"":"s")+
+          '</b>: mesmo valor em até 10 dias (um veio do extrato e outro foi digitado, ou a descrição foi editada e o extrato entrou de novo).</summary>'+
+          dups.map(([x,y])=>'<div class="conf-par">'+linhaL(x)+linhaL(y)+'</div>').join("")+'</details>');
+      const ign=doMes().filter(l=>l.ignorado&&l.data<=D);
+      if(ign.length)
+        p.push('<details class="conf-p"><summary><b>'+ign.length+' lançamento'+(ign.length===1?"":"s")+' ignorado'+(ign.length===1?"":"s")+
+          '</b> (R$ '+brl(cent(ign.reduce((s,l)=>s+l.valor,0)))+'): não entram na conta, mas passaram no banco.</summary>'+ign.map(linhaL).join("")+'</details>');
+      // combinações que explicam a diferença exata
+      const cand=[];
+      manuais.forEach(l=>cand.push({l:l,ef:-l.valor,acao:"tirar"}));
+      dups.forEach(([x,y])=>{ const z=pareceExtrato(x)?y:x; if(!cand.some(c=>c.l===z)) cand.push({l:z,ef:-z.valor,acao:"tirar"}); });
+      ign.forEach(l=>cand.push({l:l,ef:l.valor,acao:"voltar"}));
+      const achou=[], alvo=Math.round(dif*100), c2=cand.slice(0,80).map(c=>({...c,ec:Math.round(c.ef*100)}));
+      for(let i=0;i<c2.length&&achou.length<3;i++){
+        if(c2[i].ec===alvo){ achou.push([c2[i]]); continue; }
+        for(let j=i+1;j<c2.length&&achou.length<3;j++){
+          if(c2[i].ec+c2[j].ec===alvo){ achou.push([c2[i],c2[j]]); continue; }
+          for(let k=j+1;k<c2.length&&achou.length<3;k++) if(c2[i].ec+c2[j].ec+c2[k].ec===alvo) achou.push([c2[i],c2[j],c2[k]]);
+        }
+      }
+      if(achou.length)
+        p.unshift('<div class="conf-p conf-achou"><b>Bate exatamente se:</b>'+achou.map(g=>'<div class="conf-comb">'+
+          g.map(c=>(c.acao==="tirar"?"tirar ":"deixar de ignorar ")+'<span data-cbusca="'+esc(c.l.hist)+'">'+diaMes(c.l.data)+' '+esc(c.l.hist)+' ('+brl(c.l.valor)+')</span>').join(" + ")+
+          '</div>').join("")+'</div>');
+      const depois=base.filter(l=>l.data>D);
+      if(depois.length)
+        p.push('<div class="conf-p sub" style="margin:0">'+depois.length+' lançamento'+(depois.length===1?"":"s")+' depois de '+diaMes(D)+
+          ' (R$ '+brl(cent(depois.reduce((s,l)=>s+l.valor,0)))+') não entram nesta conferência.</div>');
+      if(!p.length) p.push('<div class="conf-p">Não achei a causa automaticamente. Compare dia a dia o gráfico “Saldo dia a dia” com a coluna de saldo do extrato: o primeiro dia que diverge mostra onde está a diferença.</div>');
+      if(ini.fonte!=="informado")
+        p.push('<div class="conf-p sub" style="margin:0">Se já conferiu todos os lançamentos, dá para '+
+          '<button class="ver-mais" data-cini="'+cent(ini.v+dif)+'" style="padding:0">usar R$ '+brl(cent(ini.v+dif))+' como saldo de '+vespTxt+'</button>.</div>');
+      pistas='<div class="conf-pistas">'+p.join("")+'</div>';
+    }
+    const cor=dif==null?"var(--cinza)":Math.abs(dif)<0.01?"#1E8A5F":"#C0392B";
+    return '<section class="conf" id="conf">'+
+      '<div class="tit-secao" style="margin-bottom:10px"><h3>Conferir com o saldo do banco</h3></div>'+
+      '<div class="conf-grid">'+
+        '<label>Saldo em '+vespTxt+'<input data-conf="ini" value="'+(ini.fonte==="nenhum"?"":brl(ini.v))+'" placeholder="0,00" inputmode="decimal">'+
+          '<span class="conf-f">'+fonteIni+'</span></label>'+
+        '<label>Saldo no banco em<input type="date" data-conf="data" value="'+D+'" min="'+ym+'-01" max="'+fimDoMes(ym)+'">'+
+          '<span class="conf-f">veja no app do banco</span></label>'+
+        '<label>Valor<input data-conf="valor" value="'+(real==null?"":brl(real))+'" placeholder="digite o saldo" inputmode="decimal">'+
+          '<span class="conf-f">'+(temConf&&conf.fonte==="extrato"?"lido do extrato importado":"digitado")+'</span></label>'+
+        '<div><span class="rot">Pelo app até '+diaMes(D)+'</span><div class="conf-v">R$ '+brl(app)+'</div>'+
+          '<span class="conf-f" style="color:'+cor+'">'+(dif==null?"digite o saldo do banco para comparar":Math.abs(dif)<0.01?"✓ bate com o banco":"diferença R$ "+brlS(dif))+'</span></div>'+
+      '</div>'+pistas+'</section>';
+  }
+  function ligarConferencia(origem,ym){
+    const el=$("#conf"); if(!el) return;
+    el.addEventListener("change",e=>{
+      const k=e.target.dataset.conf; if(!k) return;
+      const txt=String(e.target.value||"").trim();
+      dados.conferencia=dados.conferencia||{};
+      const c=dados.conferencia[origem]&&dados.conferencia[origem].data.slice(0,7)===ym?dados.conferencia[origem]:{data:e.target.closest(".conf").querySelector('[data-conf="data"]').value,valor:null};
+      if(k==="ini"){ if(txt==="") delete dados.saldos[origem+":"+ym]; else dados.saldos[origem+":"+ym]=numero(txt.replace("−","-")); }
+      if(k==="data"){ if(!txt) return; c.data=txt; if(c.valor==null){ ui.confData=txt; render(); return; } dados.conferencia[origem]={...c,fonte:"digitado"}; }
+      if(k==="valor"){ if(txt===""){ delete dados.conferencia[origem]; } else dados.conferencia[origem]={data:c.data,valor:numero(txt.replace("−","-")),fonte:"digitado"}; }
+      salvar(); render();
+    });
+    el.addEventListener("click",e=>{
+      const b=e.target.closest("[data-cbusca]");
+      if(b){ ui.busca=b.dataset.cbusca; render(); try{document.getElementById("tabelaLanc").scrollIntoView({block:"start"});}catch(_){ } return; }
+      const ci=e.target.closest("[data-cini]");
+      if(ci){ dados.saldos[origem+":"+ym]=+ci.dataset.cini; salvar(); render(); avisar("Saldo inicial ajustado."); }
+    });
   }
 
   /* ================= gráfico de saldo ================= */
@@ -2802,6 +2981,146 @@
     };
   }
 
+  /* ================= metas e caixinhas (gastos futuros desejados) ================= */
+  const PRIO = {alta:"Alta", media:"Média", baixa:"Baixa"};
+  const TIPOS_META = {necessario:"Necessário", desejo:"Desejo"};
+  // meses de hoje até o prazo, contando o mês atual (setembro → novembro = 3)
+  const mesesAte = ym => { const [a,m]=mesAtual().split("-").map(Number), [b,n]=ym.split("-").map(Number); return (b-a)*12+(n-m)+1; };
+  const faltaMeta = x => Math.max(0, cent((+x.custo||0)-(+x.guardado||0)));
+  // quanto guardar por mês para chegar no prazo; null sem prazo
+  const porMesMeta = x => { if(!x.prazo) return null; const f=faltaMeta(x); if(!f) return 0; const n=mesesAte(x.prazo); return cent(n>=1?f/n:f); };
+  // sobra prevista no Fluxo anual (receitas − despesas) de um mês; null se o fluxo não cobre o mês
+  function sobraFluxo(ym){
+    const fx=dados.fluxo; if(!fx||!(fx.meses||[]).includes(ym)) return null;
+    return cent(fx.linhas.filter(l=>l.tipo==="i"&&!CATS_FORA.has(l.cat)).reduce((s,l)=>s+(+(l.v||{})[ym]||0),0));
+  }
+  function novaMeta(){
+    dados.metas=dados.metas||[];
+    dados.metas.push({id:"m"+Date.now(), nome:"", tipo:"necessario", prio:"media", custo:null, guardado:0, prazo:"", obs:"",
+                      criado:hojeISO(), feito:null, aportes:[]});
+    salvar(); renderMetas();
+    const f=document.querySelector('[data-foco="mt:'+(dados.metas.length-1)+':nome"]'); if(f) f.focus();
+  }
+
+  function renderMetas(){
+    const corpo=$("#corpo"); dados.metas=dados.metas||[];
+    $("#abas").innerHTML='<div class="periodo"><span class="sub" style="margin:0">Gastos que uma hora vão chegar (pintar a casa, arrumar o carro…) e desejos de consumo. '+
+      'Cada um tem a sua caixinha: diga quanto custa e até quando, e o app mostra quanto guardar por mês.</span></div>'+
+      '<button class="bt" data-mtnova="1" style="font-size:12px;padding:6px 12px">+ Nova meta</button>';
+    const todas=dados.metas.map((x,i)=>({x:x,i:i}));
+    const ativas=todas.filter(o=>!o.x.feito), feitas=todas.filter(o=>o.x.feito);
+    if(!todas.length){
+      corpo.innerHTML='<div class="vazio"><p class="num">Nenhuma meta ainda</p><p>Clique em <b>+ Nova meta</b> e anote o que vai precisar pagar mais para frente: '+
+        'pintar a casa, revisão ou pneus do carro, trocar um eletrodoméstico, uma viagem, um desejo de consumo.</p></div>';
+      corpo.onclick=e=>{ if(e.target.closest("[data-mtnova]")) novaMeta(); };
+      return;
+    }
+    const ordP={alta:0,media:1,baixa:2};
+    ativas.sort((a,b)=>(ordP[a.x.prio]??1)-(ordP[b.x.prio]??1) || (a.x.prazo||"9999").localeCompare(b.x.prazo||"9999"));
+    const S=(arr,f)=>cent(arr.reduce((s,o)=>s+(+f(o.x)||0),0));
+    const totFalta=S(ativas,faltaMeta), totGuard=S(ativas,x=>x.guardado), totCusto=S(ativas,x=>x.custo);
+    const comPrazo=ativas.filter(o=>o.x.prazo&&faltaMeta(o.x)>0), semPrazo=ativas.filter(o=>!o.x.prazo&&faltaMeta(o.x)>0);
+    const totMes=S(comPrazo,porMesMeta);
+    const atrasadas=comPrazo.filter(o=>mesesAte(o.x.prazo)<1);
+
+    const at=(i,k)=>' data-mt="'+i+'" data-k="'+k+'" data-foco="mt:'+i+':'+k+'"';
+    const sel=(i,k,op,v)=>'<select class="campo"'+at(i,k)+'>'+Object.keys(op).map(c=>'<option value="'+c+'"'+(c===v?" selected":"")+'>'+op[c]+'</option>').join("")+'</select>';
+    const vIn=(i,k,v,ph)=>'<td class="valor"><input class="campo"'+at(i,k)+' value="'+(v?brl(v):"")+'" placeholder="'+(ph||"—")+'" inputmode="decimal"></td>';
+    const linha=({x,i})=>{
+      const f=faltaMeta(x), pm=porMesMeta(x), pct=+x.custo?Math.min(100,Math.round((+x.guardado||0)/(+x.custo)*100)):0;
+      const atras=x.prazo&&f>0&&mesesAte(x.prazo)<1;
+      return '<tr'+(x.tipo==="desejo"?' class="mt-desejo"':'')+'>'+
+        '<td><input class="campo mt-nome"'+at(i,"nome")+' value="'+esc(x.nome||"")+'" placeholder="Ex.: pintar a casa">'+
+          '<input class="campo mt-obs"'+at(i,"obs")+' value="'+esc(x.obs||"")+'" placeholder="observação / onde está guardado"></td>'+
+        '<td>'+sel(i,"tipo",TIPOS_META,x.tipo)+'</td>'+
+        '<td>'+sel(i,"prio",PRIO,x.prio)+'</td>'+
+        vIn(i,"custo",x.custo,"custo")+
+        vIn(i,"guardado",x.guardado,"0,00")+
+        '<td class="valor"><input class="campo mt-aporte"'+at(i,"aporte")+' value="" placeholder="+ guardar" inputmode="decimal" title="Digite quanto colocou na caixinha (negativo para retirar)"></td>'+
+        '<td class="mt-calc">'+(f?brl(f):'<span style="color:#1E8A5F">✓ juntado</span>')+
+          '<div class="mt-barra"><i style="width:'+pct+'%"></i></div></td>'+
+        '<td><input type="month" class="campo"'+at(i,"prazo")+' value="'+esc(x.prazo||"")+'" min="'+mesAtual()+'"></td>'+
+        '<td class="mt-calc" style="'+(atras?"color:#C0392B":"")+'">'+(pm==null?'<span class="sub">sem prazo</span>':atras?brl(f)+'<span class="kpi-sub" style="color:#C0392B">prazo vencido</span>':brl(pm))+'</td>'+
+        '<td class="acao"><button class="pv-pagar" data-mtfeito="'+i+'" title="Já gastei / realizado">✓</button>'+
+          '<button class="apagar" data-mtdel="'+i+'" title="Apagar" aria-label="Apagar">×</button></td></tr>';
+    };
+
+    // plano dos próximos 12 meses
+    const ms=[]; for(let m=mesAtual(); ms.length<12; m=proxMes(m)) ms.push(m);
+    // prazo vencido: o que falta entra todo no mês atual
+    const noMes=(x,m)=>x.prazo>=m||(m===mesAtual()&&mesesAte(x.prazo)<1);
+    const guardarEm=m=>cent(comPrazo.filter(o=>noMes(o.x,m)).reduce((s,o)=>s+porMesMeta(o.x),0));
+    const temFluxo=ms.some(m=>sobraFluxo(m)!=null);
+    const td=(v,neg)=>'<td style="'+(neg&&v<-0.004?"color:#C0392B":"")+'">'+(v==null?"—":brl(v))+'</td>';
+    const plano='<div class="tit-secao" style="margin-top:38px"><h3>Quanto guardar — próximos 12 meses</h3></div>'+
+      '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Meta</th>'+ms.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'</tr></thead><tbody>'+
+      comPrazo.map(o=>'<tr><td style="padding:7px 6px">'+esc(o.x.nome||"(sem nome)")+'</td>'+
+        ms.map(m=>'<td class="fx-calc">'+(noMes(o.x,m)?brl(porMesMeta(o.x)):"")+'</td>').join("")+'</tr>').join("")+
+      '<tr class="fx-t"><td>Guardar no mês</td>'+ms.map(m=>td(guardarEm(m))).join("")+'</tr>'+
+      (temFluxo?'<tr class="fx-r"><td>Sobra prevista no Fluxo anual</td>'+ms.map(m=>td(sobraFluxo(m),true)).join("")+'</tr>'+
+        '<tr class="fx-t"><td>Sobra depois das caixinhas</td>'+ms.map(m=>{ const s=sobraFluxo(m); return td(s==null?null:cent(s-guardarEm(m)),true); }).join("")+'</tr>':'')+
+      '</tbody></table></div>'+
+      (temFluxo?'<p class="sub">Se a sobra depois das caixinhas fica negativa, o plano não cabe no mês: estique o prazo ou baixe a prioridade de algum desejo.</p>':
+        '<p class="sub">Monte o Fluxo anual para ver se o que guardar cabe na sobra de cada mês.</p>');
+
+    const feitasHTML=feitas.length?'<div class="tit-secao" style="margin-top:38px"><h3>Realizadas</h3></div>'+
+      '<table class="pv-tab"><colgroup><col style="width:110px"><col><col class="c-val"><col style="width:90px"></colgroup><tbody>'+
+      feitas.map(({x,i})=>'<tr><td class="sub" style="padding:7px 6px">'+(x.feito?diaMes(x.feito)+"/"+x.feito.slice(2,4):"")+'</td><td style="padding:7px 6px">'+esc(x.nome||"")+'</td>'+
+        '<td style="padding:7px 6px;text-align:right;font-family:var(--serif);font-size:16px">'+brl(+x.custo||0)+'</td>'+
+        '<td class="acao"><button class="ver-mais" data-mtreabrir="'+i+'" style="padding:0">reabrir</button></td></tr>').join("")+'</tbody></table>':'';
+
+    corpo.innerHTML=
+      '<section class="dash-geral">'+
+        '<div class="g-num"><span class="rot">Falta juntar</span><div class="v">R$ '+brl(totFalta)+'</div>'+
+          '<span class="kpi-sub">'+ativas.length+' meta'+(ativas.length===1?"":"s")+' · custo total R$ '+brl(totCusto)+'</span></div>'+
+        '<div class="g-num"><span class="rot">Já guardado nas caixinhas</span><div class="v" style="color:#1E8A5F">R$ '+brl(totGuard)+'</div>'+
+          '<span class="kpi-sub">'+(totCusto?Math.round(totGuard/totCusto*100)+"% do total":"")+'</span></div>'+
+        '<div class="g-num"><span class="rot">Guardar por mês</span><div class="v">R$ '+brl(totMes)+'</div>'+
+          '<span class="kpi-sub">para cumprir os prazos'+(semPrazo.length?' · '+semPrazo.length+' sem prazo (R$ '+brl(S(semPrazo,faltaMeta))+')':'')+'</span></div>'+
+      '</section>'+
+      (atrasadas.length?'<div class="alerta"><div><b>'+atrasadas.length+' meta'+(atrasadas.length===1?"":"s")+' com prazo vencido</b> e dinheiro faltando: '+
+        esc(atrasadas.map(o=>o.x.nome||"(sem nome)").join(", "))+'. Ajuste o prazo.</div></div>':'')+
+      '<div class="tit-secao" style="margin-top:30px"><h3>Metas</h3></div>'+
+      '<div class="rolagem"><table class="pv-tab mt-tab"><colgroup><col><col style="width:118px"><col style="width:92px"><col class="c-val"><col class="c-val">'+
+        '<col class="c-val"><col class="c-val"><col style="width:140px"><col class="c-val"><col class="c-acao"></colgroup>'+
+      '<thead><tr><th>Meta</th><th>Tipo</th><th>Prioridade</th><th class="n">Custo</th><th class="n">Guardado</th><th class="n">Guardar agora</th>'+
+        '<th class="n">Falta</th><th>Prazo</th><th class="n">Por mês</th><th></th></tr></thead><tbody>'+
+      ativas.map(linha).join("")+'</tbody></table></div>'+
+      '<button class="ver-mais" data-mtnova="1">+ Nova meta</button>'+
+      plano+feitasHTML;
+
+    corpo.onchange=e=>{
+      const el=e.target.closest("[data-mt]"); if(!el) return;
+      const x=dados.metas[+el.dataset.mt], k=el.dataset.k, txt=String(el.value||"").trim();
+      if(!x) return;
+      if(k==="nome"||k==="obs"||k==="tipo"||k==="prio"||k==="prazo"){ x[k]=el.value; salvar(); if(k!=="nome"&&k!=="obs") manterFoco(renderMetas); return; }
+      const n=txt===""?null:numero(txt.replace("−","-"));
+      if(k==="custo"){ x.custo=n==null?null:Math.abs(n); }
+      if(k==="guardado"){ x.guardado=n==null?0:n; }
+      if(k==="aporte"){
+        if(!n) return;
+        x.guardado=cent((+x.guardado||0)+n); (x.aportes=x.aportes||[]).push({data:hojeISO(), v:n});
+        avisar("R$ "+brl(Math.abs(n))+(n>0?" guardado na caixinha ":" retirado da caixinha ")+(x.nome||"")+".");
+      }
+      salvar(); manterFoco(renderMetas);
+    };
+    corpo.onclick=e=>{
+      if(e.target.closest("[data-mtnova]")){ novaMeta(); return; }
+      const d=e.target.closest("[data-mtdel]");
+      if(d){ const x=dados.metas[+d.dataset.mtdel];
+        confirmar("Apagar meta?", esc(x.nome||"Esta meta")+" sai da lista"+(+x.guardado?" (o valor guardado continua na sua conta; só some daqui)":"")+".", "Apagar")
+          .then(ok=>{ if(!ok) return; dados.metas.splice(+d.dataset.mtdel,1); salvar(); renderMetas(); });
+        return; }
+      const f=e.target.closest("[data-mtfeito]");
+      if(f){ const x=dados.metas[+f.dataset.mtfeito];
+        confirmar("Marcar como realizada?", esc(x.nome||"Esta meta")+" vai para “Realizadas”. Lance o gasto normalmente quando ele passar no banco.", "Realizada")
+          .then(ok=>{ if(!ok) return; x.feito=hojeISO(); salvar(); renderMetas(); });
+        return; }
+      const r=e.target.closest("[data-mtreabrir]");
+      if(r){ dados.metas[+r.dataset.mtreabrir].feito=null; salvar(); renderMetas(); }
+    };
+  }
+
   /* ================= desenho da tela ================= */
   function render(){
     const corpo=$("#corpo"); corpo.onclick=null; corpo.onkeydown=null; corpo.onchange=null;
@@ -2810,6 +3129,7 @@
     if(ui.conta==="dividas"){ renderDividas(); return; }
     if(ui.conta==="prev"){ renderPrevisao(); return; }
     if(ui.conta==="fluxo"){ renderFluxo(); return; }
+    if(ui.conta==="metas"){ renderMetas(); return; }
     if(!ui.view) ui.view="mes";
 
     const meses=mesesComDados();
@@ -2839,7 +3159,9 @@
     const ent=soma(base.filter(l=>l.valor>0));
     const sai=soma(baseGasto.filter(l=>l.valor<0));
     const res=ent+sai;
-    const inicial = semSaldo?0:(dados.saldos[ui.conta+":"+(ui.mes==="tudo"?meses[0]:ui.mes)]||0);
+    const ini0 = semSaldo?null:saldoInicio(ui.conta, ui.mes==="tudo"?meses[0]:ui.mes);
+    const inicial = ini0?ini0.v:0;
+    const comConf = !semSaldo && ui.mes!=="tudo" && (ui.conta==="itau"||ui.conta==="bb");
     const serie = semSaldo?[]:saldoDiario(base,inicial);
     const fim = serie.length?serie[serie.length-1].saldo:inicial;
     const diasNeg = serie.filter(d=>d.saldo<0);
@@ -2903,6 +3225,7 @@
     corpo.innerHTML =
       '<section class="totais">'+cartoes+'</section>'+
       '<p class="nota-linha">'+nota+'</p>'+
+      (comConf?blocoConferencia(ui.conta,ui.mes,base,ini0):"")+
       (avisos.length?'<div class="avisos">'+avisos.join("")+'</div>':"")+
 
       '<div class="paineis">'+
@@ -2946,6 +3269,7 @@
         (meses.length===1?"mês":"meses")+' de histórico</span><span>Família Bicalho</span></div>';
 
     tabela(); ligar();
+    if(comConf) ligarConferencia(ui.conta,ui.mes);
   }
 
   /* ================= comparação entre meses ================= */
@@ -3429,7 +3753,7 @@
       dados.saldos={};
       dados.regras=REGRAS_PADRAO.slice();
       dados.prolabore=0; dados.orcamento=null; dados.versao=3;
-      dados.orcamentoMes={}; dados.contas={}; dados.dividas=null; dados.previsoes={}; dados.fluxo=null;
+      dados.orcamentoMes={}; dados.contas={}; dados.dividas=null; dados.previsoes={}; dados.fluxo=null; dados.metas=[]; dados.conferencia={};
       dados.faturaAberta=null; dados.faturaFechada=null;
       ui={mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,conta:ui.conta||"dash"};
       salvar(); render();
@@ -3467,6 +3791,8 @@
         dados.previsoes   = remoto.previsoes||{};
         dados.fluxo       = remoto.fluxo||null;
         dados.dividas     = remoto.dividas||null;
+        dados.metas       = remoto.metas||[];
+        dados.conferencia = remoto.conferencia||{};
         dados.versao      = remoto.versao||0;
         migrar();
         if(dados._migrou){ delete dados._migrou; salvar(); }
