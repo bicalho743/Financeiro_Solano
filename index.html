@@ -781,7 +781,7 @@
     {g:"Moradia", cor:"#5D6D2E", cats:["Luz (Cemig)","Água (Copasa)","Internet","IPTU","TV (Sky)","Celular (TIM)","Assinaturas","Manutenção da casa"]},
     {g:"Serviço doméstico", cor:"#9A6B00", cats:["Doméstica – salário","Doméstica – e-Social","Doméstica – transporte","Doméstica – provisão","Diarista / jardim / extras"]},
     {g:"Alimentação", cor:"#D35400", cats:["Supermercado","Padaria","Açougue","Sacolão / feira","Bar / restaurante","Almoço","Lanche"]},
-    {g:"Educação", cor:"#1F6FB2", cats:["Escola","Material / passeios escola"]},
+    {g:"Educação", cor:"#1F6FB2", cats:["Escola / educação","Material / passeios escola"]},
     {g:"Saúde", cor:"#B03A2E", cats:["Unimed","Farmácia","Saúde fora do plano"]},
     {g:"Transporte", cor:"#0B7A83", cats:["Uber / Localiza","Gasolina","IPVA / multas","Seguro auto","Manutenção do carro"]},
     {g:"Lazer e pessoal", cor:"#C2185B", cats:["Clube","Corrida","Passeios","Férias / viagem","Solano – pessoal","Tâmara – pessoal","Meninas","Pet","Vestuário"]},
@@ -859,7 +859,7 @@
     // saúde
     ["UNIMED","Unimed"],["DROGARIA","Farmácia"],["DROGA","Farmácia"],["FARMACIA","Farmácia"],["ARAUJO","Farmácia"],["ULTRA POPULAR","Farmácia"],
     // educação
-    ["ESCOLA","Escola"],["COLEGIO","Escola"],
+    ["ESCOLA","Escola / educação"],["COLEGIO","Escola / educação"],
     // transporte
     ["UBER","Uber / Localiza"],["99POP","Uber / Localiza"],["LOCALIZA","Uber / Localiza"],
     ["IPVA","IPVA / multas"],["DETRAN","IPVA / multas"],
@@ -878,7 +878,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},orcamento:null,versao:4,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},orcamento:null,versao:5,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -926,6 +926,17 @@
       });
       dados.versao=4; dados._migrou=true;
       if(n) setTimeout(()=>avisar(n+" Pix recebido"+(n===1?"":"s")+" reclassificado"+(n===1?"":"s")+" como Outras receitas."),900);
+    }
+    if(dados.versao<5){
+      // categoria "Escola" passa a se chamar "Escola / educação" (lançamentos, regras, previsto, fluxo e parcelas)
+      const de="Escola", para="Escola / educação", tr=c=>c===de?para:c;
+      (dados.lancamentos||[]).forEach(l=>{ l.categoria=tr(l.categoria); });
+      (dados.regras||[]).forEach(r=>{ r.categoria=tr(r.categoria); });
+      const chave=o=>{ if(o&&o[de]!=null&&o[para]==null){ o[para]=o[de]; delete o[de]; } };
+      chave(dados.orcamento); Object.values(dados.orcamentoMes||{}).forEach(chave);
+      if(dados.fluxo) (dados.fluxo.linhas||[]).forEach(l=>{ l.cat=tr(l.cat); if(l.rot===de) l.rot=para; });
+      if(dados.dividas) (dados.dividas.parcelas||[]).forEach(x=>{ x.cat=tr(x.cat); });
+      dados.versao=5; dados._migrou=true;
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -1042,7 +1053,7 @@
     "Celular (TIM)":69,"Assinaturas":100,"Manutenção da casa":695.84,
     "Doméstica – salário":2236.98,"Doméstica – e-Social":680.81,"Doméstica – transporte":638,"Doméstica – provisão":526.5,
     "Supermercado":3000,"Bar / restaurante":50.74,
-    "Escola":4782.3,"Material / passeios escola":269.96,
+    "Escola / educação":4782.3,"Material / passeios escola":269.96,
     "Unimed":1952.6,"Saúde fora do plano":497.84,
     "Uber / Localiza":1000,"Gasolina":420,"Seguro auto":271.64,"Manutenção do carro":376.7,
     "Clube":795.94,"Corrida":300,"Passeios":676.4,"Férias / viagem":2057.64,
@@ -1673,7 +1684,7 @@
     "casa|sky":"TV (Sky)","casa|tim":"Celular (TIM)","casa|água":"Água (Copasa)",
     "diversos|meninas":"Meninas","diversos|cecília":"Meninas","diversos|pet":"Pet","diversos|solano":"Solano – pessoal",
     "diversos|tâmara":"Tâmara – pessoal","diversos|vestuario":"Vestuário","diversos|vestuário":"Vestuário",
-    "escola|":"Escola","escola|escola":"Escola","escola|material passeios":"Material / passeios escola",
+    "escola|":"Escola / educação","escola|escola":"Escola / educação","escola|material passeios":"Material / passeios escola",
     "escola|material/passeio":"Material / passeios escola",
     "financia_invest|empréstimo":"Consignado","financia_invest|financiamento casa":"Financiamento casa",
     "financiamento e dividas|consórcio":"Consórcio","financiamento e dividas|iof taxas":"IOF e taxas",
@@ -1780,7 +1791,7 @@
     [/cemig|\bluz\b/i,"Luz (Cemig)"],[/[áa]gua|copasa/i,"Água (Copasa)"],[/internet/i,"Internet"],
     [/iptu/i,"IPTU"],[/\bsky\b/i,"TV (Sky)"],[/\btim\b|celular/i,"Celular (TIM)"],[/assinatura/i,"Assinaturas"],
     [/supermercado|feira|mercado/i,"Supermercado"],[/restaurante|lanche/i,"Bar / restaurante"],
-    [/material|passeios? escola/i,"Material / passeios escola"],[/escola/i,"Escola"],
+    [/material|passeios? escola/i,"Material / passeios escola"],[/escola/i,"Escola / educação"],
     [/unimed/i,"Unimed"],[/sa[úu]de/i,"Saúde fora do plano"],
     [/uber|localiza/i,"Uber / Localiza"],[/gasolina/i,"Gasolina"],[/ipva|multa/i,"IPVA / multas"],
     [/seguro/i,"Seguro auto"],[/carro/i,"Manutenção do carro"],
