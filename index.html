@@ -783,7 +783,7 @@
     {g:"Alimentação", cor:"#D35400", cats:["Supermercado","Padaria","Açougue","Sacolão / feira","Bar / restaurante","Almoço","Lanche"]},
     {g:"Educação", cor:"#1F6FB2", cats:["Escola / educação","Material / passeios escola"]},
     {g:"Saúde", cor:"#B03A2E", cats:["Unimed","Farmácia","Saúde fora do plano"]},
-    {g:"Transporte", cor:"#0B7A83", cats:["Uber / Localiza","Gasolina","IPVA / multas","Seguro auto","Manutenção do carro"]},
+    {g:"Transporte", cor:"#0B7A83", cats:["Uber / Localiza","Gasolina","Aluguel Mobi","IPVA / multas","Seguro auto","Manutenção do carro"]},
     {g:"Lazer e pessoal", cor:"#C2185B", cats:["Clube","Corrida","Passeios","Férias / viagem","Solano – pessoal","Tâmara – pessoal","Meninas","Pet","Vestuário"]},
     {g:"Transferências", cor:"#8D6E63", cats:["Transferências Tâmara"]},
     {g:"Fora dos cálculos", cor:"#95A5A6", cats:["Cartão de crédito","Aplicação e resgate","Transferência entre minhas contas"]},
@@ -828,6 +828,8 @@
   const REGRAS_PADRAO = REGRAS_TRANSF.concat([
     // quitação de dívida/empréstimo no Itaú
     ["PAGTO A VISTA SALDO","Pagamento de dívidas"],
+    // assinatura do carro (Mobi) por 24 meses, cobrada no cartão BB
+    ["UNIDAS LIVRE","Aluguel Mobi"],
     // fora dos cálculos
     ["PAGTO CARTAO","Cartão de crédito"],["PAG FATURA","Cartão de crédito"],["FATURA CARTAO","Cartão de crédito"],
     ["CARTÃO CRÉDITO","Cartão de crédito"],["CARTAO CREDITO","Cartão de crédito"],["ITAU BLACK","Cartão de crédito"],
@@ -880,7 +882,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},orcamento:null,versao:8,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},orcamento:null,versao:9,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -957,6 +959,14 @@
       // adiantamento/quitação de consignado debitado na conta sai de "Consignado" (que fica só com a parcela da folha)
       dados.lancamentos.forEach(l=>{ if(l.categoria==="Consignado"&&l.origem!=="manual"&&ehQuitacaoConsignado(l.hist,l.valor)) l.categoria="Pagamento de dívidas"; });
       dados.versao=8; dados._migrou=true;
+    }
+    if(dados.versao<9){
+      // nova categoria "Aluguel Mobi" (assinatura do carro por 24 meses) em Transporte
+      const ehMobi = l => /UNIDAS LIVRE|ALUGUEL MOBI/i.test(String(l.hist)+" "+String(l.obs||""));
+      dados.lancamentos.forEach(l=>{ if(ehMobi(l)) l.categoria="Aluguel Mobi"; });
+      dados.regras.forEach(r=>{ if(/UNIDAS LIVRE|ALUGUEL MOBI/i.test(r.termo)) r.categoria="Aluguel Mobi"; });
+      if(!dados.regras.some(r=>/UNIDAS LIVRE/i.test(r.termo))) dados.regras.unshift({termo:"UNIDAS LIVRE",categoria:"Aluguel Mobi",vinculo:"PF",padrao:true});
+      dados.versao=9; dados._migrou=true;
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -1769,7 +1779,7 @@
     "supermercado|":"Supermercado","supermercado|supermercado":"Supermercado","supermercado|açougue":"Açougue",
     "supermercado|padaria":"Padaria","supermercado|sacolão":"Sacolão / feira","supermercado|bar/restaurante":"Bar / restaurante",
     "transporte|consórcio":"Consórcio","transporte|gasolina":"Gasolina","transporte|ipva":"IPVA / multas",
-    "transporte|manutenção":"Manutenção do carro","transporte|seguro":"Seguro auto","transporte|uber/localiza":"Uber / Localiza"
+    "transporte|aluguel mobi":"Aluguel Mobi","transporte|aluguel":"Aluguel Mobi","transporte|manutenção":"Manutenção do carro","transporte|seguro":"Seguro auto","transporte|uber/localiza":"Uber / Localiza"
   };
   function catPlanilha(cat,sub){
     const k=celTexto(cat).toLowerCase()+"|"+celTexto(sub).toLowerCase();
