@@ -1623,8 +1623,9 @@
       dados.saldos[origem+":"+d.toISOString().slice(0,7)]=r.saldoAnt.valor;
     }
     if(r.saldoFim && origem!=="cartao" && !isNaN(r.saldoFim.valor)){
-      const c=(dados.conferencia=dados.conferencia||{})[origem];
-      if(!c||r.saldoFim.iso>=c.data) dados.conferencia[origem]={data:r.saldoFim.iso, valor:r.saldoFim.valor, fonte:"extrato"};
+      // uma conferência por conta e mês (itau:2026-09); o extrato grava o saldo do último dia que ele traz
+      const kc=origem+":"+r.saldoFim.iso.slice(0,7), c=(dados.conferencia=dados.conferencia||{})[kc];
+      if(!c||r.saldoFim.iso>=c.data) dados.conferencia[kc]={data:r.saldoFim.iso, valor:r.saldoFim.valor, fonte:"extrato"};
     }
     const g=gravarLinhas(itens,origem);
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
@@ -2270,7 +2271,8 @@
   }
 
   function blocoConferencia(origem,ym,base,ini){
-    const conf=(dados.conferencia||{})[origem];
+    const cfs=dados.conferencia||{}, leg=cfs[origem];
+    const conf=cfs[origem+":"+ym] || (leg&&leg.data&&leg.data.slice(0,7)===ym?leg:null);
     const temConf=conf&&conf.data&&conf.data.slice(0,7)===ym;
     const D=temConf?conf.data:(ui.confData&&ui.confData.slice(0,7)===ym)?ui.confData:(hojeISO()<fimDoMes(ym)?(hojeISO()>=ym+"-01"?hojeISO():fimDoMes(ym)):fimDoMes(ym));
     const ate=base.filter(l=>l.data<=D);
@@ -2360,10 +2362,12 @@
       const k=e.target.dataset.conf; if(!k) return;
       const txt=String(e.target.value||"").trim();
       dados.conferencia=dados.conferencia||{};
-      const c=dados.conferencia[origem]&&dados.conferencia[origem].data.slice(0,7)===ym?dados.conferencia[origem]:{data:e.target.closest(".conf").querySelector('[data-conf="data"]').value,valor:null};
+      const kc=origem+":"+ym, leg=dados.conferencia[origem];
+      const c=dados.conferencia[kc]||(leg&&leg.data&&leg.data.slice(0,7)===ym?leg:null)||{data:e.target.closest(".conf").querySelector('[data-conf="data"]').value,valor:null};
+      if(leg&&leg.data&&leg.data.slice(0,7)===ym) delete dados.conferencia[origem];
       if(k==="ini"){ if(txt==="") delete dados.saldos[origem+":"+ym]; else dados.saldos[origem+":"+ym]=numero(txt.replace("−","-")); }
-      if(k==="data"){ if(!txt) return; c.data=txt; if(c.valor==null){ ui.confData=txt; render(); return; } dados.conferencia[origem]={...c,fonte:"digitado"}; }
-      if(k==="valor"){ if(txt===""){ delete dados.conferencia[origem]; } else dados.conferencia[origem]={data:c.data,valor:numero(txt.replace("−","-")),fonte:"digitado"}; }
+      if(k==="data"){ if(!txt) return; c.data=txt; if(c.valor==null){ ui.confData=txt; render(); return; } dados.conferencia[kc]={...c,fonte:"digitado"}; }
+      if(k==="valor"){ if(txt===""){ delete dados.conferencia[kc]; } else dados.conferencia[kc]={data:c.data,valor:numero(txt.replace("−","-")),fonte:"digitado"}; }
       salvar(); render();
     });
     el.addEventListener("click",e=>{
