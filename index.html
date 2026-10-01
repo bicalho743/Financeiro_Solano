@@ -29,7 +29,8 @@
   @media (prefers-reduced-motion:reduce){#lc *{transition:none!important;animation:none!important}}
 
   /* ---- seletor de conta ---- */
-  .conta-tabs{display:flex;gap:0;border-bottom:2px solid var(--linha);background:#fff;padding:0 28px}
+  .conta-tabs{display:flex;flex-wrap:wrap;gap:0;border-bottom:2px solid var(--linha);background:#fff;padding:0 28px}
+  @media (max-width:1400px){.conta-tabs .conta-tab:not(.banco){padding-left:16px;padding-right:16px}}
   .conta-tab{font-family:var(--sans);font-size:13px;letter-spacing:.06em;padding:11px 22px;
              border:none;background:transparent;color:var(--cinza);cursor:pointer;
              border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s}
@@ -397,6 +398,14 @@
   .dash-geral .v{font-family:var(--serif);font-size:30px;font-variant-numeric:tabular-nums;line-height:1.15}
   .dash-geral .g-hist{grid-column:1/-1;margin:14px 0 0;padding-top:12px;border-top:1px solid var(--linha);font-size:14px;line-height:1.55;color:var(--tinta)}
   .dash-geral .g-hist b{font-weight:600}
+  /* ---- investimentos ---- */
+  .iv-tab td .kpi-sub,.iv-conc td .kpi-sub{margin-top:0}
+  .dash-mes tr.iv-cl td{background:var(--marfim);font-weight:600;font-family:var(--sans);font-size:12.5px;letter-spacing:.04em}
+  .dash-mes tr.iv-tot td{border-top:1px solid var(--tinta);font-weight:600}
+  .iv-duo{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+  @media (max-width:800px){.iv-duo{grid-template-columns:1fr}}
+  .iv-alerta{font-size:10.5px;color:var(--ouro);border:1px solid var(--ouro);border-radius:3px;padding:0 5px;margin-left:6px;white-space:nowrap}
+  .iv-man{max-width:860px}.iv-man td{padding:3px 4px}.iv-man th{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--cinza);font-weight:500;text-align:left;padding:6px 4px}
   /* ---- barra da fatura do cartão ---- */
   .barra-fatura{display:flex;align-items:center;justify-content:space-between;gap:18px 32px;flex-wrap:wrap;
     margin-top:24px;padding:20px 26px;background:var(--verde);color:var(--marfim);border-radius:4px;
@@ -646,7 +655,8 @@
         <div class="menu" id="menuImportar" hidden>
           <button id="btImpItau">Extrato do Itaú (conta)</button>
           <button id="btImpBB">Extrato do BB (conta)</button>
-          <button id="btImpCartao">Fatura do cartão Itaú</button>
+          <button id="btImpCartao">Fatura do cartão (Itaú ou BB)</button>
+          <button id="btImpB3">Investimentos B3 (movimentação ou posição)</button>
           <hr>
           <button id="btImpPlanilha">Planilha de orçamento (.xlsx)</button>
         </div>
@@ -665,7 +675,7 @@
         </div>
       </div>
       <div id="barraUsuario"></div>
-      <input type="file" id="arqCsv" accept=".csv,.txt,.ofx,.xlsx,.xls,.pdf" hidden>
+      <input type="file" id="arqCsv" accept=".csv,.txt,.ofx,.xlsx,.xls,.xlsm,.pdf" hidden>
       <input type="file" id="arqPdf" accept=".pdf,application/pdf" hidden>
       <input type="file" id="arqJson" accept=".json,application/json" hidden>
     </div>
@@ -678,6 +688,7 @@
     <button class="conta-tab" data-conta="fluxo">Fluxo anual</button>
     <button class="conta-tab" data-conta="dividas">Dívidas e parcelas</button>
     <button class="conta-tab" data-conta="metas">Metas e caixinhas</button>
+    <button class="conta-tab" data-conta="invest">Investimentos</button>
     <span class="conta-sep">Conferir com o extrato:</span>
     <button class="conta-tab banco" data-conta="itau">Itaú</button>
     <button class="conta-tab banco" data-conta="bb">BB</button>
@@ -776,8 +787,8 @@
   // Mesmos grupos e itens da aba MÊS CORRENTE; cada item corresponde a um par
   // CATEGORIA + SUBCATEGORIA da aba LANÇAMENTOS (ver MAPA_PLANILHA).
   const GRUPOS = [
-    {g:"Receitas", cor:"#1E8A5F", cats:["Salário","13º salário","Rendimentos","Restituição IR","Reembolso e estorno","Outras receitas"]},
-    {g:"Financiamento e dívidas", cor:"#7D3C98", cats:["Financiamento casa","Consignado","Pagamento de dívidas","Consórcio","IOF e taxas","Previdência"]},
+    {g:"Receitas", cor:"#1E8A5F", cats:["Salário","13º salário","Rendimentos","Restituição IR","Reembolso e estorno","Venda de imóvel","Outras receitas"]},
+    {g:"Financiamento e dívidas", cor:"#7D3C98", cats:["Financiamento casa","Consignado","Empréstimo recebido","Pagamento de dívidas","Consórcio","IOF e taxas","Previdência"]},
     {g:"Moradia", cor:"#5D6D2E", cats:["Luz (Cemig)","Água (Copasa)","Internet","IPTU","TV (Sky)","Celular (TIM)","Assinaturas","Manutenção da casa"]},
     {g:"Serviço doméstico", cor:"#9A6B00", cats:["Doméstica – salário","Doméstica – e-Social","Doméstica – transporte","Doméstica – provisão","Diarista / jardim / extras"]},
     {g:"Alimentação", cor:"#D35400", cats:["Supermercado","Padaria","Açougue","Sacolão / feira","Bar / restaurante","Almoço","Lanche"]},
@@ -882,7 +893,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},orcamento:null,versao:9,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:10,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -967,6 +978,14 @@
       dados.regras.forEach(r=>{ if(/UNIDAS LIVRE|ALUGUEL MOBI/i.test(r.termo)) r.categoria="Aluguel Mobi"; });
       if(!dados.regras.some(r=>/UNIDAS LIVRE/i.test(r.termo))) dados.regras.unshift({termo:"UNIDAS LIVRE",categoria:"Aluguel Mobi",vinculo:"PF",padrao:true});
       dados.versao=9; dados._migrou=true;
+    }
+    if(dados.versao<10){
+      // empréstimos recebidos (crediário, consignado) deixam de parecer receita; venda do apartamento ganha categoria própria
+      dados.lancamentos.forEach(l=>{
+        if((l.origem==="itau"||l.origem==="bb") && ehEmprestimoRecebido(l.hist,l.valor)) l.categoria="Empréstimo recebido";
+        if(l.origem==="itau" && Math.abs(l.valor-533949.56)<0.01){ l.categoria="Venda de imóvel"; if(!l.obs) l.obs="Venda do apartamento"; }
+      });
+      dados.versao=10; dados._migrou=true;
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -1366,6 +1385,7 @@
         dados.metas       = d.metas||[];
         dados.conferencia = d.conferencia||{};
         dados.saldosDia   = d.saldosDia||{};
+        dados.invest      = d.invest||null;
         dados.versao      = d.versao||0;
         migrar();
         if(dados._migrou){ delete dados._migrou; await salvarImediato(); }
@@ -1431,9 +1451,12 @@
 
   // débito de consignado no extrato = adiantamento de parcela ou quitação (a parcela mensal é descontada em folha)
   const ehQuitacaoConsignado = (hist,valor) => valor<0 && /CR[EÉ]D(ITO)?\.?\s*CONSIG/i.test(String(hist));
+  // dinheiro que entra emprestado (crediário, consignado, empréstimo): não é receita
+  const ehEmprestimoRecebido = (hist,valor) => valor>0 && /CREDIARIO|CR[EÉ]D(ITO)?\.?\s*CONSIG|EMPR[EÉ]STIMO|CR[EÉ]D(ITO)? PESSOAL/i.test(String(hist).normalize("NFD").replace(/[\u0300-\u036f]/g,""));
   function classificar(hist,valor){
     const u = hist.toUpperCase();
     if(ehQuitacaoConsignado(hist,valor)) return {categoria:"Pagamento de dívidas",vinculo:"PF"};
+    if(ehEmprestimoRecebido(hist,valor)) return {categoria:"Empréstimo recebido",vinculo:"PF"};
     for(const r of dados.regras){
       if(u.includes(r.termo.toUpperCase())){
         if(ehPixEntrada(hist,valor) && GRUPO_DE[r.categoria]!=="Receitas" && !ENTRA_FORA.has(r.categoria))
@@ -1732,7 +1755,7 @@
     const fr=new FileReader();
     fr.onload=()=>{
       const buf=fr.result;
-      if(/\.xlsx?$/.test(nome)){ lerPlanilhaOuExtrato(buf,origem); return; }
+      if(/\.xls[xm]?$/.test(nome)){ lerPlanilhaOuExtrato(buf,origem,arq.name); return; }
       let texto;
       try{ texto=new TextDecoder("utf-8",{fatal:true}).decode(buf); }
       catch(e){ texto=new TextDecoder("iso-8859-1").decode(buf); }
@@ -1744,10 +1767,16 @@
     fr.readAsArrayBuffer(arq);
   }
 
-  function lerPlanilhaOuExtrato(buf,origem){
+  function lerPlanilhaOuExtrato(buf,origem,nomeArq){
     let wb;
     try{ wb = XLSX.read(buf,{type:"array"}); }
     catch(e){ avisar("Não consegui abrir a planilha.",true); return; }
+    // investimentos: movimentação ou posição da B3, ou a planilha de controle de investimentos
+    const l0 = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
+    if(ehMovB3(l0)){ importarMovB3(l0); return; }
+    if(ehPlanilhaInvest(wb)){ importarPlanilhaInvest(wb); return; }
+    if(ehPosicaoB3(wb)){ importarPosicaoB3(wb,nomeArq); return; }
+    if(origem==="b3"){ avisar("Esse arquivo não parece ser da B3. Use Extrato › Movimentação ou Extrato › Posição, em Excel.",true); return; }
     const aba = wb.SheetNames.find(n=>/^\s*LAN[ÇC]AMENTOS\s*$/i.test(n));
     if(aba && (origem==="planilha" || wb.SheetNames.some(n=>/M[ÊE]S CORRENTE/i.test(n)))){ importarPlanilhaOrcamento(wb,aba); return; }
     if(origem==="planilha"){ avisar("Não encontrei a aba LANÇAMENTOS nessa planilha.",true); return; }
@@ -2650,6 +2679,7 @@
         dados.conferencia=Object.assign(dados.conferencia||{},d.conferencia||{});
         dados.saldosDia=dados.saldosDia||{};
         Object.entries(d.saldosDia||{}).forEach(([o,m])=>{ dados.saldosDia[o]=Object.assign(dados.saldosDia[o]||{},m); });
+        if(d.invest && !dados.invest) dados.invest=d.invest;
         if(Array.isArray(d.regras)&&d.regras.length) dados.regras=d.regras;
         dados.lancamentos.sort((a,b)=>a.data<b.data?-1:1);
         salvar(); render();
@@ -3322,14 +3352,420 @@
   });
 
   /* ================= desenho da tela ================= */
+  /* ================= investimentos ================= */
+  // dados.invest = { movs:[movimentação B3], posicoes:{ "2026-09":{data,itens:[{ativo,nome,classe,inst,qt,preco,valor}]} },
+  //                  historico:[{mes,valor,rentab,fonte}], precos:{ativo:{preco,data}}, manuais:[{nome,grupo,valor,data}] }
+  const CAPITAL_APTO = {data:"2026-02-09", valor:533949.56, nome:"Venda do apartamento"};
+  const CLASSES_INV = ["Ações","FIIs","ETF exterior","Cripto","Tesouro Direto","Renda fixa","Outros"];
+  const GRUPOS_MANUAIS = {previdencia:"Previdência",imovel:"Imóvel",veiculo:"Veículo",receber:"A receber",divida:"Dívida",outro:"Outro"};
+  function invOk(){
+    const v = dados.invest = dados.invest || {};
+    v.movs=v.movs||[]; v.posicoes=v.posicoes||{}; v.historico=v.historico||[]; v.precos=v.precos||{}; v.manuais=v.manuais||[];
+    return v;
+  }
+  const normTxt = s => String(s==null?"":s).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+  // CDB/LCI/LCA/CRI/CRA/Debênture: o código do título; Tesouro: o nome; ações/FIIs/ETFs: o ticker
+  function chaveAtivo(prod){
+    const p = celTexto(prod), partes = p.split(" - ").map(x=>x.trim());
+    if(/^Tesouro/i.test(p)) return p.replace(/\s+/g," ");
+    if(/^(CDB|LCI|LCA|LC|CRI|CRA|DEB|LF|LIG|RDB)\b/i.test(partes[0]) && partes[1]) return partes[1].toUpperCase();
+    return partes[0].toUpperCase();
+  }
+  function classeAtivo(prod, chave){
+    const p = normTxt(prod), k = (chave||"").toUpperCase();
+    if(/^TESOURO/.test(p)) return "Tesouro Direto";
+    if(/^(CDB|LCI|LCA|LC|CRI|CRA|DEB|LF|LIG|RDB)\b/.test(p)) return "Renda fixa";
+    if(/CRYPTO|CRIPTO|BITCOIN|ETHEREUM/.test(p)) return "Cripto";
+    if(/S&P|NASDAQ|MSCI|WORLD|EUA|USA|GLOBAL|EUROPA|CHINA/.test(p) && /INDICE|ETF|ISHARE/.test(p)) return "ETF exterior";
+    if(/FDO INV IMOB|FII|IMOBILI|FUNDO DE INVESTIMENTO IMOBILI|FDO INVEST\. IMOB|REAL ESTATE|RECEBIVEIS IMOB/.test(p)) return "FIIs";
+    if(/INDICE|ETF/.test(p)) return "ETF exterior";
+    if(/^[A-Z]{4}\d{1,2}$/.test(k)) return "Ações";
+    return "Outros";
+  }
+  function grupoInst(inst){
+    const t = normTxt(inst);
+    if(/ITAU CV|ITAU CORRETORA/.test(t)) return "itaucor";
+    if(/ITAU UNIBANCO/.test(t)) return "itaucdb";
+    if(/BANCO DO BRASIL|\bBB\b/.test(t)) return "bb";
+    if(/BTG|XP INVEST/.test(t)) return "btgxp";
+    return "outros";
+  }
+  const NOMES_GRUPO_INV = {itaucor:"Itaú Corretora (ações, FIIs, Tesouro)", itaucdb:"Itaú — CDB e Cofrinhos", bb:"BB — Rende Fácil e aplicações", btgxp:"BTG e XP", outros:"Outras instituições"};
+  // o que cada linha da movimentação significa para a carteira
+  function tipoMov(mov, es){
+    const m = normTxt(mov), cred = /^CRED/.test(normTxt(es));
+    if(/TRANSFERIDO/.test(m)) return "ignorar";                       // provento que só trocou de custódia
+    if(/RENDIMENTO|DIVIDENDO|JUROS/.test(m)) return "provento";
+    if(/RESGATE|VENCIMENTO|AMORTIZA/.test(m)) return "venda";
+    if(m==="VENDA") return "venda";
+    if(m==="COMPRA" || /^APLICA/.test(m)) return "compra";
+    if(/LIQUIDACAO|COMPRA \/ VENDA|COMPRA\/VENDA/.test(m)) return cred ? "compra" : "venda";
+    if(/BONIFICA/.test(m)) return cred ? "bonus" : "ignorar";
+    if(/DESDOBRO|GRUPAMENTO|FRACAO/.test(m)) return "ignorar";        // ajuste de quantidade sem dinheiro (não aparece no período)
+    return "ignorar";                                                  // transferências de custódia, atualização, direitos de subscrição
+  }
+  function tipoProvento(mov){
+    const m = normTxt(mov);
+    if(/CAPITAL PROPRIO/.test(m)) return "JCP";
+    if(/DIVIDENDO/.test(m)) return "Dividendo";
+    if(/RENDIMENTO/.test(m)) return "Rendimento";
+    return "Juros";
+  }
+
+  /* ---- importar: movimentação da B3 (Área do Investidor › Extrato › Movimentação › Excel) ---- */
+  function ehMovB3(linhas){
+    return linhas.slice(0,5).some(r=>r.some(c=>/entrada\s*\/\s*sa[íi]da/i.test(celTexto(c))) && r.some(c=>/movimenta/i.test(celTexto(c))));
+  }
+  function importarMovB3(linhas){
+    const iCab = linhas.findIndex(r=>r.some(c=>/entrada\s*\/\s*sa[íi]da/i.test(celTexto(c))));
+    const cab = linhas[iCab].map(c=>normTxt(celTexto(c)));
+    const col = re => cab.findIndex(c=>re.test(c));
+    const iES=col(/ENTRADA/), iD=col(/^DATA/), iM=col(/MOVIMENTA/), iP=col(/PRODUTO/), iI=col(/INSTITUI/), iQ=col(/QUANTIDADE/), iPU=col(/PRECO/), iV=col(/VALOR/);
+    const num = v => { if(typeof v==="number") return v; const t=celTexto(v); if(!t||t==="-") return null; const n=numero(t); return isNaN(n)?null:n; };
+    const v = invOk();
+    const base = m => [m.data,normTxt(m.mov),normTxt(m.prod),normTxt(m.inst),m.qt,m.valor,m.es].join("|");
+    const jaTem = {}; v.movs.forEach(m=>{ const k=base(m); jaTem[k]=(jaTem[k]||0)+1; });
+    const noArq = {}; let novos=0, repetidos=0, prov=0; const meses=new Set();
+    for(let i=iCab+1;i<linhas.length;i++){
+      const r=linhas[i]; const data=celData(r[iD]); if(!data) continue;
+      const m = {data:data, es:celTexto(r[iES]), mov:celTexto(r[iM]), prod:celTexto(r[iP]), inst:celTexto(r[iI]),
+                 qt:num(r[iQ]), pu:num(r[iPU]), valor:num(r[iV])};
+      if(!m.mov||!m.prod) continue;
+      const k=base(m); noArq[k]=(noArq[k]||0)+1;
+      if(noArq[k] <= (jaTem[k]||0)){ repetidos++; continue; }
+      m.id = k+"#"+noArq[k];
+      m.ativo = chaveAtivo(m.prod); m.classe = classeAtivo(m.prod, m.ativo); m.tipo = tipoMov(m.mov, m.es);
+      if(m.tipo==="provento"){ m.provTipo = tipoProvento(m.mov); prov++; }
+      v.movs.push(m); novos++; meses.add(data.slice(0,7));
+    }
+    v.movs.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+    v.ultMov = new Date().toISOString().slice(0,10);
+    salvar(); ui.conta="invest"; render();
+    avisar("B3: "+novos+" movimentaç"+(novos===1?"ão importada":"ões importadas")+(prov?" · "+prov+" proventos":"")+(repetidos?" · "+repetidos+" já estava"+(repetidos===1?"":"m")+" aqui":""));
+  }
+
+  /* ---- importar: posição da B3 (Extrato › Posição › Excel): valor atualizado de cada ativo ---- */
+  function ehPosicaoB3(wb){
+    return wb.SheetNames.some(n=>{ const l=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:""}).slice(0,6);
+      return l.some(r=>r.some(c=>/^produto$/i.test(celTexto(c)))) && l.some(r=>r.some(c=>/valor atualizado|valor l[íi]quido|valor bruto/i.test(celTexto(c)))); });
+  }
+  function importarPosicaoB3(wb, nomeArq){
+    const itens=[];
+    wb.SheetNames.forEach(nome=>{
+      const L=XLSX.utils.sheet_to_json(wb.Sheets[nome],{header:1,defval:""});
+      const iCab=L.findIndex(r=>r.some(c=>/^produto$/i.test(celTexto(c)))); if(iCab<0) return;
+      const cab=L[iCab].map(c=>normTxt(celTexto(c)));
+      const col=(...res)=>{ for(const re of res){ const i=cab.findIndex(c=>re.test(c)); if(i>=0) return i; } return -1; };
+      const iP=col(/^PRODUTO$/), iCod=col(/CODIGO DE NEGOCIACAO/,/^CODIGO$/), iI=col(/^INSTITUICAO/), iQ=col(/^QUANTIDADE$/),
+            iPr=col(/PRECO DE FECHAMENTO/,/PRECO ATUALIZADO/), iV=col(/^VALOR ATUALIZADO$/,/VALOR ATUALIZADO MTM/,/VALOR ATUALIZADO/,/VALOR LIQUIDO/,/VALOR BRUTO/),
+            iApl=col(/VALOR APLICADO/);
+      if(iV<0) return;
+      for(let i=iCab+1;i<L.length;i++){
+        const r=L[i], prod=celTexto(r[iP]); if(!prod || /^total/i.test(prod)) continue;
+        const valor=typeof r[iV]==="number"?r[iV]:numero(celTexto(r[iV])); if(isNaN(valor)||valor==null) continue;
+        const cod=iCod>=0?celTexto(r[iCod]):"";
+        let ativo = /^Tesouro/i.test(prod) ? prod.replace(/\s+/g," ") : (cod || chaveAtivo(prod)).toUpperCase();
+        if(/^Tesouro/i.test(prod)) ativo = prod.replace(/\s+/g," ");
+        const q = iQ>=0 ? (typeof r[iQ]==="number"?r[iQ]:numero(celTexto(r[iQ]))) : null;
+        const pr = iPr>=0 ? (typeof r[iPr]==="number"?r[iPr]:numero(celTexto(r[iPr]))) : null;
+        const ap = iApl>=0 ? (typeof r[iApl]==="number"?r[iApl]:numero(celTexto(r[iApl]))) : null;
+        let classe = /tesouro/i.test(nome)?"Tesouro Direto":/renda fixa/i.test(nome)?"Renda fixa":/imobili/i.test(nome)?"FIIs":/a[çc][õo]es|acoes/i.test(nome)?"Ações":classeAtivo(prod, ativo);
+        if(/ETF/i.test(nome)) classe = classeAtivo(prod, ativo)==="Cripto" ? "Cripto" : "ETF exterior";
+        itens.push({ativo:ativo, nome:prod, classe:classe, inst:iI>=0?celTexto(r[iI]):"", qt:isNaN(q)?null:q, preco:isNaN(pr)?null:pr, valor:cent(valor), aplicado:ap&&!isNaN(ap)?ap:null});
+      }
+    });
+    if(!itens.length){ avisar("Não encontrei os ativos nesse relatório de posição da B3.",true); return; }
+    // relatório baixado no começo do mês = fechamento do mês anterior
+    const hoje=new Date(); const d=new Date(hoje); if(d.getDate()<=10) d.setDate(0);
+    const mes=d.toISOString().slice(0,7);
+    const mData=String(nomeArq||"").match(/(\d{4})-(\d{2})-(\d{2})/);
+    const v=invOk();
+    v.posicoes[mes]={data:mData?mData[1]+"-"+mData[2]+"-"+mData[3]:hoje.toISOString().slice(0,10), itens:itens};
+    salvar(); ui.conta="invest"; render();
+    avisar("Posição da B3 de "+rotuloMes(mes)+": "+itens.length+" ativos · R$ "+brl(itens.reduce((s,x)=>s+x.valor,0)));
+  }
+
+  /* ---- importar: planilha "Planejamento e controle de investimento" (histórico, cotações, previdência e patrimônio) ---- */
+  function ehPlanilhaInvest(wb){ return wb.SheetNames.includes("META") && wb.SheetNames.includes("Consolidado"); }
+  function importarPlanilhaInvest(wb){
+    const v=invOk(), cel=(aba,ref)=>{ const c=wb.Sheets[aba]&&wb.Sheets[aba][ref]; return c?c.v:null; };
+    // histórico mensal (aba META, colunas A = mês, L = valor real, N = % carteira no mês)
+    const hist=[];
+    for(let r=3;r<200;r++){
+      const a=cel("META","A"+r); if(a==null) break;
+      const mes=celData(a); if(!mes) continue;
+      const val=cel("META","L"+r), rt=cel("META","N"+r);
+      if(typeof val!=="number"||val<=0) continue;
+      if(mes.slice(0,7)>new Date().toISOString().slice(0,7)) break;
+      hist.push({mes:mes.slice(0,7), valor:cent(val), rentab:typeof rt==="number"?rt:null, fonte:"planilha"});
+    }
+    // o último mês da planilha só vale se mudou em relação ao anterior (a planilha repete o valor nos meses futuros)
+    const h2=hist.filter((x,i)=>i===0||x.valor!==hist[i-1].valor||x.mes<=new Date(Date.now()-20*864e5).toISOString().slice(0,7));
+    v.historico=h2;
+    // cotações de fechamento (aba Consolidado, A = código, I = fechamento)
+    const dataBase=celData(cel("Consolidado","B1"))||new Date().toISOString().slice(0,10);
+    for(let r=16;r<120;r++){
+      const k=celTexto(cel("Consolidado","A"+r)), p=cel("Consolidado","I"+r);
+      if(!k){ continue; } if(typeof p==="number"&&p>0) v.precos[k.toUpperCase()]={preco:p,data:dataBase,fonte:"planilha"};
+    }
+    // previdência (aba Fundos de invest.) e patrimônio (aba Consolidado, colunas N:O)
+    const manuais=[];
+    for(let r=2;r<20;r++){
+      const n=celTexto(cel("Fundos de invest.","A"+r)), s=cel("Fundos de invest.","F"+r);
+      if(!n||/^total/i.test(n)) continue;
+      if(typeof s==="number") manuais.push({nome:n, grupo:"previdencia", valor:cent(s), investido:cent(+cel("Fundos de invest.","D"+r)||0), data:dataBase});
+    }
+    const pular=/^(leil[ãa]o|renda fixa|renda vari[áa]vel|d[íi]vidas|l[íi]quido|proventos|valor proventos)$/i;
+    for(let r=3;r<40;r++){
+      const n=celTexto(cel("Consolidado","N"+r)), s=cel("Consolidado","O"+r);
+      if(/^l[íi]quido$/i.test(n)) break;          // abaixo do LÍQUIDO vêm os blocos por corretora, que já estão na B3
+      if(!n||typeof s!=="number"||pular.test(n)||!s) continue;
+      const g=s<0?"divida":/casa|lote|apart|terreno|sala|im[óo]vel|cota/i.test(n)?"imovel":/kwid|carro|moto|mobi|ve[íi]culo/i.test(n)?"veiculo":"receber";
+      manuais.push({nome:n, grupo:g, valor:cent(Math.abs(s)), data:dataBase});
+    }
+    const ja=new Set(v.manuais.map(x=>normTxt(x.nome)));
+    manuais.forEach(x=>{ if(!ja.has(normTxt(x.nome))) v.manuais.push(x); });
+    salvar(); ui.conta="invest"; render();
+    avisar("Planilha de investimentos: "+h2.length+" meses de histórico · "+Object.keys(v.precos).length+" cotações · "+manuais.length+" itens de previdência e patrimônio");
+  }
+
+  /* ---- cálculo da carteira a partir da movimentação ---- */
+  function carteiraB3(ate){
+    const v=invOk(), pos={};
+    const ordem={compra:0,bonus:1,provento:2,venda:3,ignorar:4};
+    const movs=v.movs.filter(m=>!ate||m.data<=ate).slice().sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:(ordem[a.tipo]-ordem[b.tipo]));
+    movs.forEach(m=>{
+      const p = pos[m.ativo] = pos[m.ativo] || {ativo:m.ativo, nome:m.prod.split(" - ").slice(1).join(" - ")||m.prod, classe:m.classe, inst:"", qt:0, custo:0, realizado:0, proventos:0, aplicado:0};
+      const q=+m.qt||0, val=+m.valor||0;
+      if(m.tipo==="compra"){ p.qt+=q; p.custo+=val; p.aplicado+=val; p.inst=m.inst; }
+      else if(m.tipo==="bonus"){ p.qt+=q; }
+      else if(m.tipo==="venda"){
+        // o que sai além da quantidade conhecida foi aplicado antes do começo do extrato (sem custo): não é lucro
+        const cm=p.qt>0?p.custo/p.qt:0, sai=Math.min(q,p.qt), baixa=cm*sai, valSai=q>0?val*sai/q:0;
+        p.custo-=baixa; p.qt-=sai; p.realizado+=valSai-baixa; p.semCusto=(p.semCusto||0)+(val-valSai);
+        if(p.qt<1e-6){ p.qt=0; p.custo=0; }
+      }
+      else if(m.tipo==="provento"){ p.proventos+=val; }
+      if(/TRANSFER/.test(normTxt(m.mov)) && /^CRED/.test(normTxt(m.es))) p.inst=m.inst;
+    });
+    return pos;
+  }
+  function ultimaPosicao(ate){
+    const v=invOk(), ms=Object.keys(v.posicoes).filter(m=>!ate||m<=ate).sort();
+    return ms.length?{mes:ms[ms.length-1],...v.posicoes[ms[ms.length-1]]}:null;
+  }
+  // valor de mercado de cada ativo: posição da B3; sem ela, cotação da planilha; sem nada, o custo
+  function carteiraAtual(){
+    const pos=carteiraB3(), up=ultimaPosicao(), v=invOk();
+    const porAtivo={}; if(up) up.itens.forEach(x=>{ porAtivo[x.ativo]=(porAtivo[x.ativo]||0)+x.valor; });
+    const linhas=Object.values(pos).filter(p=>p.qt>1e-6||porAtivo[p.ativo]).map(p=>{
+      let valor=null, fonte="custo";
+      if(porAtivo[p.ativo]!=null){ valor=porAtivo[p.ativo]; fonte="B3 "+diaMes(up.data); }
+      else if(v.precos[p.ativo]&&p.qt){ valor=cent(p.qt*v.precos[p.ativo].preco); fonte="cotação "+diaMes(v.precos[p.ativo].data); }
+      else valor=cent(p.custo);
+      return {...p, custo:cent(p.custo), valor:valor, fonte:fonte};
+    });
+    // ativo que está na posição da B3 mas não na movimentação (comprado antes do período do extrato)
+    if(up) up.itens.forEach(x=>{ if(!pos[x.ativo]) linhas.push({ativo:x.ativo,nome:x.nome,classe:x.classe,inst:x.inst,qt:x.qt||0,custo:x.aplicado||x.valor,valor:x.valor,realizado:0,proventos:0,fonte:"B3 "+diaMes(up.data),semMov:true}); });
+    return linhas;
+  }
+  const mesDe = iso => iso.slice(0,7);
+  function fluxosB3PorMes(){
+    const r={};
+    invOk().movs.forEach(m=>{
+      const k=mesDe(m.data), o=r[k]=r[k]||{aplic:0,resg:0,prov:0};
+      const val=+m.valor||0;
+      if(m.tipo==="compra") o.aplic+=val; else if(m.tipo==="venda") o.resg+=val; else if(m.tipo==="provento") o.prov+=val;
+    });
+    return r;
+  }
+  // evolução: histórico da planilha + posições da B3; rentabilidade do mês pelo método de Dietz
+  // r = (valor no fim − valor no início − aportes líquidos + proventos) ÷ (valor no início + aportes líquidos ÷ 2)
+  function evolucaoInv(){
+    const v=invOk(), fl=fluxosB3PorMes(), linhas={};
+    // da planilha vem só o patrimônio: a rentabilidade dela não descontava resgates e aportes, então não é usada
+    v.historico.forEach(h=>{ linhas[h.mes]={mes:h.mes, valor:h.valor, rentab:null, fonte:"planilha"}; });
+    Object.keys(v.posicoes).forEach(m=>{ const p=v.posicoes[m]; linhas[m]={mes:m, valor:cent(p.itens.reduce((s,x)=>s+x.valor,0)), rentab:null, fonte:"B3"}; });
+    const ms=Object.keys(linhas).sort();
+    ms.forEach((m,i)=>{
+      const l=linhas[m], f=fl[m]||{aplic:0,resg:0,prov:0};
+      l.aporte=cent(f.aplic-f.resg); l.prov=cent(f.prov);
+      if(l.fonte==="B3" && i>0){
+        const ant=linhas[ms[i-1]];
+        if(ant.fonte==="B3"){ const den=ant.valor+l.aporte/2; l.rentab=den>0?(l.valor-ant.valor-l.aporte+l.prov)/den:null; }
+      }
+    });
+    return ms.map(m=>linhas[m]);
+  }
+
+  /* ---- conciliação: conta corrente × investimentos ---- */
+  function grupoContaInv(l){
+    const h=normTxt(l.hist);
+    if(l.origem==="itau"){
+      if(/COR ITAUCOR|COR OPERACOES|ITAUCOR|ITAU CORRETORA/.test(h)) return "itaucor";
+      if(/CDB|COFRINHO|APLICACAO|APLIC AUT|REND PAGO APLIC|RESGATE/.test(h)) return "itaucdb";
+    }
+    if(l.origem==="bb" && /RENDE FACIL|CDB|APLICACAO|RESGATE|LCI|LCA|TESOURO|POUPANCA/.test(h)) return "bb";
+    if((l.origem==="itau"||l.origem==="bb") && /\bXP\b|BTG|TED 102\b|TED 208\b/.test(h)) return "btgxp";
+    return null;
+  }
+  function conciliacaoInv(){
+    const r={};   // r[mes][grupo] = {saiu,voltou,aplic,resg,prov,n}
+    const ac=(m,g)=>{ r[m]=r[m]||{}; return r[m][g]=r[m][g]||{saiu:0,voltou:0,aplic:0,resg:0,prov:0,lanc:[]}; };
+    dados.lancamentos.forEach(l=>{
+      if(l.ignorado) return; const g=grupoContaInv(l); if(!g) return;
+      const o=ac(mesDe(l.data),g); if(l.valor<0) o.saiu-=l.valor; else o.voltou+=l.valor; o.lanc.push(l);
+    });
+    invOk().movs.forEach(m=>{
+      const val=+m.valor||0; if(!val) return;
+      if(!["compra","venda","provento"].includes(m.tipo)) return;
+      const o=ac(mesDe(m.data),grupoInst(m.inst));
+      if(m.tipo==="compra") o.aplic+=val; else if(m.tipo==="venda") o.resg+=val; else o.prov+=val;
+    });
+    return r;
+  }
+  // meses em que a conta já foi conferida com o extrato do banco (a conciliação só é confiável neles)
+  const contaConferida = (origem,mes) => dados.lancamentos.some(l=>l.origem===origem&&l.confExtrato&&l.data.slice(0,7)===mes);
+
+  /* ---- tela ---- */
+  function renderInvest(){
+    const corpo=$("#corpo"), v=invOk();
+    $("#abas").innerHTML='<div class="periodo"><span class="sub" style="margin:0">Todo começo de mês importe da B3 (Área do Investidor › Extrato) a <b>Movimentação</b> e a <b>Posição</b> em Excel: '+
+      'a movimentação traz compras, vendas e proventos; a posição traz o valor de mercado.</span></div>'+
+      '<button class="bt" data-ivimp="1" style="font-size:12px;padding:6px 12px">Importar da B3</button>';
+    if(!v.movs.length && !v.historico.length && !Object.keys(v.posicoes).length){
+      corpo.innerHTML='<div class="vazio"><p class="num">Nenhum investimento ainda</p><p>Clique em <b>Importar da B3</b> e escolha o arquivo de <b>Movimentação</b> da B3 (Excel). '+
+        'Depois traga também o de <b>Posição</b>, para o app saber quanto vale a carteira hoje.</p></div>';
+      corpo.onclick=e=>{ if(e.target.closest("[data-ivimp]")) abrirImport("b3"); };
+      $("#abas").onclick=corpo.onclick; return;
+    }
+    const cart=carteiraAtual(), up=ultimaPosicao(), evo=evolucaoInv(), fl=fluxosB3PorMes();
+    const S=(a,f)=>cent(a.reduce((s,x)=>s+(+f(x)||0),0));
+    const valorB3=S(cart,x=>x.valor), custoB3=S(cart,x=>x.custo);
+    const tudo=Object.values(carteiraB3());
+    const realizado=S(tudo,x=>x.realizado), proventosTot=S(tudo,x=>x.proventos), semCusto=S(tudo,x=>x.semCusto);
+    const ganho=cent(valorB3-custoB3+realizado+proventosTot);
+    const aplicadoTot=S(tudo,x=>x.aplicado);
+    const manuais=v.manuais;
+    const prev=S(manuais.filter(x=>x.grupo==="previdencia"),x=>x.valor);
+    const bens=S(manuais.filter(x=>["imovel","veiculo","receber","outro"].includes(x.grupo)),x=>x.valor);
+    const dividas=S(manuais.filter(x=>x.grupo==="divida"),x=>x.valor);
+    // proventos por mês
+    const provMes={}; v.movs.filter(m=>m.tipo==="provento").forEach(m=>{ const k=mesDe(m.data); provMes[k]=(provMes[k]||0)+(+m.valor||0); });
+    const msProv=Object.keys(provMes).sort(), ultMesProv=msProv[msProv.length-1];
+    const ult12=msProv.slice(-12), prov12=cent(ult12.reduce((s,k)=>s+provMes[k],0));
+    const pct=x=>x==null||!isFinite(x)?"—":(x*100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+    const corV=x=>x<-0.004?"#C0392B":x>0.004?"#1E8A5F":"inherit";
+    const rentAno=evo.filter(e=>e.rentab!=null&&e.mes.slice(0,4)===mesAtual().slice(0,4)).reduce((a,e)=>a*(1+e.rentab),1)-1;
+
+    // caixa estimado na Itaú Corretora (dinheiro parado + taxas e IR que a B3 não mostra)
+    const conc=conciliacaoInv(), msConc=Object.keys(conc).sort();
+    let caixaCor=0; const caixaMes={};
+    msConc.forEach(m=>{ const o=conc[m].itaucor; if(o) caixaCor+=o.saiu-o.voltou-o.aplic+o.resg+o.prov; caixaMes[m]=cent(caixaCor); });
+
+    const resumo='<div class="dash-geral iv-geral">'+
+      '<div><span class="rot">Carteira na B3</span><div class="v">R$ '+brl(valorB3)+'</div><span class="kpi-sub">'+(up?"valor de mercado em "+diaMes(up.data)+"/"+up.data.slice(2,4):"sem posição da B3: cotações da planilha ou custo")+'</span></div>'+
+      '<div><span class="rot">Ganho desde o início</span><div class="v" style="color:'+corV(ganho)+'">R$ '+brl(ganho)+'</div><span class="kpi-sub">valorização '+brl(cent(valorB3-custoB3))+' · vendas '+brl(realizado)+' · proventos '+brl(proventosTot)+'</span></div>'+
+      '<div><span class="rot">Proventos 12 meses</span><div class="v">R$ '+brl(prov12)+'</div><span class="kpi-sub">'+(ultMesProv?rotuloMes(ultMesProv)+": R$ "+brl(cent(provMes[ultMesProv]))+" · média R$ "+brl(cent(prov12/Math.max(1,ult12.length)))+"/mês":"")+'</span></div>'+
+      '<div class="g-hist">Capital de partida: <b>R$ '+brl(CAPITAL_APTO.valor)+'</b> da venda do apartamento ('+diaMes(CAPITAL_APTO.data)+'/'+CAPITAL_APTO.data.slice(2,4)+'). '+
+        'Aplicado na B3 desde então: R$ '+brl(aplicadoTot)+' (inclui reaplicações). Rentabilidade no ano: <b style="color:'+corV(rentAno)+'">'+(evo.some(e=>e.rentab!=null)?pct(rentAno):"a partir da 2ª Posição importada")+'</b>.'+
+        ' Patrimônio total: investimentos R$ '+brl(valorB3)+' + previdência R$ '+brl(prev)+' + bens e valores a receber R$ '+brl(bens)+' − dívidas R$ '+brl(dividas)+' = <b>R$ '+brl(cent(valorB3+prev+bens-dividas))+'</b>.</div>'+
+      '</div>';
+
+    // carteira por classe
+    const porClasse={}; cart.forEach(x=>{ (porClasse[x.classe]=porClasse[x.classe]||[]).push(x); });
+    const classes=CLASSES_INV.filter(c=>porClasse[c]);
+    const linhaAtivo=x=>{ const res=cent(x.valor-x.custo), pr=x.custo?res/x.custo:null;
+      return '<tr><td><b>'+esc(x.ativo)+'</b><span class="kpi-sub">'+esc((x.nome||"").slice(0,48))+'</span></td>'+
+        '<td>'+(x.qt?x.qt.toLocaleString("pt-BR",{maximumFractionDigits:2}):"—")+'</td>'+
+        '<td>'+(x.qt&&x.custo&&x.classe!=="Renda fixa"?brl(cent(x.custo/x.qt)):"—")+'</td>'+
+        '<td>'+brl(x.custo)+'</td><td>'+brl(x.valor)+'<span class="kpi-sub">'+esc(x.fonte)+'</span></td>'+
+        '<td style="color:'+corV(res)+'">'+brl(res)+'<span class="kpi-sub">'+pct(pr)+'</span></td>'+
+        '<td>'+(x.proventos?brl(cent(x.proventos)):"—")+'</td>'+
+        '<td>'+(valorB3?pct(x.valor/valorB3):"—")+'</td></tr>'; };
+    const carteiraHTML='<div class="tit-secao" style="margin-top:38px"><h3>Carteira</h3></div>'+
+      '<div class="rolagem"><table class="dash-mes iv-tab"><thead><tr><th>Ativo</th><th>Qtde.</th><th>Preço médio</th><th>Custo</th><th>Valor atual</th><th>Resultado</th><th>Proventos</th><th>% carteira</th></tr></thead><tbody>'+
+      classes.map(c=>{ const it=porClasse[c].sort((a,b)=>b.valor-a.valor), vc=S(it,x=>x.valor), cc=S(it,x=>x.custo);
+        return '<tr class="iv-cl"><td>'+c+'</td><td></td><td></td><td>'+brl(cc)+'</td><td>'+brl(vc)+'</td><td style="color:'+corV(vc-cc)+'">'+brl(cent(vc-cc))+'</td><td></td><td>'+(valorB3?pct(vc/valorB3):"")+'</td></tr>'+it.map(linhaAtivo).join(""); }).join("")+
+      '<tr class="iv-tot"><td>Total</td><td></td><td></td><td>'+brl(custoB3)+'</td><td>'+brl(valorB3)+'</td><td style="color:'+corV(valorB3-custoB3)+'">'+brl(cent(valorB3-custoB3))+'</td><td>'+brl(proventosTot)+'</td><td>100%</td></tr>'+
+      '</tbody></table></div>'+
+      (up?'':'<p class="sub">Sem a <b>Posição</b> da B3, o valor atual usa as cotações da sua planilha ('+(Object.values(v.precos)[0]?diaMes(Object.values(v.precos)[0].data):"—")+') e, para CDB e Tesouro, o valor aplicado.</p>')+
+      (realizado?'<p class="sub">Vendas e resgates já feitos renderam R$ '+brl(realizado)+' sobre o custo (antes de IR).'+
+        (semCusto?' Outros R$ '+brl(semCusto)+' foram resgates de aplicações feitas antes do começo do extrato da B3 (sem custo conhecido), e não entram no ganho.':'')+'</p>':'');
+
+    // evolução mensal
+    const evoHTML='<div class="tit-secao" style="margin-top:38px"><h3>Evolução mês a mês</h3></div>'+
+      '<div class="rolagem"><table class="dash-mes"><thead><tr><th>Mês</th><th>Patrimônio investido</th><th>Aportes líquidos na B3</th><th>Proventos</th><th>Rentabilidade</th><th>Fonte</th></tr></thead><tbody>'+
+      evo.slice().reverse().map(e=>'<tr><td>'+rotuloMes(e.mes)+'</td><td>'+brl(e.valor)+'</td><td>'+brl(e.aporte)+'</td><td>'+(e.prov?brl(e.prov):"—")+'</td>'+
+        '<td style="color:'+corV(e.rentab||0)+'">'+pct(e.rentab)+'</td><td class="sub">'+(e.fonte==="planilha"?"sua planilha":"posição B3")+'</td></tr>').join("")+
+      '</tbody></table></div><p class="sub">Daqui em diante, cada Posição importada fecha o mês e a rentabilidade é calculada descontando os aportes e resgates do mês (método de Dietz). Nos meses da planilha aparece só o patrimônio: a rentabilidade dela não descontava os resgates (em vários meses saiu dinheiro da carteira) e por isso não foi trazida. O ganho real desde o início está no quadro de cima.</p>';
+
+    // proventos
+    const provAtivo={}; v.movs.filter(m=>m.tipo==="provento").forEach(m=>{ const o=provAtivo[m.ativo]=provAtivo[m.ativo]||{t:0,tipos:new Set()}; o.t+=+m.valor||0; o.tipos.add(m.provTipo); });
+    const maxP=Math.max(1,...msProv.map(k=>provMes[k]));
+    const provHTML='<div class="tit-secao" style="margin-top:38px"><h3>Proventos</h3></div><div class="iv-duo">'+
+      '<table class="dash-mes"><thead><tr><th>Mês</th><th>Recebido</th><th></th></tr></thead><tbody>'+
+      msProv.slice().reverse().map(k=>'<tr><td>'+rotuloMes(k)+'</td><td>'+brl(cent(provMes[k]))+'</td><td style="width:40%"><div class="mt-barra" style="margin:0"><i style="width:'+Math.round(provMes[k]/maxP*100)+'%"></i></div></td></tr>').join("")+
+      '</tbody></table>'+
+      '<table class="dash-mes"><thead><tr><th>Ativo</th><th>Total</th><th>Tipo</th></tr></thead><tbody>'+
+      Object.entries(provAtivo).sort((a,b)=>b[1].t-a[1].t).map(([k,o])=>'<tr><td>'+esc(k)+'</td><td>'+brl(cent(o.t))+'</td><td class="sub">'+[...o.tipos].join(", ")+'</td></tr>').join("")+
+      '</tbody></table></div>';
+
+    // conciliação
+    const gs=["itaucor","itaucdb","bb","btgxp","outros"];
+    const concHTML='<div class="tit-secao" style="margin-top:38px" id="iv-conc"><h3>Conciliação: conta corrente × investimentos</h3></div>'+
+      '<p class="sub" style="margin-top:-6px">Para cada mês e instituição: o que saiu da conta para investir e o que voltou, ao lado do que a B3 registrou. '+
+      'Na Itaú Corretora a diferença é o dinheiro que ficou parado lá (mais taxas e IR, que a B3 não mostra). Nos CDBs e no Rende Fácil, a diferença entre resgate na conta e resgate na B3 é o rendimento.</p>'+
+      '<div class="rolagem"><table class="dash-mes iv-conc"><thead><tr><th>Mês / instituição</th><th>Saiu da conta</th><th>Voltou à conta</th><th>Aplicado na B3</th><th>Resgatado na B3</th><th>Proventos</th><th>Diferença</th></tr></thead><tbody>'+
+      msConc.slice().reverse().map(m=>{
+        const linhas=gs.filter(g=>conc[m][g]).map(g=>{ const o=conc[m][g];
+          const dif=cent((o.saiu-o.voltou)-(o.aplic-o.resg-o.prov));
+          const conf=g==="bb"?contaConferida("bb",m):contaConferida("itau",m);
+          const nota=g==="itaucor"?"caixa na corretora: R$ "+brl(caixaMes[m]):g==="btgxp"?"transferências para BTG/XP só aparecem se a descrição citar o banco":"";
+          return '<tr><td style="padding-left:18px">'+NOMES_GRUPO_INV[g]+(conf?'':' <span class="iv-alerta" title="Essa conta ainda não foi conferida com o extrato do banco neste mês">conta sem extrato</span>')+
+            (nota?'<span class="kpi-sub">'+nota+'</span>':'')+'</td>'+
+            '<td>'+(o.saiu?brl(cent(o.saiu)):"—")+'</td><td>'+(o.voltou?brl(cent(o.voltou)):"—")+'</td><td>'+(o.aplic?brl(cent(o.aplic)):"—")+'</td><td>'+(o.resg?brl(cent(o.resg)):"—")+'</td><td>'+(o.prov?brl(cent(o.prov)):"—")+'</td>'+
+            '<td style="color:'+(Math.abs(dif)<1?"#1E8A5F":"inherit")+'">'+(Math.abs(dif)<1?"✓":brl(dif))+'</td></tr>'; }).join("");
+        return '<tr class="iv-cl"><td colspan="7">'+rotuloMes(m)+'</td></tr>'+linhas; }).join("")+
+      '</tbody></table></div>';
+
+    // fora da B3
+    const at=(i,k)=>' data-ivm="'+i+'" data-k="'+k+'" data-foco="ivm:'+i+':'+k+'"';
+    const manHTML='<div class="tit-secao" style="margin-top:38px"><h3>Fora da B3: previdência, bens e dívidas</h3></div>'+
+      '<table class="pv-tab iv-man"><thead><tr><th>Item</th><th>Tipo</th><th>Valor</th><th>Atualizado em</th><th></th></tr></thead><tbody>'+
+      manuais.map((x,i)=>'<tr><td><input class="campo"'+at(i,"nome")+' value="'+esc(x.nome||"")+'"></td>'+
+        '<td><select class="campo"'+at(i,"grupo")+'>'+Object.entries(GRUPOS_MANUAIS).map(([k,n])=>'<option value="'+k+'"'+(k===x.grupo?" selected":"")+'>'+n+'</option>').join("")+'</select></td>'+
+        '<td class="valor"><input class="campo"'+at(i,"valor")+' value="'+brl(+x.valor||0)+'" inputmode="decimal"></td>'+
+        '<td><input type="date" class="campo"'+at(i,"data")+' value="'+esc(x.data||"")+'"></td>'+
+        '<td class="acao"><button class="apagar" data-ivmdel="'+i+'" title="Apagar">×</button></td></tr>').join("")+
+      '</tbody></table><button class="bt vazado" data-ivmnovo="1" style="font-size:12px;padding:6px 12px;margin-top:10px">+ Item</button>'+
+      '<p class="sub">Atualize os saldos da previdência pelo app do Itaú e os valores dos bens quando mudarem. Dívidas entram com valor positivo e são descontadas do patrimônio.</p>';
+
+    corpo.innerHTML=resumo+carteiraHTML+evoHTML+provHTML+concHTML+manHTML;
+    const clique=e=>{
+      if(e.target.closest("[data-ivimp]")){ abrirImport("b3"); return; }
+      const nv=e.target.closest("[data-ivmnovo]"); if(nv){ v.manuais.push({nome:"",grupo:"outro",valor:0,data:new Date().toISOString().slice(0,10)}); salvar(); render(); return; }
+      const dl=e.target.closest("[data-ivmdel]"); if(dl){ const i=+dl.dataset.ivmdel; modal('<h3 class="modal-tit">Apagar “'+esc(v.manuais[i].nome||"item")+'”?</h3><div class="modal-acoes"><button class="bt vazado" data-modal="cancelar">Cancelar</button><button class="bt" data-modal="ok">Apagar</button></div>').then(ok=>{ if(ok){ v.manuais.splice(i,1); salvar(); render(); } }); }
+    };
+    corpo.onclick=clique; $("#abas").onclick=clique;
+    corpo.onchange=e=>{
+      const el=e.target.closest("[data-ivm]"); if(!el) return;
+      const x=v.manuais[+el.dataset.ivm], k=el.dataset.k; if(!x) return;
+      x[k]= k==="valor" ? Math.abs(numero(String(el.value).replace("−","-"))||0) : el.value;
+      if(k==="valor") x.data=new Date().toISOString().slice(0,10);
+      salvar(); render();
+    };
+  }
+
   function render(){
-    const corpo=$("#corpo"); corpo.onclick=null; corpo.onkeydown=null; corpo.onchange=null;
+    const corpo=$("#corpo"); corpo.onclick=null; corpo.onkeydown=null; corpo.onchange=null; $("#abas").onclick=null;
     marcarConta();
     if(ui.conta==="dash"){ renderDashboard(); return; }
     if(ui.conta==="dividas"){ renderDividas(); return; }
     if(ui.conta==="prev"){ renderPrevisao(); return; }
     if(ui.conta==="fluxo"){ renderFluxo(); return; }
     if(ui.conta==="metas"){ renderMetas(); return; }
+    if(ui.conta==="invest"){ renderInvest(); return; }
     if(!ui.view) ui.view="mes";
 
     const meses=mesesComDados();
@@ -3935,6 +4371,7 @@
   $("#btImpItau").onclick=()=>abrirImport("itau");
   $("#btImpBB").onclick=()=>abrirImport("bb");
   $("#btImpCartao").onclick=()=>abrirImport("cartao");
+  $("#btImpB3").onclick=()=>abrirImport("b3");
   $("#btImpPlanilha").onclick=()=>abrirImport("planilha");
   $("#arqCsv").onchange=e=>{ if(e.target.files[0]) lerArquivo(e.target.files[0]); e.target.value=""; };
   $("#btBackup").onclick=exportarBackup;
@@ -3956,7 +4393,7 @@
       dados.saldos={};
       dados.regras=REGRAS_PADRAO.slice();
       dados.prolabore=0; dados.orcamento=null; dados.versao=3;
-      dados.orcamentoMes={}; dados.contas={}; dados.dividas=null; dados.previsoes={}; dados.fluxo=null; dados.metas=[]; dados.conferencia={}; dados.saldosDia={};
+      dados.orcamentoMes={}; dados.contas={}; dados.dividas=null; dados.previsoes={}; dados.fluxo=null; dados.metas=[]; dados.conferencia={}; dados.saldosDia={}; dados.invest=null;
       dados.faturaAberta=null; dados.faturaFechada=null;
       ui={mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,conta:ui.conta||"dash"};
       salvar(); render();
@@ -3997,6 +4434,7 @@
         dados.metas       = remoto.metas||[];
         dados.conferencia = remoto.conferencia||{};
         dados.saldosDia   = remoto.saldosDia||{};
+        dados.invest      = remoto.invest||null;
         dados.versao      = remoto.versao||0;
         migrar();
         if(dados._migrou){ delete dados._migrou; salvar(); }
