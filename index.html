@@ -2156,7 +2156,8 @@
           ? (x=>[itens.filter(i=>i.transform[4]<x), itens.filter(i=>i.transform[4]>=x)])(Math.min(...dir.map(i=>i.transform[4]))-4)
           : [itens];
         cols.forEach(col=>agruparLinhas(col).forEach(l=>{
-          if(/pr[óo]ximas faturas/i.test(l.txt)){ futuras=true; return; }
+          // só o título da seção (Itaú: "Compras parceladas - próximas faturas"); o BB cita "próximas faturas" no meio de um texto da 1ª página
+          if(/compras parceladas\s*[-–]\s*pr[óo]ximas faturas/i.test(l.txt) || (l.txt.length<45 && /pr[óo]ximas faturas/i.test(l.txt))){ futuras=true; return; }
           if(futuras) return;
           let m; RE.lastIndex=0;
           while((m=RE.exec(l.txt))){
@@ -2172,7 +2173,8 @@
     let somaAberta = 0;
     brutos.forEach(b=>{
       const desc2 = b.desc;
-      if(/^(PGTO|PAGTO|PAGAMENTO|PAG\s|SALDO FATURA|TOTAL)/i.test(desc2)) return;
+      // pagamentos da fatura e o estorno de pagamento em duplicidade (BB: "ESTORNO C/ CRED.CONTA") não são compras
+      if(/^(PGTO|PAGTO|PAGAMENTO|PAG\s|SALDO FATURA|TOTAL|ESTORNO C\/?\s*CRED)/i.test(desc2)) return;
       // ANTEC = parcelas antecipadas cobradas pelo banco — são cobranças reais
       const ehAntec = /^ANTEC\s+\d{2}\/\d{2}-/i.test(desc2);
       const desc3 = ehAntec
@@ -2226,14 +2228,30 @@
       livres.get(k).push(l);
     });
     const idsUsados = new Set(dados.lancamentos.map(l=>l.id));
-    let novos=0, repetidos=0, prontos=0;
+    let novos=0, repetidos=0, prontos=0, conferidos=0;
     const mesesTocados = new Set();
+    // lançamentos do cartão que vieram da planilha ou foram digitados (descrição própria, data aproximada):
+    // a fatura confirma pelo valor e data (até 4 dias), mantém a categoria e passa a usar a descrição do banco
+    const familia = t => /infinite|ita[uú]/i.test(t) ? "itau" : /\bbb\b|altus|ourocard|banco do brasil/i.test(t) ? "bb" : "";
+    const famFatura = /ourocard|bb\.com\.br|altus/i.test(textoTotal) ? "bb" : /ita[uú]/i.test(textoTotal) ? "itau" : "";
+    const digitados = dados.lancamentos.filter(x=>!x.confFatura && !x.ignorado &&
+      (x.origem==="cartao" || (x.origem==="manual" && famFatura && familia(x.doc||"")===famFatura)) &&
+      (!famFatura || !familia(x.doc||"") || familia(x.doc||"")===famFatura));
+    const dDias = (a,b) => Math.abs(new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5;
 
     lancamentos.forEach(l=>{
       const k = l.data+"|"+l.valor.toFixed(2);
       const cand = livres.get(k)||[];
       const i = cand.findIndex(x=>parecido(x.hist,l.hist));
-      if(i>=0){ cand.splice(i,1); repetidos++; return; }
+      if(i>=0){ const x=cand.splice(i,1)[0]; x.confFatura=true; repetidos++; return; }
+      const j = digitados.findIndex(x=>Math.abs(x.valor-l.valor)<0.005 && dDias(x.data,l.data)<=4);
+      if(j>=0){
+        const x = digitados.splice(j,1)[0];
+        if(x.hist!==l.hist && !x.obs) x.obs = x.hist;
+        x.hist = l.hist; x.data = l.data; x.doc = l.doc; x.origem = "cartao"; x.confFatura = true;
+        if(x.categoria==="Sem categoria"){ const c=classificar(l.hist,l.valor); x.categoria=c.categoria; }
+        conferidos++; mesesTocados.add(l.data.slice(0,7)); return;
+      }
       const base = l.data+"|cartao|"+l.valor.toFixed(2)+"|"+l.hist.slice(0,42);
       let id = base, n = 2;
       while(idsUsados.has(id)) id = base+"#"+(n++);
@@ -2242,7 +2260,7 @@
       if(l.valor > 0 && c.categoria==="Sem categoria") c = {categoria:"Reembolso e estorno"};
       if(c.categoria!=="Sem categoria") prontos++;
       dados.lancamentos.push({id, data:l.data, hist:l.hist, valor:l.valor,
-        doc:l.doc, categoria:c.categoria, vinculo:"PF", obs:"", origem:"cartao"});
+        doc:l.doc, categoria:c.categoria, vinculo:"PF", obs:"", origem:"cartao", confFatura:true});
       idsUsados.add(id); novos++;
       mesesTocados.add(l.data.slice(0,7));
     });
@@ -2253,6 +2271,7 @@
     avisar(novos+" lançamento"+(novos===1?"":"s")+" do cartão importado"+(novos===1?"":"s")+
            (novos?" · "+prontos+" já classificado"+(prontos===1?"":"s"):"")+
            (repetidos?" · "+repetidos+" já existia"+(repetidos===1?"":"m"):"")+
+           (conferidos?" · "+conferidos+" da planilha conferido"+(conferidos===1?"":"s")+" com a fatura":"")+
            (ehAberta?" · fatura em aberto: R$ "+brl(somaAberta)+(pendTotal?" (+ R$ "+brl(pendTotal)+" em processamento)":""):""));
   }
   function barraFatura(){
