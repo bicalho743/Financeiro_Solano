@@ -878,7 +878,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},orcamento:null,versao:5,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},orcamento:null,versao:6,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -937,6 +937,12 @@
       if(dados.fluxo) (dados.fluxo.linhas||[]).forEach(l=>{ l.cat=tr(l.cat); if(l.rot===de) l.rot=para; });
       if(dados.dividas) (dados.dividas.parcelas||[]).forEach(x=>{ x.cat=tr(x.cat); });
       dados.versao=5; dados._migrou=true;
+    }
+    if(dados.versao<6){
+      // extrato do Itaú em .xls vinha com acento quebrado ("JosÃ©"): corrige o que já foi gravado
+      (dados.lancamentos||[]).forEach(l=>{ const h=consertaAcento(l.hist); if(h!==l.hist) l.hist=h; });
+      dados.saldosDia=dados.saldosDia||{};
+      dados.versao=6; dados._migrou=true;
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -1335,6 +1341,7 @@
         dados.dividas     = d.dividas||null;
         dados.metas       = d.metas||[];
         dados.conferencia = d.conferencia||{};
+        dados.saldosDia   = d.saldosDia||{};
         dados.versao      = d.versao||0;
         migrar();
         if(dados._migrou){ delete dados._migrou; await salvarImediato(); }
@@ -1480,6 +1487,12 @@
 
   /* ---- leitura de células (CSV, Excel antigo .xls e .xlsx) ---- */
   const celTexto = v => String(v==null?"":v).replace(/\u00a0/g," ").replace(/\s+/g," ").trim();
+  // texto UTF-8 lido como Latin-1 ("JosÃ©" -> "José", "JÃºlia" -> "Júlia")
+  function consertaAcento(t){
+    t=String(t==null?"":t);
+    if(!/[ÃÂ][\u0080-\u00BF]/.test(t)) return t;
+    try{ return decodeURIComponent(escape(t)); }catch(e){ return t; }
+  }
   const celNum = v => typeof v==="number" ? v : numero(celTexto(v));
   function celData(v){
     if(typeof v==="number" && v>20000 && v<80000){           // data do Excel (número de série)
@@ -1522,6 +1535,7 @@
       return {erro:"Não reconheci as colunas de data, descrição e valor desse arquivo."};
 
     const itens=[]; let saldoAnt=null, saldoDia=null, saldoCol=null;
+    const diaDia={}, diaCol={};   // todos os saldos de fim de dia que o extrato traz
     // saldo do fim do extrato: linha "SALDO DO DIA"/"SALDO" mais recente; sem ela, a coluna de saldo da última data
     const guarda=(atual,iso,v)=>(v==null||isNaN(v))?atual:(!atual||iso>atual.iso?{iso:iso,valor:v}:atual);
     for(let i=ini;i<linhas.length;i++){
@@ -1529,7 +1543,7 @@
       // Itaú: depois de "lançamentos futuros" vêm agendamentos que ainda não aconteceram
       if(/futur[oa]s/i.test(celTexto(r[0])+" "+celTexto(r[iData]))) break;
       const iso=celData(r[iData]); if(!iso) continue;
-      let hist=celTexto(r[iHist]);
+      let hist=consertaAcento(celTexto(r[iHist]));
       if(iDet>=0){ const d=celTexto(r[iDet]); if(d) hist=hist?hist+" - "+d:d; }
       if(!hist) continue;
       const v = iVal>=0 ? celNum(r[iVal]) : (Math.abs(celNum(r[iCred])||0) - Math.abs(celNum(r[iDeb])||0));
@@ -1538,14 +1552,16 @@
       if(/^S(AL)?DO/.test(ch)){
         // Itaú traz o saldo anterior na coluna de saldo, com o valor em branco
         if(/^SALDOANTERIOR/.test(ch)){ const va=sv!=null?sv:v; if(va!=null&&!isNaN(va)) saldoAnt={iso:iso,valor:va}; }
-        else saldoDia=guarda(saldoDia,iso,sv!=null?sv:v);
+        else { const vd=sv!=null?sv:v; saldoDia=guarda(saldoDia,iso,vd); if(vd!=null&&!isNaN(vd)) diaDia[iso]=vd; }
         continue;
       }
-      if(sv!=null) saldoCol=guarda(saldoCol,iso,sv);
+      if(sv!=null&&!isNaN(sv)){ saldoCol=guarda(saldoCol,iso,sv); diaCol[iso]=sv; }
       if(!v) continue;
       itens.push({iso:iso,hist:hist,valor:v,doc:iDoc>=0?celTexto(r[iDoc]):""});
     }
-    return {itens:itens,saldoAnt:saldoAnt,saldoFim:saldoDia||saldoCol};
+    const dias=Object.keys(diaDia).length?diaDia:diaCol;
+    return {itens:itens,saldoAnt:saldoAnt,saldoFim:saldoDia||saldoCol,
+            saldosDia:Object.keys(dias).sort().map(d=>({iso:d,valor:dias[d]}))};
   }
 
   /* OFX ("Money"), que o Itaú e o BB oferecem no download do extrato */
@@ -1556,7 +1572,7 @@
     const itens=blocos.map(b=>{
       const d=tag(b,"DTPOSTED");
       return {iso:d.length>=8?d.slice(0,4)+"-"+d.slice(4,6)+"-"+d.slice(6,8):null,
-              hist:celTexto(tag(b,"MEMO")||tag(b,"NAME")), valor:numero(tag(b,"TRNAMT")), doc:tag(b,"CHECKNUM")};
+              hist:consertaAcento(celTexto(tag(b,"MEMO")||tag(b,"NAME"))), valor:numero(tag(b,"TRNAMT")), doc:tag(b,"CHECKNUM")};
     }).filter(x=>x.iso&&x.hist&&x.valor);
     // saldo informado pelo banco no fim do arquivo (<LEDGERBAL>)
     const lb=texto.match(/<LEDGERBAL>([\s\S]*?)(<\/LEDGERBAL>|$)/i);
@@ -1587,7 +1603,7 @@
       const valor=Math.round(it.valor*100)/100;
       if(!iso||!hist||!valor) return;
       const k=fp(iso,valor,hist);
-      const ja=(livres.get(k)||[]).filter(l=>!usados.has(l));
+      const ja=(livres.get(k)||[]).filter(l=>!usados.has(l)).sort((a,b)=>(a.ignorado?1:0)-(b.ignorado?1:0));
       if(ja.length){ const l=ja[0]; usados.add(l); if(it.tipo) l.tipo=it.tipo; if(origem!=="cartao"&&!it.categoria) l.confExtrato=true; repetidos++; return; }
       // mesma data e valor, e a descrição foi editada no app ("PAY Reale 26/09 - BAR") ou digitada à mão/na planilha
       // ("ester de lima" para "PAY CASA 05/09"): é o mesmo lançamento, não duplica
@@ -1631,20 +1647,55 @@
       itens.forEach(i=>{ i.iso=ajustarParc(i.iso,i.hist); if(!i.doc) i.doc="Cartão Itaú"; });
     }
     if(!itens.length){ avisar("Não encontrei lançamentos nesse arquivo.",true); return; }
-    if(r.saldoAnt && origem!=="cartao"){
-      const d=new Date(r.saldoAnt.iso+"T12:00:00"); d.setDate(d.getDate()+1);
-      dados.saldos[origem+":"+d.toISOString().slice(0,7)]=r.saldoAnt.valor;
-    }
-    if(r.saldoFim && origem!=="cartao" && !isNaN(r.saldoFim.valor)){
-      // uma conferência por conta e mês (itau:2026-09); o extrato grava o saldo do último dia que ele traz
-      const kc=origem+":"+r.saldoFim.iso.slice(0,7), c=(dados.conferencia=dados.conferencia||{})[kc];
-      if(!c||r.saldoFim.iso>=c.data) dados.conferencia[kc]={data:r.saldoFim.iso, valor:r.saldoFim.valor, fonte:"extrato"};
-    }
+    if(origem!=="cartao") gravarSaldos(r,origem);
     const g=gravarLinhas(itens,origem);
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
     if(g.meses.length){ ui.mes=g.meses.sort().pop(); ui.view="mes"; }
     salvar(); render();
     avisar(NOMES_ORIGEM[origem]+": "+textoImport(g));
+  }
+
+  /* Saldos do banco: tudo o que o extrato informa fica gravado.
+     - saldosDia[origem][dia] = saldo no fim de cada dia (linhas "SALDO TOTAL DISPONÍVEL DIA" / coluna de saldo / SALDO ANTERIOR)
+     - saldos[origem:mês] = saldo do 1º dia do mês = saldo do último dia do mês anterior (só quando o extrato cobre a virada do mês)
+     - conferencia[origem:mês] = saldo do banco no fim do mês (ou no último dia que o extrato traz, se o mês ainda não terminou) */
+  function gravarSaldos(r,origem){
+    const ok=x=>x&&x.iso&&x.valor!=null&&!isNaN(x.valor);
+    const pts=[];
+    if(ok(r.saldoAnt)) pts.push(r.saldoAnt);
+    (r.saldosDia||[]).forEach(x=>{ if(ok(x)) pts.push(x); });
+    if(ok(r.saldoFim)&&!pts.some(x=>x.iso===r.saldoFim.iso)) pts.push(r.saldoFim);
+    if(!pts.length) return;
+    pts.sort((a,b)=>a.iso<b.iso?-1:a.iso>b.iso?1:0);
+    const sd=(dados.saldosDia=dados.saldosDia||{}), mapa=(sd[origem]=sd[origem]||{});
+    pts.forEach(x=>{ mapa[x.iso]=cent(x.valor); });
+    // até onde o extrato vai: o período termina no último dia com saldo informado
+    const ultimo=pts[pts.length-1].iso;
+    // ponto de partida: a data do SALDO ANTERIOR (o extrato cobre do dia seguinte em diante)
+    const inicio=ok(r.saldoAnt)?r.saldoAnt.iso:pts[0].iso;
+    const meses=[...new Set(pts.map(x=>x.iso.slice(0,7)))].sort();
+    const confs=(dados.conferencia=dados.conferencia||{});
+    meses.forEach(ym=>{
+      const doMes=pts.filter(x=>x.iso.slice(0,7)===ym), u=doMes[doMes.length-1];
+      const fm=fimDoMes(ym);
+      // o mês fechou dentro do extrato quando ele segue para o mês seguinte (ou o último saldo é o próprio último dia)
+      const fechou=ultimo>fm || u.iso===fm;
+      if(fechou){
+        // saldo do fim do mês = saldo do 1º dia do mês seguinte (só se o extrato cobre a virada: começa até o fim deste mês)
+        if(inicio<=fm){
+          const [a,m]=ym.split("-").map(Number), prox=new Date(a,m,1);
+          const kp=origem+":"+prox.getFullYear()+"-"+String(prox.getMonth()+1).padStart(2,"0");
+          dados.saldos[kp]=cent(u.valor);
+        }
+        // conferência do mês no último dia (se o extrato só traz o SALDO ANTERIOR deste mês, ele já é o fechamento)
+        if(u.iso>=inicio||u.iso===fm) confs[origem+":"+ym]={data:fm, valor:cent(u.valor), fonte:"extrato"};
+      } else if(u.iso>inicio){
+        // mês em andamento: confere no último dia que o extrato traz
+        const c=confs[origem+":"+ym];
+        if(!c||u.iso>=c.data) confs[origem+":"+ym]={data:u.iso, valor:cent(u.valor), fonte:"extrato"};
+      }
+    });
+    // mês em que o extrato começa no meio: o SALDO ANTERIOR não é o saldo do dia 1º — não sobrescreve
   }
 
   function lerArquivo(arq){
@@ -2286,7 +2337,14 @@
 
   function blocoConferencia(origem,ym,base,ini){
     const cfs=dados.conferencia||{}, leg=cfs[origem];
-    const conf=cfs[origem+":"+ym] || (leg&&leg.data&&leg.data.slice(0,7)===ym?leg:null);
+    let conf=cfs[origem+":"+ym] || (leg&&leg.data&&leg.data.slice(0,7)===ym?leg:null);
+    if(!conf){
+      // sem conferência do mês: usa o saldo de fim de dia que o extrato deixou gravado (o mais recente do mês)
+      const sd=(dados.saldosDia||{})[origem]||{};
+      const alvo=ui.confData&&ui.confData.slice(0,7)===ym?ui.confData:null;
+      const dia=alvo&&sd[alvo]!=null?alvo:Object.keys(sd).filter(d=>d.slice(0,7)===ym).sort().pop();
+      if(dia) conf={data:dia, valor:sd[dia], fonte:"extrato"};
+    }
     const temConf=conf&&conf.data&&conf.data.slice(0,7)===ym;
     const D=temConf?conf.data:(ui.confData&&ui.confData.slice(0,7)===ym)?ui.confData:(hojeISO()<fimDoMes(ym)?(hojeISO()>=ym+"-01"?hojeISO():fimDoMes(ym)):fimDoMes(ym));
     const ate=base.filter(l=>l.data<=D);
@@ -2543,6 +2601,9 @@
         let n=0;
         d.lancamentos.forEach(l=>{ if(l&&l.id&&!vistos.has(l.id)){dados.lancamentos.push(l);vistos.add(l.id);n++;} });
         Object.assign(dados.saldos,d.saldos||{});
+        dados.conferencia=Object.assign(dados.conferencia||{},d.conferencia||{});
+        dados.saldosDia=dados.saldosDia||{};
+        Object.entries(d.saldosDia||{}).forEach(([o,m])=>{ dados.saldosDia[o]=Object.assign(dados.saldosDia[o]||{},m); });
         if(Array.isArray(d.regras)&&d.regras.length) dados.regras=d.regras;
         dados.lancamentos.sort((a,b)=>a.data<b.data?-1:1);
         salvar(); render();
@@ -3849,7 +3910,7 @@
       dados.saldos={};
       dados.regras=REGRAS_PADRAO.slice();
       dados.prolabore=0; dados.orcamento=null; dados.versao=3;
-      dados.orcamentoMes={}; dados.contas={}; dados.dividas=null; dados.previsoes={}; dados.fluxo=null; dados.metas=[]; dados.conferencia={};
+      dados.orcamentoMes={}; dados.contas={}; dados.dividas=null; dados.previsoes={}; dados.fluxo=null; dados.metas=[]; dados.conferencia={}; dados.saldosDia={};
       dados.faturaAberta=null; dados.faturaFechada=null;
       ui={mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,conta:ui.conta||"dash"};
       salvar(); render();
@@ -3889,6 +3950,7 @@
         dados.dividas     = remoto.dividas||null;
         dados.metas       = remoto.metas||[];
         dados.conferencia = remoto.conferencia||{};
+        dados.saldosDia   = remoto.saldosDia||{};
         dados.versao      = remoto.versao||0;
         migrar();
         if(dados._migrou){ delete dados._migrou; salvar(); }
