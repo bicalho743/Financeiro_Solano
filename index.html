@@ -1536,7 +1536,8 @@
       const ch=hist.toUpperCase().replace(/\s+/g,"");
       const sv = iSal>=0 && celTexto(r[iSal])!=="" ? celNum(r[iSal]) : null;
       if(/^S(AL)?DO/.test(ch)){
-        if(/^SALDOANTERIOR/.test(ch)) saldoAnt={iso:iso,valor:v};
+        // Itaú traz o saldo anterior na coluna de saldo, com o valor em branco
+        if(/^SALDOANTERIOR/.test(ch)){ const va=sv!=null?sv:v; if(va!=null&&!isNaN(va)) saldoAnt={iso:iso,valor:va}; }
         else saldoDia=guarda(saldoDia,iso,sv!=null?sv:v);
         continue;
       }
@@ -1587,14 +1588,14 @@
       if(!iso||!hist||!valor) return;
       const k=fp(iso,valor,hist);
       const ja=(livres.get(k)||[]).filter(l=>!usados.has(l));
-      if(ja.length){ const l=ja[0]; usados.add(l); if(it.tipo) l.tipo=it.tipo; repetidos++; return; }
+      if(ja.length){ const l=ja[0]; usados.add(l); if(it.tipo) l.tipo=it.tipo; if(origem!=="cartao"&&!it.categoria) l.confExtrato=true; repetidos++; return; }
       // mesma data e valor, e a descrição foi editada no app ("PAY Reale 26/09 - BAR") ou digitada à mão/na planilha
       // ("ester de lima" para "PAY CASA 05/09"): é o mesmo lançamento, não duplica
       if(origem!=="cartao"){
         const nh=nTot(hist);
         const par=(porDV.get(iso+"|"+valor.toFixed(2))||[]).find(l=>!usados.has(l)&&
           (nTot(l.hist).startsWith(nh)||nh.startsWith(nTot(l.hist))||!pareceBanco(l.hist)));
-        if(par){ usados.add(par); repetidos++; return; }
+        if(par){ usados.add(par); if(!it.categoria) par.confExtrato=true; repetidos++; return; }
       }
       // mesmo documento com valor diferente: o banco corrigiu, atualiza sem perder categoria/observação
       if(doc && origem!=="cartao"){
@@ -1606,7 +1607,8 @@
       const categoria=it.categoria||classificar(hist,valor).categoria;
       if(categoria!=="Sem categoria") prontos++;
       dados.lancamentos.push({id:id,data:iso,hist:hist,valor:valor,doc:doc,categoria:categoria,
-                              vinculo:"PF",obs:"",origem:origem,...(it.tipo?{tipo:it.tipo}:{})});
+                              vinculo:"PF",obs:"",origem:origem,...(it.tipo?{tipo:it.tipo}:{}),
+                              ...(origem!=="cartao"&&!it.categoria?{confExtrato:true}:{})});
       ids.add(id); novos++; meses.add(iso.slice(0,7));
     });
     return {novos:novos,repetidos:repetidos,prontos:prontos,corrigidos:corrigidos,meses:[...meses]};
@@ -2267,7 +2269,8 @@
   const diaMes = iso => iso.slice(8,10)+"/"+iso.slice(5,7);
   const normH = h => String(h).toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g,"");
   // veio do extrato do banco (e não digitado à mão / linha fixa da planilha)
-  const pareceExtrato = l => l.tipo!=="FIXO" && pareceBanco(l.hist);
+  // confExtrato: o extrato importado trouxe este mesmo lançamento (mesma data e valor), mesmo com outra descrição
+  const pareceExtrato = l => !!l.confExtrato || (l.tipo!=="FIXO" && pareceBanco(l.hist));
   function movConta(origem,de,ate){
     return cent(dados.lancamentos.reduce((s,l)=>l.origem===origem&&!l.ignorado&&l.data>=de&&l.data<ate?s+l.valor:s,0));
   }
@@ -2303,6 +2306,17 @@
           ' (linha “SALDO ANTERIOR” do extrato). Sem ele o app parte de zero e nunca bate.</div>');
       // lançamentos que não vieram do extrato
       const manuais=ate.filter(l=>!pareceExtrato(l));
+      // com o extrato do mês importado, o que foi digitado/veio da planilha e o extrato não confirmou não passou por esta conta
+      // (são as estimativas — os fixos do dia 1º — que o extrato já trouxe com valor e data reais)
+      // cada lançamento que veio do extrato (ou que o extrato confirmou) fica marcado; o resto, até o último dia
+      // que o extrato cobriu, não passou por esta conta
+      const conf=ate.filter(l=>l.confExtrato), ultConf=conf.reduce((m,l)=>l.data>m?l.data:m,"");
+      const semPar=conf.length>=10?ate.filter(l=>!l.confExtrato&&l.data<=ultConf):[];
+      ui._semPar=semPar.map(l=>l.id);
+      if(semPar.length)
+        p.push('<div class="conf-p"><button class="bt" data-criscar="1" style="font-size:12.5px;padding:7px 14px">Riscar os '+semPar.length+
+          ' lançamento'+(semPar.length===1?"":"s")+' que não estão no extrato importado (R$ '+brl(cent(semPar.reduce((s,l)=>s+l.valor,0)))+')</button>'+
+          '<span class="sub" style="display:block;margin-top:4px">Depois de importar o extrato do mês. Eles ficam no histórico; o ↺ na lista traz de volta.</span></div>');
       if(manuais.length)
         p.push('<details class="conf-p"><summary><b>'+manuais.length+' lançamento'+(manuais.length===1?"":"s")+' digitado'+(manuais.length===1?"":"s")+
           ' ou da planilha</b> (não vieram do extrato): R$ '+brl(cent(manuais.reduce((s,l)=>s+l.valor,0)))+
@@ -2384,6 +2398,14 @@
     el.addEventListener("click",e=>{
       const b=e.target.closest("[data-cbusca]");
       if(b){ ui.busca=b.dataset.cbusca; render(); try{document.getElementById("tabelaLanc").scrollIntoView({block:"start"});}catch(_){ } return; }
+      if(e.target.closest("[data-criscar]")){
+        const ls=(ui._semPar||[]).map(id=>dados.lancamentos.find(l=>l.id===id)).filter(Boolean);
+        confirmar("Riscar "+ls.length+" lançamento"+(ls.length===1?"":"s")+"?",
+          ls.map(l=>diaMes(l.data)+" · "+esc(l.hist)+" · R$ "+brl(l.valor)).join("<br>")+
+          "<br><br>Saem do saldo e dos totais, mas continuam no histórico (dá para trazer de volta com ↺).","Riscar")
+          .then(ok=>{ if(!ok) return; ls.forEach(l=>{ l.ignorado=true; }); salvar(); render(); avisar(ls.length+" lançamentos riscados."); });
+        return;
+      }
       const ci=e.target.closest("[data-cini]");
       if(ci){ dados.saldos[origem+":"+ym]=+ci.dataset.cini; salvar(); render(); avisar("Saldo inicial ajustado."); }
     });
