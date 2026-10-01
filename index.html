@@ -777,7 +777,7 @@
   // CATEGORIA + SUBCATEGORIA da aba LANÇAMENTOS (ver MAPA_PLANILHA).
   const GRUPOS = [
     {g:"Receitas", cor:"#1E8A5F", cats:["Salário","13º salário","Rendimentos","Restituição IR","Reembolso e estorno","Outras receitas"]},
-    {g:"Financiamento e dívidas", cor:"#7D3C98", cats:["Financiamento casa","Consignado","Consórcio","IOF e taxas","Previdência"]},
+    {g:"Financiamento e dívidas", cor:"#7D3C98", cats:["Financiamento casa","Consignado","Pagamento de dívidas","Consórcio","IOF e taxas","Previdência"]},
     {g:"Moradia", cor:"#5D6D2E", cats:["Luz (Cemig)","Água (Copasa)","Internet","IPTU","TV (Sky)","Celular (TIM)","Assinaturas","Manutenção da casa"]},
     {g:"Serviço doméstico", cor:"#9A6B00", cats:["Doméstica – salário","Doméstica – e-Social","Doméstica – transporte","Doméstica – provisão","Diarista / jardim / extras"]},
     {g:"Alimentação", cor:"#D35400", cats:["Supermercado","Padaria","Açougue","Sacolão / feira","Bar / restaurante","Almoço","Lanche"]},
@@ -826,6 +826,8 @@
   const REGRAS_TRANSF = [["TRANSFERIDO TÂMARA","Transferências Tâmara"],["TRANSFERIDO TAMARA","Transferências Tâmara"],
     ["TRANSFERIDA TÂMARA","Transferências Tâmara"],["PIX TRANSF TAMARA","Transferências Tâmara"]];
   const REGRAS_PADRAO = REGRAS_TRANSF.concat([
+    // quitação de dívida/empréstimo no Itaú
+    ["PAGTO A VISTA SALDO","Pagamento de dívidas"],
     // fora dos cálculos
     ["PAGTO CARTAO","Cartão de crédito"],["PAG FATURA","Cartão de crédito"],["FATURA CARTAO","Cartão de crédito"],
     ["CARTÃO CRÉDITO","Cartão de crédito"],["CARTAO CREDITO","Cartão de crédito"],["ITAU BLACK","Cartão de crédito"],
@@ -878,7 +880,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},orcamento:null,versao:6,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},orcamento:null,versao:7,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -943,6 +945,13 @@
       (dados.lancamentos||[]).forEach(l=>{ const h=consertaAcento(l.hist); if(h!==l.hist) l.hist=h; });
       dados.saldosDia=dados.saldosDia||{};
       dados.versao=6; dados._migrou=true;
+    }
+    if(dados.versao<7){
+      // nova categoria "Pagamento de dívidas" e a regra da quitação à vista do Itaú
+      const termo="PAGTO A VISTA SALDO";
+      if(!dados.regras.some(r=>String(r.termo).toUpperCase()===termo)) dados.regras.unshift({termo:termo,categoria:"Pagamento de dívidas",vinculo:"PF",padrao:true});
+      dados.lancamentos.forEach(l=>{ if(l.categoria==="Sem categoria"&&String(l.hist).toUpperCase().includes(termo)) l.categoria="Pagamento de dívidas"; });
+      dados.versao=7; dados._migrou=true;
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
