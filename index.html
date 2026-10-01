@@ -3721,7 +3721,7 @@
         const linhas=gs.filter(g=>conc[m][g]).map(g=>{ const o=conc[m][g];
           const dif=cent((o.saiu-o.voltou)-(o.aplic-o.resg-o.prov));
           const conf=g==="bb"?contaConferida("bb",m):contaConferida("itau",m);
-          const nota=g==="itaucor"?"caixa na corretora: R$ "+brl(caixaMes[m]):g==="btgxp"?"transferências para BTG/XP só aparecem se a descrição citar o banco":"";
+          const nota=g==="itaucor"?(caixaMes[m]<-1?"saldo acumulado negativo (R$ "+brl(caixaMes[m])+"): falta na conta dinheiro que foi para a corretora — importe o extrato do Itaú deste mês":"caixa estimado na corretora: R$ "+brl(caixaMes[m])):g==="btgxp"?"transferências para BTG/XP só aparecem se a descrição citar o banco":"";
           return '<tr><td style="padding-left:18px">'+NOMES_GRUPO_INV[g]+(conf?'':' <span class="iv-alerta" title="Essa conta ainda não foi conferida com o extrato do banco neste mês">conta sem extrato</span>')+
             (nota?'<span class="kpi-sub">'+nota+'</span>':'')+'</td>'+
             '<td>'+(o.saiu?brl(cent(o.saiu)):"—")+'</td><td>'+(o.voltou?brl(cent(o.voltou)):"—")+'</td><td>'+(o.aplic?brl(cent(o.aplic)):"—")+'</td><td>'+(o.resg?brl(cent(o.resg)):"—")+'</td><td>'+(o.prov?brl(cent(o.prov)):"—")+'</td>'+
