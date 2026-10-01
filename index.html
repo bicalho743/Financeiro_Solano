@@ -880,7 +880,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},orcamento:null,versao:7,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},orcamento:null,versao:8,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -952,6 +952,11 @@
       if(!dados.regras.some(r=>String(r.termo).toUpperCase()===termo)) dados.regras.unshift({termo:termo,categoria:"Pagamento de dívidas",vinculo:"PF",padrao:true});
       dados.lancamentos.forEach(l=>{ if(l.categoria==="Sem categoria"&&String(l.hist).toUpperCase().includes(termo)) l.categoria="Pagamento de dívidas"; });
       dados.versao=7; dados._migrou=true;
+    }
+    if(dados.versao<8){
+      // adiantamento/quitação de consignado debitado na conta sai de "Consignado" (que fica só com a parcela da folha)
+      dados.lancamentos.forEach(l=>{ if(l.categoria==="Consignado"&&l.origem!=="manual"&&ehQuitacaoConsignado(l.hist,l.valor)) l.categoria="Pagamento de dívidas"; });
+      dados.versao=8; dados._migrou=true;
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -1414,8 +1419,11 @@
     return m ? m[1]+"-"+m[2]+"-"+m[3] : null;
   }
 
+  // débito de consignado no extrato = adiantamento de parcela ou quitação (a parcela mensal é descontada em folha)
+  const ehQuitacaoConsignado = (hist,valor) => valor<0 && /CR[EÉ]D(ITO)?\.?\s*CONSIG/i.test(String(hist));
   function classificar(hist,valor){
     const u = hist.toUpperCase();
+    if(ehQuitacaoConsignado(hist,valor)) return {categoria:"Pagamento de dívidas",vinculo:"PF"};
     for(const r of dados.regras){
       if(u.includes(r.termo.toUpperCase())){
         if(ehPixEntrada(hist,valor) && GRUPO_DE[r.categoria]!=="Receitas" && !ENTRA_FORA.has(r.categoria))
