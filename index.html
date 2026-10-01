@@ -1515,6 +1515,8 @@
     const guarda=(atual,iso,v)=>(v==null||isNaN(v))?atual:(!atual||iso>atual.iso?{iso:iso,valor:v}:atual);
     for(let i=ini;i<linhas.length;i++){
       const r=linhas[i];
+      // Itaú: depois de "lançamentos futuros" vêm agendamentos que ainda não aconteceram
+      if(/futur[oa]s/i.test(celTexto(r[0])+" "+celTexto(r[iData]))) break;
       const iso=celData(r[iData]); if(!iso) continue;
       let hist=celTexto(r[iHist]);
       if(iDet>=0){ const d=celTexto(r[iDet]); if(d) hist=hist?hist+" - "+d:d; }
@@ -1558,10 +1560,12 @@
   function gravarLinhas(itens,origem){
     const norm=s=>String(s).toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g,"").slice(0,20);
     const fp=(d,v,h)=>d+"|"+Number(v).toFixed(2)+"|"+norm(h);
-    const livres=new Map(), porDoc=new Map();
+    const livres=new Map(), porDoc=new Map(), porDV=new Map(), usados=new Set();
+    const nTot=s=>String(s).toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g,"");
     dados.lancamentos.forEach(l=>{
       if(l.origem!==origem) return;
       const k=fp(l.data,l.valor,l.hist); if(!livres.has(k)) livres.set(k,[]); livres.get(k).push(l);
+      const kd=l.data+"|"+Number(l.valor).toFixed(2); if(!porDV.has(kd)) porDV.set(kd,[]); porDV.get(kd).push(l);
       if(l.doc&&!l.manual) porDoc.set(l.data+"|"+l.doc+"|"+String(l.hist).slice(0,42),l);
     });
     const ids=new Set(dados.lancamentos.map(l=>l.id));
@@ -1571,8 +1575,16 @@
       const valor=Math.round(it.valor*100)/100;
       if(!iso||!hist||!valor) return;
       const k=fp(iso,valor,hist);
-      const ja=livres.get(k);
-      if(ja&&ja.length){ const l=ja.shift(); if(it.tipo) l.tipo=it.tipo; repetidos++; return; }
+      const ja=(livres.get(k)||[]).filter(l=>!usados.has(l));
+      if(ja.length){ const l=ja[0]; usados.add(l); if(it.tipo) l.tipo=it.tipo; repetidos++; return; }
+      // mesma data e valor, e a descrição foi editada no app ("PAY Reale 26/09 - BAR") ou digitada à mão/na planilha
+      // ("ester de lima" para "PAY CASA 05/09"): é o mesmo lançamento, não duplica
+      if(origem!=="cartao"){
+        const nh=nTot(hist);
+        const par=(porDV.get(iso+"|"+valor.toFixed(2))||[]).find(l=>!usados.has(l)&&
+          (nTot(l.hist).startsWith(nh)||nh.startsWith(nTot(l.hist))||!pareceBanco(l.hist)));
+        if(par){ usados.add(par); repetidos++; return; }
+      }
       // mesmo documento com valor diferente: o banco corrigiu, atualiza sem perder categoria/observação
       if(doc && origem!=="cartao"){
         const velho=porDoc.get(iso+"|"+doc+"|"+hist.slice(0,42));
