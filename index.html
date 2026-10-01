@@ -548,6 +548,15 @@
   .conf-lin b{font-family:var(--serif);font-size:14px;font-weight:500;white-space:nowrap;color:var(--tinta)}
   .conf-par{border-left:2px solid var(--ouro);margin:4px 0 4px 6px}
   @media (max-width:700px){.conf-grid{grid-template-columns:1fr 1fr}.conf{padding:14px}}
+  /* ---- cartões clicáveis ---- */
+  .clic-card{cursor:pointer;transition:background .15s,box-shadow .15s;border-radius:4px}
+  .g-num.clic-card{margin:-8px -10px;padding:8px 10px}
+  .clic-card:hover{background:rgba(47,74,60,.06)}
+  .barra-fatura .clic-card:hover{background:rgba(255,255,255,.08)}
+  .clic-card:focus-visible{outline:2px solid var(--ouro);outline-offset:2px}
+  .clic-card:hover .rot::after,.clic-card:hover .bf-rot::after{content:" →";letter-spacing:0}
+  .kpi-ir{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
+  .kpi-ir:hover{color:var(--verde)}
   /* ---- metas e caixinhas ---- */
   .mt-tab{min-width:1020px}
   .mt-tab td{padding:4px 4px}
@@ -1193,11 +1202,11 @@
       const t=totaisPrev(p,ui.mes);
       return '<div class="tit-secao" style="margin-top:36px"><h3>Previsão do mês · '+rotuloMes(ui.mes)+'</h3></div>'+
         '<section class="dash-geral" style="margin-top:0">'+
-          '<div class="g-num"><span class="rot">A pagar</span><div class="v">R$ '+brl(-t.aPagar)+'</div>'+
+          '<div class="g-num clic-card"'+ir({conta:"prev",mes:ui.mes,alvo:"#pv-itens",dica:"Ver as contas a pagar"})+'><span class="rot">A pagar</span><div class="v">R$ '+brl(-t.aPagar)+'</div>'+
             '<span class="kpi-sub">'+p.itens.filter(x=>x.aPagar!=null&&x.aPagar<0).length+' contas em aberto</span></div>'+
-          '<div class="g-num"><span class="rot">A receber</span><div class="v" style="color:#1E8A5F">R$ '+brl(t.receber)+'</div>'+
+          '<div class="g-num clic-card"'+ir({conta:"prev",mes:ui.mes,alvo:"#pv-receitas",dica:"Ver as receitas esperadas"})+'><span class="rot">A receber</span><div class="v" style="color:#1E8A5F">R$ '+brl(t.receber)+'</div>'+
             '<span class="kpi-sub">'+esc((receitasFluxo(ui.mes)?"Fluxo anual: ":"")+(receitasPrev(p,ui.mes).filter(r=>r.v).map(r=>r.d).join(" + ")||"—"))+'</span></div>'+
-          '<div class="g-num"><span class="rot">'+(t.resultado<0?"Déficit":"Superávit")+'</span><div class="v" style="color:'+corDif(t.resultado)+'">R$ '+brl(t.resultado)+'</div>'+
+          '<div class="g-num clic-card"'+ir({conta:"prev",mes:ui.mes,alvo:"#pv-resumo",dica:"Ver o cálculo na previsão do mês"})+'><span class="rot">'+(t.resultado<0?"Déficit":"Superávit")+'</span><div class="v" style="color:'+corDif(t.resultado)+'">R$ '+brl(t.resultado)+'</div>'+
             '<span class="kpi-sub">saldo em conta − a pagar</span></div>'+
         '</section>'+
         '<button class="ver-mais" data-abrirprev="'+ui.mes+'">Abrir a previsão de '+rotuloMes(ui.mes)+' →</button>';
@@ -1226,9 +1235,9 @@
     }
 
     const faixa='<section class="dash-geral">'+
-        '<div class="g-num"><span class="rot">Entrou</span><div class="v" style="color:#1E8A5F">R$ '+brl(r.tE)+'</div></div>'+
-        '<div class="g-num"><span class="rot">Gastou</span><div class="v">R$ '+brl(r.tS)+'</div></div>'+
-        '<div class="g-num"><span class="rot">'+(saldo<0?"Faltou":"Sobrou")+'</span><div class="v" style="color:'+(saldo<0?"#C0392B":"#1E8A5F")+'">R$ '+brl(saldo)+'</div></div>'+
+        '<div class="g-num clic-card"'+ir({conta:"cpf",mes:ui.mes,tipo:"e",mov:1,dica:"Ver as entradas"})+'><span class="rot">Entrou</span><div class="v" style="color:#1E8A5F">R$ '+brl(r.tE)+'</div></div>'+
+        '<div class="g-num clic-card"'+ir({conta:"cpf",mes:ui.mes,tipo:"s",mov:1,dica:"Ver os gastos"})+'><span class="rot">Gastou</span><div class="v">R$ '+brl(r.tS)+'</div></div>'+
+        '<div class="g-num clic-card"'+ir({conta:"cpf",mes:ui.mes,tipo:"",mov:1,dica:"Ver entradas e gastos"})+'><span class="rot">'+(saldo<0?"Faltou":"Sobrou")+'</span><div class="v" style="color:'+(saldo<0?"#C0392B":"#1E8A5F")+'">R$ '+brl(saldo)+'</div></div>'+
       '</section>';
 
     $("#corpo").innerHTML=
@@ -2171,7 +2180,7 @@
                  : d===0 ? 'Fecha <b>hoje</b>'
                  : 'Fechou em '+dm(fecha)+' — importe a fatura fechada'; }
       return '<section class="barra-fatura">'+
-        '<div><div class="bf-rot">Fatura do cartão em aberto'+(cart?' · '+esc(cart):'')+'</div>'+
+        '<div class="clic-card"'+ir({conta:"cartao",tipo:"",dica:"Ver as compras do cartão"})+'><div class="bf-rot">Fatura do cartão em aberto'+(cart?' · '+esc(cart):'')+'</div>'+
           '<div class="bf-valor">R$ '+brl(a.total)+'</div>'+
           '<div class="bf-sub">compras até '+dm(a.atualizadoEm)+
             (a.pendente?' · + R$ '+brl(a.pendente)+' em processamento':'')+'</div></div>'+
@@ -2180,7 +2189,7 @@
     }
     // sem fatura em aberto importada: mostra a última fechada
     return '<section class="barra-fatura">'+
-      '<div><div class="bf-rot">Última fatura do cartão'+(f.cartao?' · '+esc(f.cartao):'')+'</div>'+
+      '<div class="clic-card"'+ir({conta:"cartao",tipo:"",dica:"Ver as compras do cartão"})+'><div class="bf-rot">Última fatura do cartão'+(f.cartao?' · '+esc(f.cartao):'')+'</div>'+
         '<div class="bf-valor">R$ '+brl(f.total)+'</div>'+
         '<div class="bf-sub">'+(f.vencimento?(f.vencimento<hoje?'venceu em ':'vence em ')+dm(f.vencimento):'')+'</div></div>'+
       '<div class="bf-lado"><span class="bf-ult">Importe a fatura atual para ver o valor em aberto</span>'+bt+'</div>'+
@@ -2210,6 +2219,7 @@
       if(ui.origem && l.origem!==ui.origem) return false;
       if(ui.tipo==="e" && l.valor<=0) return false;
       if(ui.tipo==="s" && l.valor>=0) return false;
+      if(ui.soMov && (l.ignorado || !ehMov(l))) return false;
       return true;
     });
     const col=ui.sortCol||"data", dir=ui.sortDir||1;
@@ -2595,13 +2605,13 @@
           '<button class="apagar" data-pdel="'+lista+':'+i+'" title="Apagar linha" aria-label="Apagar linha">×</button></td></tr>';
     };
     const tabela=(lista,titulo,nota)=>
-      '<div class="tit-secao" style="margin:0 0 6px"><h3>'+titulo+'</h3></div>'+(nota?'<p class="sub" style="margin:0 0 10px">'+nota+'</p>':'')+
+      '<div class="tit-secao" id="pv-'+lista+'" style="margin:0 0 6px"><h3>'+titulo+'</h3></div>'+(nota?'<p class="sub" style="margin:0 0 10px">'+nota+'</p>':'')+
       '<div class="rolagem"><table class="pv-tab pv-contas"><colgroup><col class="c-data"><col><col class="c-val"><col class="c-val"><col class="c-acao"></colgroup>'+
       '<thead><tr><th>Data</th><th>Detalhes</th><th class="n">A pagar</th><th class="n">Pago</th><th></th></tr></thead><tbody>'+
       p[lista].map((x,i)=>linha(lista,x,i)).join("")+'</tbody></table></div>'+
       '<button class="ver-mais" data-padd="'+lista+'">+ Adicionar linha</button>';
     const lista2=(lista,titulo,rot)=>
-      '<div class="tit-secao" style="margin:26px 0 6px"><h3>'+titulo+'</h3></div>'+
+      '<div class="tit-secao" id="pv-'+lista+'" style="margin:26px 0 6px"><h3>'+titulo+'</h3></div>'+
       '<table class="pv-tab"><colgroup><col><col class="c-val"><col style="width:34px"></colgroup><tbody>'+
       p[lista].map((x,i)=>{ const at=k=>' data-pv="'+lista+'" data-i="'+i+'" data-k="'+k+'" data-foco="'+lista+':'+i+':'+k+'"';
         return '<tr><td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="'+rot+'"></td>'+
@@ -2610,7 +2620,7 @@
       '</tbody></table><button class="ver-mais" data-padd="'+lista+'">+ Adicionar</button>';
     const t=totaisPrev(p,ui.prevMes), recFx=receitasFluxo(ui.prevMes);
     const receitasHTML = recFx
-      ? '<div class="tit-secao" style="margin:26px 0 6px"><h3>Receitas esperadas</h3></div>'+
+      ? '<div class="tit-secao" id="pv-receitas" style="margin:26px 0 6px"><h3>Receitas esperadas</h3></div>'+
         '<p class="sub" style="margin:0 0 8px">Vêm do <b>Fluxo anual</b> ('+esc(rotuloMes(ui.prevMes))+'). '+
           '<button class="ver-mais" data-pfluxo="1" style="padding:0">Alterar no Fluxo anual →</button></p>'+
         '<table class="pv-tab"><colgroup><col><col class="c-val"></colgroup><tbody>'+
@@ -2627,7 +2637,7 @@
         '<div style="height:30px"></div>'+
         tabela("fixos","Separado no início do mês","Transferências fixas — não entram no “a pagar” (como as linhas 3 a 9 da planilha).")+
       '</div><aside class="pv-lado">'+
-        '<div class="pv-resumo">'+
+        '<div class="pv-resumo" id="pv-resumo">'+
           '<label class="pv-l">Saldo em conta<input class="campo" data-pv="saldo" data-foco="saldo" value="'+(p.saldo?brl(p.saldo):"")+'" placeholder="0,00" inputmode="decimal"></label>'+
           '<div class="pv-l"><span>A pagar</span><b id="pvAPagar">'+brl(t.aPagar)+'</b></div>'+
           '<div class="pv-l"><span>A receber</span><b id="pvReceber" style="color:#1E8A5F">'+brl(t.receber)+'</b></div>'+
@@ -2850,17 +2860,19 @@
     const qOutras=outras.reduce((s,x)=>s+(+x.q.v||0),0);
 
     let h='<section class="dash-geral">'+
-      '<div class="g-num"><span class="rot">Compromissos em '+rotuloMes(hoje)+'</span><div class="v">R$ '+brl(totM(hoje))+'</div>'+
+      '<div class="g-num clic-card"'+ir({alvo:"#dv-mensal",dica:"Ver a saída mensal com dívidas"})+'><span class="rot">Compromissos em '+rotuloMes(hoje)+'</span><div class="v">R$ '+brl(totM(hoje))+'</div>'+
         '<span class="kpi-sub">'+esc(dv.consolida.linhas.map(l=>cap(l.nome.trim().toLowerCase())).join(" + "))+'</span></div>'+
-      '<div class="g-num"><span class="rot">Em '+rotuloMes(ms12[11])+'</span><div class="v">R$ '+brl(totM(ms12[11]))+'</div>'+
+      '<div class="g-num clic-card"'+ir({alvo:"#dv-mensal",dica:"Ver a saída mensal com dívidas"})+'><span class="rot">Em '+rotuloMes(ms12[11])+'</span><div class="v">R$ '+brl(totM(ms12[11]))+'</div>'+
         '<span class="kpi-sub">'+(totM(ms12[11])<totM(hoje)?'R$ '+brl(totM(hoje)-totM(ms12[11]))+' a menos por mês':'')+'</span></div>'+
-      '<div class="g-num"><span class="rot">Para quitar tudo hoje</span><div class="v" style="color:#C0392B">R$ '+brl(qCartao+qConsorcio+qConsig+qOutras)+'</div>'+
-        '<span class="kpi-sub">Cartão '+brl(qCartao)+' · Consórcio '+brl(qConsorcio)+' · Consignados '+brl(qConsig)+
+      '<div class="g-num clic-card"'+ir({alvo:"#dv-parcelas",dica:"Ver o que falta pagar"})+'><span class="rot">Para quitar tudo hoje</span><div class="v" style="color:#C0392B">R$ '+brl(qCartao+qConsorcio+qConsig+qOutras)+'</div>'+
+        '<span class="kpi-sub"><span class="kpi-ir"'+ir({alvo:"#dv-parcelas",dica:"Ver parcelamentos"})+'>Cartão '+brl(qCartao)+'</span> · '+
+          '<span class="kpi-ir"'+ir({alvo:"#dv-consorcio",dica:"Ver consórcio"})+'>Consórcio '+brl(qConsorcio)+'</span> · '+
+          '<span class="kpi-ir"'+ir({alvo:"#dv-consignados",dica:"Ver consignados"})+'>Consignados '+brl(qConsig)+'</span>'+
         outras.map(x=>' · '+esc(x.q.nome)+' '+brl(+x.q.v||0)).join("")+'</span></div>'+
     '</section>';
 
     // 1) saída mensal consolidada
-    h+='<div class="tit-secao" style="margin-top:34px"><h3>Saída mensal com dívidas — próximos 12 meses</h3></div>'+
+    h+='<div class="tit-secao" id="dv-mensal" style="margin-top:34px"><h3>Saída mensal com dívidas — próximos 12 meses</h3></div>'+
       '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Compromisso</th>'+ms12.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'</tr></thead><tbody>'+
       dv.consolida.linhas.map((l,i)=>{ const a=auto(l);
         return '<tr><td>'+esc(cap(l.nome.trim().toLowerCase()))+
@@ -2874,7 +2886,7 @@
     dv.parcelas.forEach((p,i)=>{ const k=Object.keys(p.vals); (k.length===0||k.some(m=>m>=hoje&&p.vals[m])?ativos:quitados).push(i); });
     const msP=janelaMeses(hoje, ativos.map(i=>dv.parcelas[i].vals).concat([dv.faturaAvulsos]), 12, 36);
     const totP=m=>ativos.reduce((s,i)=>s+(dv.parcelas[i].foraTotal?0:(+dv.parcelas[i].vals[m]||0)),0);
-    h+='<div class="tit-secao" style="margin-top:40px"><h3>Parcelamentos no cartão — mês a mês</h3></div>'+
+    h+='<div class="tit-secao" id="dv-parcelas" style="margin-top:40px"><h3>Parcelamentos no cartão — mês a mês</h3></div>'+
       '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Descrição</th><th style="text-align:left">Cartão</th><th style="text-align:left">Categoria</th>'+
       msP.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'<th>Falta pagar</th></tr></thead><tbody>'+
       ativos.map(i=>{ const p=dv.parcelas[i], at=k=>'data-dv="pc" data-i="'+i+'" data-k="'+k+'"';
@@ -2903,7 +2915,7 @@
         '</tbody></table></div></details>':'');
 
     // 3) consórcio
-    h+='<div class="tit-secao" style="margin-top:40px"><h3>Consórcio — mês a mês</h3></div>'+
+    h+='<div class="tit-secao" id="dv-consorcio" style="margin-top:40px"><h3>Consórcio — mês a mês</h3></div>'+
       '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Veículo</th><th style="text-align:left">Situação</th><th>Quitação</th>'+
       ms12.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'<th>Falta pagar</th><th>Última</th></tr></thead><tbody>'+
       dv.consorcio.map((c,i)=>{ const at=k=>'data-dv="cc" data-i="'+i+'" data-k="'+k+'"';
@@ -2918,7 +2930,7 @@
 
     // 4) consignados
     const tg=k=>dv.consignados.reduce((s,c)=>s+(+c[k]||0),0);
-    h+='<div class="tit-secao" style="margin-top:40px"><h3>Consignados</h3></div>'+
+    h+='<div class="tit-secao" id="dv-consignados" style="margin-top:40px"><h3>Consignados</h3></div>'+
       '<div class="rolagem"><table class="fx-tab dv-tab" style="min-width:820px"><thead><tr><th>Contrato</th><th>Parcela</th><th>Parcela atual</th>'+
       '<th>Total de parcelas</th><th>Restam</th><th>Saldo devedor</th><th>Termina</th></tr></thead><tbody>'+
       dv.consignados.map((c,i)=>{ const at=k=>'data-dv="g" data-i="'+i+'" data-k="'+k+'"';
@@ -2936,7 +2948,7 @@
       '</tbody></table></div><button class="ver-mais" data-dvadd="g">+ Consignado</button>';
 
     // 5) outros valores para quitar (ex.: financiamento da casa)
-    h+='<div class="tit-secao" style="margin-top:40px"><h3>Outros valores para quitar</h3></div>'+
+    h+='<div class="tit-secao" id="dv-outros" style="margin-top:40px"><h3>Outros valores para quitar</h3></div>'+
       '<table class="pv-tab" style="max-width:520px"><colgroup><col><col class="c-val"><col style="width:34px"></colgroup><tbody>'+
       outras.map(x=>{ const at=k=>'data-dv="q" data-i="'+x.i+'" data-k="'+k+'"';
         return '<tr><td>'+txt(at("nome"),"q:"+x.i+":nome",x.q.nome,"Dívida")+'</td>'+inp(at("v"),"q:"+x.i+":v",x.q.v)+
@@ -3052,7 +3064,7 @@
     const guardarEm=m=>cent(comPrazo.filter(o=>noMes(o.x,m)).reduce((s,o)=>s+porMesMeta(o.x),0));
     const temFluxo=ms.some(m=>sobraFluxo(m)!=null);
     const td=(v,neg)=>'<td style="'+(neg&&v<-0.004?"color:#C0392B":"")+'">'+(v==null?"—":brl(v))+'</td>';
-    const plano='<div class="tit-secao" style="margin-top:38px"><h3>Quanto guardar — próximos 12 meses</h3></div>'+
+    const plano='<div class="tit-secao" id="mt-plano" style="margin-top:38px"><h3>Quanto guardar — próximos 12 meses</h3></div>'+
       '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Meta</th>'+ms.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'</tr></thead><tbody>'+
       comPrazo.map(o=>'<tr><td style="padding:7px 6px">'+esc(o.x.nome||"(sem nome)")+'</td>'+
         ms.map(m=>'<td class="fx-calc">'+(noMes(o.x,m)?brl(porMesMeta(o.x)):"")+'</td>').join("")+'</tr>').join("")+
@@ -3071,16 +3083,16 @@
 
     corpo.innerHTML=
       '<section class="dash-geral">'+
-        '<div class="g-num"><span class="rot">Falta juntar</span><div class="v">R$ '+brl(totFalta)+'</div>'+
+        '<div class="g-num clic-card"'+ir({alvo:"#mt-lista",dica:"Ver as metas"})+'><span class="rot">Falta juntar</span><div class="v">R$ '+brl(totFalta)+'</div>'+
           '<span class="kpi-sub">'+ativas.length+' meta'+(ativas.length===1?"":"s")+' · custo total R$ '+brl(totCusto)+'</span></div>'+
-        '<div class="g-num"><span class="rot">Já guardado nas caixinhas</span><div class="v" style="color:#1E8A5F">R$ '+brl(totGuard)+'</div>'+
+        '<div class="g-num clic-card"'+ir({alvo:"#mt-lista",dica:"Ver as caixinhas"})+'><span class="rot">Já guardado nas caixinhas</span><div class="v" style="color:#1E8A5F">R$ '+brl(totGuard)+'</div>'+
           '<span class="kpi-sub">'+(totCusto?Math.round(totGuard/totCusto*100)+"% do total":"")+'</span></div>'+
-        '<div class="g-num"><span class="rot">Guardar por mês</span><div class="v">R$ '+brl(totMes)+'</div>'+
+        '<div class="g-num clic-card"'+ir({alvo:"#mt-plano",dica:"Ver o plano mês a mês"})+'><span class="rot">Guardar por mês</span><div class="v">R$ '+brl(totMes)+'</div>'+
           '<span class="kpi-sub">para cumprir os prazos'+(semPrazo.length?' · '+semPrazo.length+' sem prazo (R$ '+brl(S(semPrazo,faltaMeta))+')':'')+'</span></div>'+
       '</section>'+
       (atrasadas.length?'<div class="alerta"><div><b>'+atrasadas.length+' meta'+(atrasadas.length===1?"":"s")+' com prazo vencido</b> e dinheiro faltando: '+
         esc(atrasadas.map(o=>o.x.nome||"(sem nome)").join(", "))+'. Ajuste o prazo.</div></div>':'')+
-      '<div class="tit-secao" style="margin-top:30px"><h3>Metas</h3></div>'+
+      '<div class="tit-secao" id="mt-lista" style="margin-top:30px"><h3>Metas</h3></div>'+
       '<div class="rolagem"><table class="pv-tab mt-tab"><colgroup><col><col style="width:118px"><col style="width:92px"><col class="c-val"><col class="c-val">'+
         '<col class="c-val"><col class="c-val"><col style="width:140px"><col class="c-val"><col class="c-acao"></colgroup>'+
       '<thead><tr><th>Meta</th><th>Tipo</th><th>Prioridade</th><th class="n">Custo</th><th class="n">Guardado</th><th class="n">Guardar agora</th>'+
@@ -3120,6 +3132,38 @@
       if(r){ dados.metas[+r.dataset.mtreabrir].feito=null; salvar(); renderMetas(); }
     };
   }
+
+  /* ================= cartões clicáveis: cada número leva aos dados que o compõem ================= */
+  // o: {conta, mes, tipo ("e"/"s"/""), mov (só o que conta no total), alvo (seletor para rolar), dica}
+  function ir(o){
+    let a=' data-ir="1" role="button" tabindex="0" title="'+esc(o.dica||"Ver detalhes")+'"';
+    ["conta","mes","tipo","alvo"].forEach(k=>{ if(o[k]!=null) a+=' data-ir-'+k+'="'+esc(o[k])+'"'; });
+    if(o.mov) a+=' data-ir-mov="1"';
+    return a;
+  }
+  function irPara(el){
+    const d=el.dataset, conta=d.irConta||ui.conta, lanc=["cpf","itau","bb","cartao"].includes(conta);
+    if(conta!==ui.conta){ ui.conta=conta; ui.view="mes"; }
+    if(d.irMes){ if(conta==="prev") ui.prevMes=d.irMes; else ui.mes=d.irMes; }
+    if(lanc && d.irTipo!=null){
+      ui.busca=""; ui.cat=""; ui.origem=""; ui.fat=""; ui.errada=""; ui.vinculo="";
+      ui.tipo=d.irTipo; ui.soMov=d.irMov==="1";
+    }
+    render();
+    const alvo=d.irAlvo||(lanc?"#tabelaLanc":null);
+    setTimeout(()=>{
+      const t=alvo&&document.querySelector(alvo);
+      if(t) t.scrollIntoView({behavior:"smooth",block:"start"}); else window.scrollTo({top:0,behavior:"smooth"});
+    },40);
+  }
+  document.getElementById("corpo").addEventListener("click",e=>{
+    if(e.target.closest("button,input,select,a")) return;
+    const c=e.target.closest("[data-ir]"); if(c) irPara(c);
+  });
+  document.getElementById("corpo").addEventListener("keydown",e=>{
+    if(e.key!=="Enter"&&e.key!==" ") return;
+    const c=e.target.closest("[data-ir]"); if(c&&e.target===c){ e.preventDefault(); irPara(c); }
+  });
 
   /* ================= desenho da tela ================= */
   function render(){
@@ -3210,14 +3254,15 @@
         ' no cheque especial.</b> O saldo chegou a R$ '+brl(fundo)+'.</div></div>');
 
     const cartoes = natureza
-      ? cartao("Entrou",ent,"pos",base.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F")+
-        cartao("Gastou",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B")+
-        cartao(res<0?"Faltou":"Sobrou",res,res<0?"neg":"pos","entrou − gastou",res<0?"#C0392B":"#1E8A5F")
-      : cartao("Entradas",ent,"pos",base.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F")+
-        cartao("Saídas",Math.abs(sai),"",base.filter(l=>l.valor<0).length+" lançamentos","#E08E0B")+
+      ? cartao("Entrou",ent,"pos",base.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",mov:1,dica:"Ver as entradas"})+
+        cartao("Gastou",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",mov:1,dica:"Ver os gastos"})+
+        cartao(res<0?"Faltou":"Sobrou",res,res<0?"neg":"pos","entrou − gastou",res<0?"#C0392B":"#1E8A5F",{tipo:"",mov:1,dica:"Ver entradas e gastos"})
+      : cartao("Entradas",ent,"pos",base.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",dica:"Ver as entradas"})+
+        cartao("Saídas",Math.abs(sai),"",base.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",dica:"Ver as saídas"})+
         (ui.conta==="cartao"
-          ? cartao("Total do cartão",res,res<0?"neg":"pos","compras − créditos",res<0?"#C0392B":"#1E8A5F")
-          : cartao("Saldo final",fim,fim<0?"neg":"",ui.mes==="tudo"?"acumulado":"em "+rotuloMes(ui.mes),fim<0?"#C0392B":"#2E86DE"));
+          ? cartao("Total do cartão",res,res<0?"neg":"pos","compras − créditos",res<0?"#C0392B":"#1E8A5F",{tipo:"",dica:"Ver as compras"})
+          : cartao("Saldo final",fim,fim<0?"neg":"",ui.mes==="tudo"?"acumulado":"em "+rotuloMes(ui.mes),fim<0?"#C0392B":"#2E86DE",
+              {alvo:comConf?"#conf":"#saldoDia",dica:comConf?"Conferir com o saldo do banco":"Ver o saldo dia a dia"}));
 
     const verMais=(chave,tot,aberto)=>tot>LIM?'<button class="ver-mais" data-vermais="'+chave+'">'+
       (aberto?"Mostrar menos":"Ver todas as "+tot+" categorias")+'</button>':"";
@@ -3235,7 +3280,7 @@
           verMais("sai",saidas.length,ui.verTodasSai)+
         '</div>'+
         '<div>'+
-          (semSaldo?"":'<div class="tit-secao"><h3>Saldo dia a dia</h3></div>'+grafico(serie,inicial)+'<div style="height:26px"></div>')+
+          (semSaldo?"":'<div class="tit-secao" id="saldoDia"><h3>Saldo dia a dia</h3></div>'+grafico(serie,inicial)+'<div style="height:26px"></div>')+
           '<div class="tit-secao"><h3>De onde veio</h3></div>'+
           (vEnt.length?vEnt.map(([c,v])=>catLinha(c,v,v/maiorEnt,true,info(c,v,true))).join(""):'<p class="sub">Sem entradas neste período.</p>')+
           verMais("ent",entradas.length,ui.verTodasEnt)+
@@ -3446,8 +3491,8 @@
     });
   }
 
-  function cartao(rot,val,cls,sub,c){
-    return '<div class="tot" style="--c:'+c+'"><span class="rot">'+rot+'</span>'+
+  function cartao(rot,val,cls,sub,c,irO){
+    return '<div class="tot'+(irO?' clic-card':'')+'" style="--c:'+c+'"'+(irO?ir(irO):'')+'><span class="rot">'+rot+'</span>'+
       '<div class="num" style="color:'+c+'"><small>R$</small>'+brl(val)+'</div>'+
       '<p class="sub">'+sub+'</p></div>';
   }
@@ -3481,6 +3526,7 @@
     if(ui.cat) chips.push(["cat",ui.cat]);
     if(ui.tipo) chips.push(["tipo",ui.tipo==="e"?"Só entradas":"Só saídas"]);
     if(ui.origem) chips.push(["origem",NOMES_ORIGEM[ui.origem]||ui.origem]);
+    if(ui.soMov) chips.push(["soMov","Só o que entra no total"]);
     const ch=$("#chips");
     if(ch) ch.innerHTML = chips.length ? '<span class="sub" style="margin:0">Filtrando:</span>'+
       chips.map(([k,t])=>'<span class="chip">'+esc(t)+'<button data-chip="'+k+'" aria-label="Remover filtro">×</button></span>').join("")+
@@ -3555,7 +3601,7 @@
       if(vm){ const k=vm.dataset.vermais==="sai"?"verTodasSai":"verTodasEnt"; ui[k]=!ui[k]; render(); return; }
       const chip=e.target.closest("[data-chip]");
       if(chip){ const k=chip.dataset.chip;
-        if(k==="*"){ ui.busca="";ui.cat="";ui.tipo="";ui.vinculo="";ui.origem="";ui.fat="";ui.errada=""; } else ui[k]="";
+        if(k==="*"){ ui.busca="";ui.cat="";ui.tipo="";ui.vinculo="";ui.origem="";ui.fat="";ui.errada="";ui.soMov=""; } else ui[k]="";
         render(); try{document.getElementById("tabelaLanc").scrollIntoView({block:"start"});}catch(_){ } return; }
       const th=e.target.closest("th[data-sort]"); if(!th||e.target.closest(".col-drag")) return;
       const col=th.dataset.sort;
@@ -3685,7 +3731,7 @@
     const bt=e.target.closest(".conta-tab"); if(!bt) return;
     if(ui.conta==="dash"||bt.dataset.conta==="dash") ui.mes=null; // dashboard abre em "todos os meses"; contas abrem no mês atual
     ui.conta=bt.dataset.conta; ui.view="mes";
-    ui.busca=""; ui.cat=""; ui.tipo=""; ui.vinculo=""; ui.origem=""; ui.fat=""; ui.errada="";
+    ui.busca=""; ui.cat=""; ui.tipo=""; ui.vinculo=""; ui.origem=""; ui.fat=""; ui.errada=""; ui.soMov="";
     render();
   });
 
