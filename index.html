@@ -3693,6 +3693,7 @@
   $("#abas").addEventListener("click",e=>{
     const pm=e.target.closest("[data-pmes]");
     if(pm){ ui.prevMes=pm.dataset.pmes; render(); return; }
+    if(e.target.closest("[data-mtnova]")){ novaMeta(); return; }
     if(e.target.closest("[data-pnovo]")){ novoMesPrev(); return; }
     if(e.target.closest("[data-dvnova]")){ novaParcelada(); return; }
     if(e.target.closest("[data-papagar]")){
