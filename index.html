@@ -3602,7 +3602,8 @@
   function grupoContaInv(l){
     const h=normTxt(l.hist);
     if(l.origem==="itau"){
-      if(/COR ITAUCOR|COR OPERACOES|ITAUCOR|ITAU CORRETORA/.test(h)) return "itaucor";
+      // "PIX TRANSF ITAU CO" e "TBI 2040.00073-5 TD" = dinheiro mandado para a conta da Itaú Corretora
+      if(/COR ITAUCOR|COR OPERACOES|ITAUCOR|ITAU CORRETORA|PIX TRANSF ITAU CO|^TBI .*TD$|TBI 2040\.00073/.test(h)) return "itaucor";
       if(/CDB|COFRINHO|APLICACAO|APLIC AUT|REND PAGO APLIC|RESGATE/.test(h)) return "itaucdb";
     }
     if(l.origem==="bb" && /RENDE FACIL|CDB|APLICACAO|RESGATE|LCI|LCA|TESOURO|POUPANCA/.test(h)) return "bb";
