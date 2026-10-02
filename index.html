@@ -2917,15 +2917,36 @@
   const mesesPrev = () => Object.keys(dados.previsoes||{}).sort();
   function proxMes(ym){ const [a,m]=ym.split("-").map(Number); return m===12?(a+1)+"-01":a+"-"+String(m+1).padStart(2,"0"); }
 
-  function novoMesPrev(){
-    const ms=mesesPrev(), ult=ms[ms.length-1], base=ult?dados.previsoes[ult]:null;
-    const ym=ult?proxMes(ult):mesAtual();
+  // "Passar para o próximo mês": copia o mês aberto para o seguinte, mesmos dias de pagamento, só muda o mês
+  function passarPrevProxMes(de){
+    const base=dados.previsoes[de]; if(!base) return;
+    const ym=proxMes(de);
+    const fazer=()=>novoMesPrev(de,ym);
+    if(dados.previsoes[ym])
+      confirmar(cap(rotuloMes(ym))+" já existe",
+        "Substituir a previsão de "+esc(rotuloMes(ym))+" por uma cópia de "+esc(rotuloMes(de))+"?<br><br>"+
+        "As linhas de "+esc(rotuloMes(ym))+" que vieram de extrato importado são mantidas.","Substituir")
+        .then(ok=>{ if(ok) fazer(); });
+    else fazer();
+  }
+
+  function novoMesPrev(deYm,paraYm){
+    const ms=mesesPrev(), ult=deYm||ms[ms.length-1], base=ult?dados.previsoes[ult]:null;
+    const ym=paraYm||(ult?proxMes(ult):mesAtual());
+    const velho=dados.previsoes[ym];
     const [a,m]=ym.split("-").map(Number), dias=new Date(a,m,0).getDate();
     const mover=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||"")?ym+"-"+String(Math.min(+d.slice(8),dias)).padStart(2,"0"):"";
     // copia as linhas do último mês: o que foi pago vira previsto; nada marcado como pago
     const copia=l=>(l||[]).map(x=>({data:mover(x.data), d:x.d, aPagar:x.aPagar!=null?x.aPagar:(x.pago?-x.pago:null), pago:null}));
-    dados.previsoes[ym]={aba:"criado no app", saldo:0, fixos:copia(base&&base.fixos), itens:copia(base&&base.itens),
+    const novo={aba:"criado no app", saldo:0, fixos:copia(base&&base.fixos), itens:copia(base&&base.itens),
       receitas:(base?base.receitas:[]).map(r=>({d:r.d, v:r.v})), notas:[]};
+    // agendamentos que o extrato já trouxe para o mês de destino continuam (ligam à linha de mesmo valor)
+    if(velho) velho.itens.concat(velho.fixos).filter(x=>x.ext).forEach(x=>{
+      const y=novo.itens.concat(novo.fixos).find(i=>!i.ext&&i.pago==null&&i.aPagar!=null&&Math.abs(Math.abs(i.aPagar)-Math.abs(x.aPagar||x.pago||0))<0.005);
+      if(y){ y.data=x.data; y.ext=x.ext; y.origem=x.origem; if(x.pago!=null){ y.pago=x.pago; y.aPagar=null; } } else novo.itens.push(x);
+    });
+    ordenarPrev(novo);
+    dados.previsoes[ym]=novo;
     ui.prevMes=ym; salvar(); render();
     avisar(cap(rotuloMes(ym))+" criado"+(ult?" a partir de "+rotuloMes(ult):"")+".");
   }
@@ -2937,7 +2958,9 @@
     $("#abas").innerHTML='<div class="prev-meses" role="tablist">'+
       ms.map(m=>'<button role="tab" data-pmes="'+m+'" class="'+(m===ui.prevMes?"on":"")+'" aria-selected="'+(m===ui.prevMes)+'">'+cap(rotuloMes(m))+'</button>').join("")+
       '<button data-pnovo="1" class="novo">+ Novo mês</button></div>'+
-      (ui.prevMes?'<button class="bt vazado" data-papagar="1" style="font-size:12px;padding:6px 12px">Apagar '+esc(rotuloMes(ui.prevMes))+'</button>':'');
+      (ui.prevMes?'<div style="display:flex;gap:8px">'+
+        '<button class="bt vazado" data-ppassar="1" style="font-size:12px;padding:6px 12px">Passar para '+esc(rotuloMes(proxMes(ui.prevMes)))+' →</button>'+
+        '<button class="bt vazado" data-papagar="1" style="font-size:12px;padding:6px 12px">Apagar '+esc(rotuloMes(ui.prevMes))+'</button></div>':'');
     if(!ui.prevMes){
       corpo.innerHTML='<div class="vazio"><p class="num">Nenhuma previsão ainda</p><p>Clique em <b>+ Novo mês</b> ou importe a planilha de orçamento (abas Setembro, Outubro…).</p></div>';
       return;
@@ -4595,6 +4618,7 @@
     if(pm){ ui.prevMes=pm.dataset.pmes; render(); return; }
     if(e.target.closest("[data-mtnova]")){ novaMeta(); return; }
     if(e.target.closest("[data-pnovo]")){ novoMesPrev(); return; }
+    if(e.target.closest("[data-ppassar]")){ passarPrevProxMes(ui.prevMes); return; }
     if(e.target.closest("[data-dvnova]")){ novaParcelada(); return; }
     if(e.target.closest("[data-papagar]")){
       const ym=ui.prevMes;
