@@ -922,7 +922,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:10,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:11,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -1015,6 +1015,11 @@
         if(l.origem==="itau" && Math.abs(l.valor-533949.56)<0.01){ l.categoria="Venda de imóvel"; if(!l.obs) l.obs="Venda do apartamento"; }
       });
       dados.versao=10; dados._migrou=true;
+    }
+    if(dados.versao<11){
+      // previsão do mês: datas dentro do próprio mês e em ordem
+      Object.keys(dados.previsoes||{}).forEach(ym=>{ const p=dados.previsoes[ym]; p.itens=p.itens||[]; p.fixos=p.fixos||[]; datasNoMes(ym,p); ordenarPrev(p); });
+      dados.versao=11; dados._migrou=true;
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -1613,14 +1618,14 @@
     if(iData<0||iHist<0||(iVal<0&&iCred<0&&iDeb<0))
       return {erro:"Não reconheci as colunas de data, descrição e valor desse arquivo."};
 
-    const itens=[]; let saldoAnt=null, saldoDia=null, saldoCol=null;
+    const itens=[], futuros=[]; let saldoAnt=null, saldoDia=null, saldoCol=null, futuro=false;
     const diaDia={}, diaCol={};   // todos os saldos de fim de dia que o extrato traz
     // saldo do fim do extrato: linha "SALDO DO DIA"/"SALDO" mais recente; sem ela, a coluna de saldo da última data
     const guarda=(atual,iso,v)=>(v==null||isNaN(v))?atual:(!atual||iso>atual.iso?{iso:iso,valor:v}:atual);
     for(let i=ini;i<linhas.length;i++){
       const r=linhas[i];
-      // Itaú: depois de "lançamentos futuros" vêm agendamentos que ainda não aconteceram
-      if(/futur[oa]s/i.test(celTexto(r[0])+" "+celTexto(r[iData]))) break;
+      // Itaú: depois de "lançamentos futuros" vêm agendamentos que ainda não aconteceram — vão para a Previsão do mês
+      if(/futur[oa]s/i.test(celTexto(r[0])+" "+celTexto(r[iData]))){ futuro=true; continue; }
       const iso=celData(r[iData]); if(!iso) continue;
       let hist=consertaAcento(celTexto(r[iHist]));
       if(iDet>=0){ const d=celTexto(r[iDet]); if(d) hist=hist?hist+" - "+d:d; }
@@ -1628,6 +1633,11 @@
       const v = iVal>=0 ? celNum(r[iVal]) : (Math.abs(celNum(r[iCred])||0) - Math.abs(celNum(r[iDeb])||0));
       const ch=hist.toUpperCase().replace(/\s+/g,"");
       const sv = iSal>=0 && celTexto(r[iSal])!=="" ? celNum(r[iSal]) : null;
+      if(futuro){
+        const vf = iVal>=0 ? celNum(r[iVal]) : (Math.abs(celNum(r[iCred])||0) - Math.abs(celNum(r[iDeb])||0));
+        if(vf && !/^S(AL)?DO/.test(ch)) futuros.push({iso:iso,hist:hist,valor:vf});
+        continue;
+      }
       if(/^S(AL)?DO/.test(ch)){
         // Itaú traz o saldo anterior na coluna de saldo, com o valor em branco
         if(/^SALDOANTERIOR/.test(ch)){ const va=sv!=null?sv:v; if(va!=null&&!isNaN(va)) saldoAnt={iso:iso,valor:va}; }
@@ -1639,7 +1649,7 @@
       itens.push({iso:iso,hist:hist,valor:v,doc:iDoc>=0?celTexto(r[iDoc]):""});
     }
     const dias=Object.keys(diaDia).length?diaDia:diaCol;
-    return {itens:itens,saldoAnt:saldoAnt,saldoFim:saldoDia||saldoCol,
+    return {itens:itens,futuros:futuros,saldoAnt:saldoAnt,saldoFim:saldoDia||saldoCol,
             saldosDia:Object.keys(dias).sort().map(d=>({iso:d,valor:dias[d]}))};
   }
 
@@ -1715,8 +1725,100 @@
       (r.repetidos?" · "+r.repetidos+" já estava"+(r.repetidos===1?"":"m")+" aqui":"");
   }
 
-  function concluirImport(r,origem){
+  /* De qual banco é o extrato? Olha o conteúdo do arquivo, não o botão escolhido.
+     Evita gravar o extrato do Itaú como BB (e vice-versa), que duplica lançamentos e troca os saldos. */
+  function bancoDoArquivo(txt){
+    const t=String(txt||"").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/Ã./g," ");
+    const bid=t.match(/<BANKID>\s*0*(\d+)/);
+    if(bid) return bid[1]==="341"?"itau":bid[1]==="1"?"bb":null;
+    const conta=(re)=>(t.match(re)||[]).length;
+    const itau = 3*conta(/LOGOTIPO ITA|ITAU UNIBANCO|LANCAMENTOS FUTUROS|SAIDAS FUTURAS/g) + 2*conta(/SALDO TOTAL DISPON/g)
+               + conta(/\bPAY [A-Z0-9]{2,5}\b|PIX (?:WHATS|TRANSF) |RSCSS |RSHOP |COR ITAUCOR/g);
+    const bb   = 3*conta(/BANCO DO BRASIL S\.?A|BB RENDE FACIL|COBRANCA DE I\.O\.F/g)
+               + 2*conta(/PIX - (?:ENVIADO|RECEBIDO)|PAGTO CARTAO CREDITO|BB CONSORCIO/g);
+    if(itau>=3 && itau>=2*bb) return "itau";
+    if(bb>=3 && bb>=2*itau) return "bb";
+    return null;
+  }
+  // texto bruto de uma planilha/CSV para a detecção do banco
+  const textoLinhas = ls => (ls||[]).slice(0,400).map(r=>(r||[]).map(c=>celTexto(c)).join(" ")).join("\n");
+
+  /* Agendamentos ("lançamentos futuros" do extrato) vão para a Previsão do mês, na data em que vão cair.
+     Se a previsão já tem a conta (mesmo valor), só acerta a data e liga ao extrato; senão cria a linha. */
+  const chaveExt = (hist,valor) => String(hist).toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g,"").slice(0,20)+"|"+Math.abs(valor).toFixed(2);
+  function novaPrevVazia(ym){
+    dados.previsoes=dados.previsoes||{};
+    return dados.previsoes[ym]||(dados.previsoes[ym]={aba:"criado no app", saldo:0, fixos:[], itens:[], receitas:[], notas:[]});
+  }
+  function gravarFuturos(futuros,origem){
+    let novos=0, ligados=0; const meses=new Set();
+    const livre=i=>!i.ext && i.pago==null && i.aPagar!=null;
+    const liga=(x,f,valor,k)=>{ x.data=f.iso; x.aPagar=valor; x.ext=k; x.origem=origem; ligados++; };
+    const resto=[];
+    // 1º: já ligado antes, ou a previsão tem exatamente esse valor
+    (futuros||[]).forEach(f=>{
+      const valor=Math.round(f.valor*100)/100, ym=f.iso.slice(0,7), k=chaveExt(f.hist,valor);
+      const p=novaPrevVazia(ym), todas=p.itens.concat(p.fixos);
+      meses.add(ym);
+      let x=todas.find(i=>i.ext===k);
+      if(x){ x.data=f.iso; if(x.pago==null) x.aPagar=valor; ligados++; return; }
+      x=todas.find(i=>livre(i) && Math.abs(Math.abs(i.aPagar)-Math.abs(valor))<0.005);
+      if(x){ liga(x,f,valor,k); return; }
+      resto.push({f:f,valor:valor,k:k,p:p});
+    });
+    // 2º: mesma categoria com valor diferente (previsto 1.830, veio 1.799,30) — só se houver uma única conta dessa categoria
+    resto.forEach(({f,valor,k,p})=>{
+      const cat=classificar(f.hist,valor).categoria;
+      const cands=cat==="Sem categoria"?[]:p.itens.concat(p.fixos).filter(i=>livre(i)&&catRotulo(i.d||"")===cat);
+      if(cands.length===1){ liga(cands[0],f,valor,k); return; }
+      p.itens.push({data:f.iso, d:f.hist+(cat!=="Sem categoria"?" ("+cat+")":""), aPagar:valor, pago:null, ext:k, origem:origem});
+      novos++;
+    });
+    meses.forEach(ym=>ordenarPrev(dados.previsoes[ym]));
+    return {novos:novos, ligados:ligados};
+  }
+  // o agendamento aconteceu (veio no extrato como lançamento): marca como pago na previsão
+  // e, se o lançamento ainda não tem categoria própria, usa a da conta prevista ("clube" → Clube)
+  function baixarPrevistos(origem){
+    let n=0;
+    Object.keys(dados.previsoes||{}).forEach(ym=>{
+      const p=dados.previsoes[ym];
+      p.itens.concat(p.fixos).forEach(x=>{
+        if(!x.ext || x.pago!=null || x.aPagar==null) return;
+        const l=dados.lancamentos.find(l=>l.origem===(x.origem||origem) && !l.ignorado && chaveExt(l.hist,l.valor)===x.ext &&
+          Math.abs(new Date(l.data)-new Date(x.data||l.data))<=6*864e5 && l.data<=hojeISO());
+        if(!l) return;
+        x.pago=Math.abs(x.aPagar); x.aPagar=null; n++;
+        const c=catRotulo(x.d); if(c && c!==l.categoria && !l.catManual) l.categoria=c;
+      });
+    });
+    return n;
+  }
+  // linhas da previsão em ordem de data (sem data vão para o fim)
+  function ordenarPrev(p){
+    if(!p) return;
+    const ord=(a,b)=>(a.data||"9999")<(b.data||"9999")?-1:(a.data||"9999")>(b.data||"9999")?1:0;
+    p.itens.sort(ord); p.fixos.sort(ord);
+  }
+  // datas da previsão sempre dentro do próprio mês (a aba copiada do mês anterior vem com as datas antigas)
+  function datasNoMes(ym,p){
+    const [a,m]=ym.split("-").map(Number), dias=new Date(a,m,0).getDate();
+    let n=0;
+    p.itens.concat(p.fixos).forEach(x=>{
+      if(/^\d{4}-\d{2}-\d{2}$/.test(x.data||"") && x.data.slice(0,7)!==ym && !x.ext){
+        x.data=ym+"-"+String(Math.min(+x.data.slice(8),dias)).padStart(2,"0"); n++;
+      }
+    });
+    return n;
+  }
+
+  function concluirImport(r,origem,txtBruto){
     if(!r||r.erro){ avisar((r&&r.erro)||"Não reconheci esse arquivo.",true); return; }
+    let trocou="";
+    if(origem==="itau"||origem==="bb"){
+      const banco=bancoDoArquivo(txtBruto);
+      if(banco && banco!==origem){ trocou=" (o arquivo é do "+NOMES_ORIGEM[banco]+", não do "+NOMES_ORIGEM[origem]+" — importado na conta certa)"; origem=banco; }
+    }
     let itens=r.itens;
     if(origem==="cartao"){
       // fatura: pagamento da fatura não é compra; compras vêm positivas no arquivo do banco
@@ -1725,13 +1827,20 @@
       if(pos>itens.length-pos) itens.forEach(i=>{ i.valor=-i.valor; });
       itens.forEach(i=>{ i.iso=ajustarParc(i.iso,i.hist); if(!i.doc) i.doc="Cartão Itaú"; });
     }
-    if(!itens.length){ avisar("Não encontrei lançamentos nesse arquivo.",true); return; }
+    if(!itens.length && !(r.futuros||[]).length){ avisar("Não encontrei lançamentos nesse arquivo.",true); return; }
     if(origem!=="cartao") gravarSaldos(r,origem);
     const g=gravarLinhas(itens,origem);
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+    let fut="";
+    if(origem!=="cartao"){
+      const f=gravarFuturos(r.futuros,origem), b=baixarPrevistos(origem);
+      if(f.novos||f.ligados) fut=" · "+(f.novos+f.ligados)+" agendamento"+(f.novos+f.ligados===1?"":"s")+" na Previsão do mês";
+      if(b) fut+=" · "+b+" previsto"+(b===1?"":"s")+" marcado"+(b===1?"":"s")+" como pago"+(b===1?"":"s");
+    }
+    if(origem!=="cartao" && (ui.conta==="itau"||ui.conta==="bb")) ui.conta=origem;
     if(g.meses.length){ ui.mes=g.meses.sort().pop(); ui.view="mes"; }
     salvar(); render();
-    avisar(NOMES_ORIGEM[origem]+": "+textoImport(g));
+    avisar(NOMES_ORIGEM[origem]+": "+textoImport(g)+fut+trocou, !!trocou);
   }
 
   /* Saldos do banco: tudo o que o extrato informa fica gravado.
@@ -1790,7 +1899,7 @@
       catch(e){ texto=new TextDecoder("iso-8859-1").decode(buf); }
       if(origem==="planilha"){ avisar("A planilha de orçamento precisa ser o arquivo .xlsx.",true); return; }
       const r = /<OFX>|OFXHEADER/i.test(texto) ? lerOFX(texto) : linhasParaItens(lerCSV(texto));
-      concluirImport(r,origem);
+      concluirImport(r,origem,texto);
     };
     fr.onerror=()=>avisar("Não consegui abrir esse arquivo.",true);
     fr.readAsArrayBuffer(arq);
@@ -1810,7 +1919,7 @@
     if(aba && (origem==="planilha" || wb.SheetNames.some(n=>/M[ÊE]S CORRENTE/i.test(n)))){ importarPlanilhaOrcamento(wb,aba); return; }
     if(origem==="planilha"){ avisar("Não encontrei a aba LANÇAMENTOS nessa planilha.",true); return; }
     const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
-    concluirImport(linhasParaItens(linhas),origem);
+    concluirImport(linhasParaItens(linhas),origem,textoLinhas(linhas));
   }
 
   /* ---- planilha "Orçamento Solano": aba LANÇAMENTOS (histórico) e MÊS CORRENTE (previsto) ---- */
@@ -1994,7 +2103,17 @@
         if(j) p.receitas.push({d:j, v:num(K)?K:null});
         else if(num(K)) p.notas.push({d:"", v:K});
       });
-      if(p.itens.length||p.fixos.length){ (dados.previsoes=dados.previsoes||{})[ym]=p; lidos.push(nome.trim()); }
+      if(p.itens.length||p.fixos.length){
+        // a aba é copiada do mês anterior: as datas passam para este mês; agendamentos já importados continuam ligados
+        datasNoMes(ym,p);
+        const velho=(dados.previsoes||{})[ym];
+        if(velho) velho.itens.concat(velho.fixos).filter(x=>x.ext).forEach(x=>{
+          const y=p.itens.concat(p.fixos).find(i=>!i.ext&&i.pago==null&&i.aPagar!=null&&Math.abs(Math.abs(i.aPagar)-Math.abs(x.aPagar||x.pago||0))<0.005);
+          if(y){ y.data=x.data; y.ext=x.ext; y.origem=x.origem; } else p.itens.push(x);
+        });
+        ordenarPrev(p);
+        (dados.previsoes=dados.previsoes||{})[ym]=p; lidos.push(nome.trim());
+      }
     });
     return lidos;
   }
@@ -4217,8 +4336,9 @@
     const lista=filtrados().slice().reverse();
     const tb=$("#corpoTabela");
     const riscados=doMes().filter(l=>l.ignorado).length;
-    $("#conta").textContent = lista.length+" de "+doMes().length+" lançamentos"+
-      (riscados?" · "+riscados+" riscado"+(riscados===1?"":"s"):"");
+    $("#conta").innerHTML = lista.length+" de "+doMes().length+" lançamentos"+
+      (riscados?" · "+riscados+" riscado"+(riscados===1?"":"s")+
+        ' <button class="ver-mais" data-apagar-riscados="1" style="padding:0 0 0 6px">apagar os riscados</button>':"");
     document.querySelectorAll("#tabelaLanc th[data-sort]").forEach(th=>{
       const lab={data:"Data",hist:"Descrição",categoria:"Categoria",vinculo:"Vínculo",valor:"Valor"}[th.dataset.sort];
       th.firstChild.textContent=lab+(ui.sortCol===th.dataset.sort?(ui.sortDir>0?" ↑":" ↓"):"");
@@ -4320,7 +4440,7 @@
       const l=acharLanc(tr.dataset.id); if(!l) return;
       const c=e.target.dataset.c;
       if(c==="categoria"){
-        l.categoria=e.target.value;
+        l.categoria=e.target.value; l.catManual=true;
         // oferecer criar regra para o estabelecimento
         const termo=mercado(l.hist);
         const regraExiste=dados.regras.some(r=>r.termo.toUpperCase()===termo.toUpperCase());
@@ -4476,6 +4596,16 @@
   document.addEventListener("click",e=>{ if(!e.target.closest(".menu")) fecharMenus(); else if(e.target.closest(".menu button")) fecharMenus(); });
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") fecharMenus(); });
 
+  document.addEventListener("click",e=>{
+    if(!e.target.closest("[data-apagar-riscados]")) return;
+    const ls=doMes().filter(l=>l.ignorado); if(!ls.length) return;
+    confirmar("Apagar "+ls.length+" lançamento"+(ls.length===1?"":"s")+" riscado"+(ls.length===1?"":"s")+"?",
+      "Só os riscados "+(ui.conta==="itau"||ui.conta==="bb"||ui.conta==="cartao"?"do "+NOMES_ORIGEM[ui.conta]+" ":"")+
+      (ui.mes==="tudo"?"de todos os meses":"de "+esc(rotuloMes(ui.mes)))+
+      ".<br><br>Saem do histórico. Para recuperar, será preciso importar o extrato de novo.","Apagar")
+      .then(ok=>{ if(!ok) return; const ids=new Set(ls.map(l=>l.id));
+        dados.lancamentos=dados.lancamentos.filter(l=>!ids.has(l.id)); salvar(); render(); avisar(ls.length+" lançamentos apagados."); });
+  });
   $("#arqPdf").onchange=e=>{ if(e.target.files[0]) importarFaturaPDF(e.target.files[0]); e.target.value=""; };
   const abrirImport = o => { ui._origemImport=o; $("#arqCsv").click(); };
   $("#btImpItau").onclick=()=>abrirImport("itau");
