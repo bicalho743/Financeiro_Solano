@@ -249,6 +249,7 @@
   tr.riscado td:not(.acao){opacity:.4}
   tr.riscado .campo,tr.riscado .selo{text-decoration:line-through;text-decoration-thickness:1px}
   tr.riscado:hover td:not(.acao){opacity:.6}
+  .pv-tab tr.riscado td:not(.acao){text-decoration:line-through;text-decoration-thickness:1px}
   .apagar{border:none;background:transparent;color:var(--linha);font-size:17px;line-height:1;padding:3px 6px;border-radius:2px}
   .apagar:hover{color:var(--tijolo);background:#FBF2EF}
   tr.dup td{opacity:.5}
@@ -1301,7 +1302,7 @@
           '<div class="g-num clic-card"'+ir({conta:"prev",mes:ui.mes,alvo:"#pv-receitas",dica:"Ver as receitas esperadas"})+'><span class="rot">A receber</span><div class="v" style="color:#1E8A5F">R$ '+brl(t.receber)+'</div>'+
             '<span class="kpi-sub">'+esc((receitasFluxo(ui.mes)?"Fluxo anual: ":"")+(receitasPrev(p,ui.mes).filter(r=>r.v).map(r=>r.d).join(" + ")||"—"))+'</span></div>'+
           '<div class="g-num clic-card"'+ir({conta:"prev",mes:ui.mes,alvo:"#pv-resumo",dica:"Ver o cálculo na previsão do mês"})+'><span class="rot">'+(t.resultado<0?"Déficit":"Superávit")+'</span><div class="v" style="color:'+corDif(t.resultado)+'">R$ '+brl(t.resultado)+'</div>'+
-            '<span class="kpi-sub">saldo em conta − a pagar</span></div>'+
+            '<span class="kpi-sub">saldo + a receber + anotações − a pagar</span></div>'+
         '</section>'+
         '<button class="ver-mais" data-abrirprev="'+ui.mes+'">Abrir a previsão de '+rotuloMes(ui.mes)+' →</button>';
     }
@@ -2893,10 +2894,25 @@
   const ymDaPrev = p => Object.keys(dados.previsoes||{}).find(k=>dados.previsoes[k]===p);
   // lista de receitas usada na previsão: a do Fluxo anual; sem ela, a digitada no mês
   const receitasPrev = (p,ym) => receitasFluxo(ym||ymDaPrev(p)) || p.receitas || [];
+  // receita já recebida (marcada com ✓): sai da soma. As do Fluxo anual são marcadas pelo nome, guardado no mês.
+  const recebida = (p,x,doFluxo) => doFluxo ? !!(p.recebidas||{})[x.d] : !!x.recebido;
+  // saldo em conta segundo os lançamentos do Itaú: hoje (mês atual ou futuro) ou no fim do mês (mês passado)
+  function saldoContaApp(ym){
+    const hoje=hojeISO(), D = ym<hoje.slice(0,7) ? fimDoMes(ym) : hoje, ymD=D.slice(0,7);
+    const ini=saldoInicio("itau",ymD);
+    const dep=new Date(D+"T12:00:00"); dep.setDate(dep.getDate()+1);
+    return {v:cent(ini.v+movConta("itau",ymD+"-01",dep.toISOString().slice(0,10))), data:D, fonte:ini.fonte};
+  }
+  const saldoPrev = (p,ym) => p.saldoManual&&p.saldo!=null ? +p.saldo : saldoContaApp(ym||ymDaPrev(p)).v;
   function totaisPrev(p,ym){
+    ym=ym||ymDaPrev(p);
     const soma=(a,f)=>(a||[]).reduce((s,x)=>s+(+f(x)||0),0);
-    const aPagar=soma(p.itens,x=>x.aPagar), pago=soma(p.itens,x=>x.pago), receber=soma(receitasPrev(p,ym),x=>x.v);
-    return {aPagar:aPagar, pago:pago, receber:receber, resultado:(+p.saldo||0)+aPagar};
+    const doFx=!!receitasFluxo(ym);
+    const aPagar=soma(p.itens,x=>x.aPagar), pago=soma(p.itens,x=>x.pago);
+    const receber=soma(receitasPrev(p,ym).filter(x=>!recebida(p,x,doFx)),x=>x.v);
+    const outras=soma((p.notas||[]).filter(x=>!x.recebido),x=>x.v);
+    const saldo=saldoPrev(p,ym);
+    return {aPagar:aPagar, pago:pago, receber:receber, outras:outras, saldo:saldo, resultado:cent(saldo+receber+outras+aPagar)};
   }
   const mesesPrev = () => Object.keys(dados.previsoes||{}).sort();
   function proxMes(ym){ const [a,m]=ym.split("-").map(Number); return m===12?(a+1)+"-01":a+"-"+String(m+1).padStart(2,"0"); }
@@ -2946,20 +2962,23 @@
       '<button class="ver-mais" data-padd="'+lista+'">+ Adicionar linha</button>';
     const lista2=(lista,titulo,rot)=>
       '<div class="tit-secao" id="pv-'+lista+'" style="margin:26px 0 6px"><h3>'+titulo+'</h3></div>'+
-      '<table class="pv-tab"><colgroup><col><col class="c-val"><col style="width:34px"></colgroup><tbody>'+
+      '<table class="pv-tab"><colgroup><col><col class="c-val"><col style="width:64px"></colgroup><tbody>'+
       p[lista].map((x,i)=>{ const at=k=>' data-pv="'+lista+'" data-i="'+i+'" data-k="'+k+'" data-foco="'+lista+':'+i+':'+k+'"';
-        return '<tr><td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="'+rot+'"></td>'+
+        return '<tr'+(x.recebido?' class="riscado" title="Recebido — fora da soma"':'')+'><td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="'+rot+'"></td>'+
           '<td class="valor"><input class="campo'+(lista==="receitas"?' pos':'')+'"'+at("v")+' value="'+val(x.v)+'" placeholder="—" inputmode="decimal"></td>'+
-          '<td class="acao"><button class="apagar" data-pdel="'+lista+':'+i+'" aria-label="Apagar">×</button></td></tr>'; }).join("")+
+          '<td class="acao"><button class="pv-pagar" data-precebe="'+lista+':'+i+'" title="'+(x.recebido?"Ainda não recebido (volta para a soma)":"Marcar como recebido (sai da soma)")+'">'+(x.recebido?"↺":"✓")+'</button>'+
+          '<button class="apagar" data-pdel="'+lista+':'+i+'" aria-label="Apagar">×</button></td></tr>'; }).join("")+
       '</tbody></table><button class="ver-mais" data-padd="'+lista+'">+ Adicionar</button>';
     const t=totaisPrev(p,ui.prevMes), recFx=receitasFluxo(ui.prevMes);
     const receitasHTML = recFx
       ? '<div class="tit-secao" id="pv-receitas" style="margin:26px 0 6px"><h3>Receitas esperadas</h3></div>'+
         '<p class="sub" style="margin:0 0 8px">Vêm do <b>Fluxo anual</b> ('+esc(rotuloMes(ui.prevMes))+'). '+
           '<button class="ver-mais" data-pfluxo="1" style="padding:0">Alterar no Fluxo anual →</button></p>'+
-        '<table class="pv-tab"><colgroup><col><col class="c-val"></colgroup><tbody>'+
-        (recFx.length?recFx.map(x=>'<tr><td style="padding:7px 6px">'+esc(x.d)+'</td><td style="padding:7px 6px;text-align:right;font-family:var(--serif);font-size:16px;color:#1E8A5F">'+brl(x.v)+'</td></tr>').join("")
-          :'<tr><td colspan="2" class="sub" style="padding:7px 6px">Nenhuma receita no fluxo para este mês.</td></tr>')+
+        '<table class="pv-tab"><colgroup><col><col class="c-val"><col style="width:34px"></colgroup><tbody>'+
+        (recFx.length?recFx.map(x=>{ const r=recebida(p,x,true);
+          return '<tr'+(r?' class="riscado" title="Recebido — fora da soma"':'')+'><td style="padding:7px 6px">'+esc(x.d)+'</td><td style="padding:7px 6px;text-align:right;font-family:var(--serif);font-size:16px;color:#1E8A5F">'+brl(x.v)+'</td>'+
+            '<td class="acao"><button class="pv-pagar" data-precfx="'+esc(x.d)+'" title="'+(r?"Ainda não recebido (volta para a soma)":"Marcar como recebido (sai da soma)")+'">'+(r?"↺":"✓")+'</button></td></tr>'; }).join("")
+          :'<tr><td colspan="3" class="sub" style="padding:7px 6px">Nenhuma receita no fluxo para este mês.</td></tr>')+
         '</tbody></table>'
       : lista2("receitas","Receitas esperadas","Descrição");
     corpo.innerHTML=
@@ -2972,12 +2991,15 @@
         tabela("fixos","Separado no início do mês","Transferências fixas — não entram no “a pagar” (como as linhas 3 a 9 da planilha).")+
       '</div><aside class="pv-lado">'+
         '<div class="pv-resumo" id="pv-resumo">'+
-          '<label class="pv-l">Saldo em conta<input class="campo" data-pv="saldo" data-foco="saldo" value="'+(p.saldo?brl(p.saldo):"")+'" placeholder="0,00" inputmode="decimal"></label>'+
+          '<label class="pv-l">Saldo em conta<input class="campo" data-pv="saldo" data-foco="saldo" value="'+brl(t.saldo)+'" placeholder="0,00" inputmode="decimal"></label>'+
+          '<p class="sub" id="pvSaldoF" style="margin:-4px 0 6px;text-align:right">'+(p.saldoManual?'digitado · <button class="ver-mais" data-psaldoapp="1" style="padding:0">usar o dos lançamentos</button>'
+            :(()=>{ const sc=saldoContaApp(ui.prevMes); return 'Itaú pelos lançamentos, até '+diaMes(sc.data); })())+'</p>'+
+          '<div class="pv-l"><span>A receber</span><b id="pvReceber" style="color:#1E8A5F">'+brlS(t.receber)+'</b></div>'+
+          '<div class="pv-l"><span>Anotações</span><b id="pvOutras" style="color:'+(t.outras<0?"#C0392B":"#1E8A5F")+'">'+brlS(t.outras)+'</b></div>'+
           '<div class="pv-l"><span>A pagar</span><b id="pvAPagar">'+brl(t.aPagar)+'</b></div>'+
-          '<div class="pv-l"><span>A receber</span><b id="pvReceber" style="color:#1E8A5F">'+brl(t.receber)+'</b></div>'+
           '<div class="pv-tot"><span id="pvRot">'+(t.resultado<0?"Déficit":"Superávit")+'</span>'+
             '<b id="pvRes" style="color:'+(t.resultado<0?"#C0392B":"#1E8A5F")+'">R$ '+brl(t.resultado)+'</b></div>'+
-          '<p class="sub" style="margin-top:8px">Superávit = saldo em conta − a pagar (a receber não entra).</p>'+
+          '<p class="sub" style="margin-top:8px">Saldo em conta + a receber + anotações − a pagar. O ✓ numa receita marca como recebida e tira da soma (o dinheiro já está no saldo).</p>'+
           '<p class="sub" id="pvPago" style="margin-top:4px">Já pago no mês: R$ '+brl(t.pago)+'</p>'+
         '</div>'+
         receitasHTML+
@@ -2986,7 +3008,8 @@
 
     const atualizar=()=>{
       const t=totaisPrev(p,ui.prevMes);
-      $("#pvAPagar").textContent=brl(t.aPagar); $("#pvReceber").textContent=brl(t.receber);
+      $("#pvAPagar").textContent=brl(t.aPagar); $("#pvReceber").textContent=brlS(t.receber);
+      $("#pvOutras").textContent=brlS(t.outras); $("#pvOutras").style.color=t.outras<0?"#C0392B":"#1E8A5F";
       $("#pvRot").textContent=t.resultado<0?"Déficit":"Superávit";
       $("#pvRes").textContent="R$ "+brl(t.resultado); $("#pvRes").style.color=t.resultado<0?"#C0392B":"#1E8A5F";
       $("#pvPago").textContent="Já pago no mês: R$ "+brl(t.pago);
@@ -2995,7 +3018,10 @@
       const el=e.target.closest("[data-pv]"); if(!el) return;
       const lista=el.dataset.pv, k=el.dataset.k, txt=String(el.value||"").trim();
       const n=txt===""?null:numero(txt.replace("−","-"));
-      if(lista==="saldo"){ p.saldo=n||0; el.value=p.saldo?brl(p.saldo):""; }
+      if(lista==="saldo"){
+        if(n==null){ delete p.saldoManual; p.saldo=0; } else { p.saldo=n; p.saldoManual=true; }
+        salvar(); manterFoco(renderPrevisao); return;
+      }
       else{
         const x=p[lista][+el.dataset.i];
         if(k==="d"||k==="data") x[k]=el.value;
@@ -3008,6 +3034,12 @@
     };
     corpo.onclick=e=>{
       if(e.target.closest("[data-pfluxo]")){ ui.conta="fluxo"; render(); window.scrollTo(0,0); return; }
+      if(e.target.closest("[data-psaldoapp]")){ delete p.saldoManual; p.saldo=0; salvar(); renderPrevisao(); return; }
+      const rf=e.target.closest("[data-precfx]");
+      if(rf){ const k=rf.dataset.precfx; p.recebidas=p.recebidas||{}; if(p.recebidas[k]) delete p.recebidas[k]; else p.recebidas[k]=true;
+        salvar(); renderPrevisao(); return; }
+      const rc=e.target.closest("[data-precebe]");
+      if(rc){ const [l,i]=rc.dataset.precebe.split(":"), x=p[l][+i]; x.recebido=!x.recebido; salvar(); renderPrevisao(); return; }
       const ad=e.target.closest("[data-padd]");
       if(ad){
         const l=ad.dataset.padd;
