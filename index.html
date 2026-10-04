@@ -2546,6 +2546,14 @@
   // veio do extrato do banco (e não digitado à mão / linha fixa da planilha)
   // confExtrato: o extrato importado trouxe este mesmo lançamento (mesma data e valor), mesmo com outra descrição
   const pareceExtrato = l => !!l.confExtrato || (l.tipo!=="FIXO" && pareceBanco(l.hist));
+  /* Itaú: o que se gasta no sábado/domingo/feriado já sai do saldo na hora, mas o extrato data no próximo dia útil
+     (compras de sáb 03/10 vêm com 05/10, antes de "lançamentos futuros"). Vieram do extrato (confExtrato), então já foram debitados:
+     no saldo de hoje eles contam, mesmo com data de amanhã/depois. Agendamentos (sem confExtrato) não entram. */
+  function jaDebitados(origem,D){
+    const hj=hojeISO(); if(D<hj) return [];
+    const lim=new Date(hj+"T12:00:00"); lim.setDate(lim.getDate()+4); const limISO=lim.toISOString().slice(0,10);
+    return dados.lancamentos.filter(l=>l.origem===origem&&l.confExtrato&&!l.ignorado&&l.data>D&&l.data<=limISO);
+  }
   function movConta(origem,de,ate){
     return cent(dados.lancamentos.reduce((s,l)=>l.origem===origem&&!l.ignorado&&l.data>=de&&l.data<ate?s+l.valor:s,0));
   }
@@ -2571,7 +2579,8 @@
     }
     const temConf=conf&&conf.data&&conf.data.slice(0,7)===ym;
     const D=temConf?conf.data:(ui.confData&&ui.confData.slice(0,7)===ym)?ui.confData:(hojeISO()<fimDoMes(ym)?(hojeISO()>=ym+"-01"?hojeISO():fimDoMes(ym)):fimDoMes(ym));
-    const ate=base.filter(l=>l.data<=D);
+    const jaDeb=jaDebitados(origem,D);
+    const ate=base.filter(l=>l.data<=D).concat(jaDeb);
     const app=cent(ini.v+ate.reduce((s,l)=>s+l.valor,0));
     const real=temConf?+conf.valor:null;
     const dif=real==null?null:cent(real-app);
@@ -2639,7 +2648,7 @@
         p.unshift('<div class="conf-p conf-achou"><b>Bate exatamente se:</b>'+achou.map(g=>'<div class="conf-comb">'+
           g.map(c=>(c.acao==="tirar"?"tirar ":"deixar de ignorar ")+'<span data-cbusca="'+esc(c.l.hist)+'">'+diaMes(c.l.data)+' '+esc(c.l.hist)+' ('+brl(c.l.valor)+')</span>').join(" + ")+
           '</div>').join("")+'</div>');
-      const depois=base.filter(l=>l.data>D);
+      const depois=base.filter(l=>l.data>D&&!jaDeb.includes(l));
       if(depois.length)
         p.push('<div class="conf-p sub" style="margin:0">'+depois.length+' lançamento'+(depois.length===1?"":"s")+' depois de '+diaMes(D)+
           ' (R$ '+brl(cent(depois.reduce((s,l)=>s+l.valor,0)))+') não entram nesta conferência.</div>');
@@ -2660,6 +2669,7 @@
         '<label>Valor<input data-conf="valor" value="'+(real==null?"":brl(real))+'" placeholder="digite o saldo" inputmode="decimal">'+
           '<span class="conf-f">'+(temConf&&conf.fonte==="extrato"?"lido do extrato importado":"digitado")+'</span></label>'+
         '<div><span class="rot">Pelo app até '+diaMes(D)+'</span><div class="conf-v">R$ '+brl(app)+'</div>'+
+          (jaDeb.length?'<span class="conf-f">inclui '+jaDeb.length+' do fim de semana já debitado'+(jaDeb.length===1?"":"s")+' (R$ '+brl(cent(jaDeb.reduce((s,l)=>s+l.valor,0)))+'), com data de '+diaMes(jaDeb.map(l=>l.data).sort().pop())+' no extrato</span>':'')+
           '<span class="conf-f" style="color:'+cor+'">'+(dif==null?"digite o saldo do banco para comparar":Math.abs(dif)<0.01?"✓ bate com o banco":"diferença R$ "+brlS(dif))+'</span></div>'+
       '</div>'+pistas+'</section>';
   }
@@ -2901,7 +2911,8 @@
     const hoje=hojeISO(), D = ym<hoje.slice(0,7) ? fimDoMes(ym) : hoje, ymD=D.slice(0,7);
     const ini=saldoInicio("itau",ymD);
     const dep=new Date(D+"T12:00:00"); dep.setDate(dep.getDate()+1);
-    return {v:cent(ini.v+movConta("itau",ymD+"-01",dep.toISOString().slice(0,10))), data:D, fonte:ini.fonte};
+    const extra=jaDebitados("itau",D).reduce((s,l)=>s+l.valor,0);
+    return {v:cent(ini.v+movConta("itau",ymD+"-01",dep.toISOString().slice(0,10))+extra), data:D, fonte:ini.fonte};
   }
   const saldoPrev = (p,ym) => p.saldoManual&&p.saldo!=null ? +p.saldo : saldoContaApp(ym||ymDaPrev(p)).v;
   function totaisPrev(p,ym){
