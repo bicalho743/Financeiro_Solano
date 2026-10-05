@@ -409,6 +409,17 @@
   .iv-topo{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;margin:26px 0 14px}
   .iv-topo-dir{text-align:right}
   .iv-cotbar{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .iv-rm th,.iv-rm td{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .iv-rm th:first-child,.iv-rm td:first-child{text-align:left;white-space:normal;min-width:150px}
+  .iv-rm td.rm-ac{font-weight:600;background:var(--marfim)}
+  .iv-rm td.rm-vz{color:#C8C5BC}
+  .iv-rm td.rm-v{color:var(--cinza)}
+  .iv-rm sup{font-size:9px;color:var(--ouro);margin-left:1px}
+  .iv-rm tr.rm-total td{font-weight:600;border-bottom:1px solid var(--tinta)}
+  .iv-rm tr.rm-grupo td{background:var(--marfim);font-weight:600}
+  .iv-rm tr.rm-bench td{color:var(--cinza)!important;font-style:italic;font-size:12.5px}
+  .rm-barra{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 2px}
+  .rm-barra .bt{font-size:12px;padding:5px 12px}
   .iv-cotbar>.kpi-sub{margin:0}
   .iv-total{font-family:var(--serif);font-size:44px;line-height:1.05;font-variant-numeric:tabular-nums}
   .iv-aloc{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--linha-clara)}
@@ -3912,6 +3923,138 @@
     return ms.map(m=>linhas[m]);
   }
 
+  /* ---- rentabilidade mensal pelo método de cotas (como a aba Input_ADP da planilha), por carteira, classe e ativo ----
+     Para cada ativo e mês: valor no início (fim do mês anterior), valor no fim, aportes/resgates do mês (da Movimentação da B3)
+     e proventos. Rentabilidade do mês (Dietz modificado, aporte pesado pelos dias que ficou aplicado):
+        r = (fim − início − aportes líquidos + proventos) ÷ (início + Σ aporte × dias aplicados ÷ dias do mês)
+     A cota começa em 1 e anda r a cada mês; "no ano" e "desde o início" são a variação da cota.
+     Valor no fim do mês: ações, FIIs, ETFs e Tesouro = quantidade × fechamento do último dia útil (Yahoo / Tesouro Transparente);
+     mês corrente = cotação do dia. CDB = curva estimada (taxa implícita calibrada na Posição da B3 ou no resgate). */
+  let histBuscando=null, histErro="";
+  const mesAnt = ym => { let [a,m]=ym.split("-").map(Number); m--; if(m<1){m=12;a--;} return a+"-"+String(m).padStart(2,"0"); };
+  function mesesEntre(a,b){ const r=[]; let x=a; while(x<=b){ r.push(x); let [y,m]=x.split("-").map(Number); m++; if(m>12){m=1;y++;} x=y+"-"+String(m).padStart(2,"0"); } return r; }
+  const diasEntre=(a,b)=>Math.round((Date.parse(b+"T12:00:00Z")-Date.parse(a+"T12:00:00Z"))/864e5);
+
+  function carregarHistorico(forcar){
+    const v=invOk(); v.hist=v.hist||{precos:{},bench:{}};
+    if(histBuscando || !v.movs.length || !sbUser) return histBuscando;
+    const mesH=hojeISO().slice(0,7), ini=v.movs.map(m=>m.data).sort()[0].slice(0,7), ultFech=mesAnt(mesH);
+    const mercado={}; v.movs.forEach(m=>{ if(m.classe!=="Renda fixa" && !/[A-Z]{4}1[2-5]$/.test(m.ativo)) mercado[m.ativo]=m.classe; });   // sem direitos de subscrição (…12 a …15)
+    const faltaAtivo=Object.keys(mercado).some(a=>!v.hist.precos[a] && !(v.hist.semDados||[]).includes(a));
+    const velho=!v.hist.em || Date.now()-new Date(v.hist.em).getTime()>6*3600e3;
+    if(!forcar && !faltaAtivo && !velho && v.hist.ate===ultFech) return;
+    const tickers=Object.keys(mercado).filter(a=>mercado[a]!=="Tesouro Direto" && /^[A-Z0-9]{4,12}$/.test(a));
+    const tesouro=Object.keys(mercado).filter(a=>mercado[a]==="Tesouro Direto");
+    const desde=mesAnt(ini)+"-01", dBR=desde.split("-").reverse().join("/");
+    const bcb=(serie,qs)=>fetch("https://api.bcb.gov.br/dados/serie/bcdata.sgs."+serie+"/dados?formato=json&"+qs).then(r=>r.json());
+    histBuscando=(async()=>{
+      const erros=[];
+      const pH=sb.functions.invoke("cotacoes",{body:{historico:{tickers:tickers.concat(["^BVSP"]),tesouro:tesouro,desde:desde}}}).then(async({data,error})=>{
+        if(error){ let m=error.message; try{ const j=await error.context.json(); m=j.erro||m; }catch(e){} throw new Error(m); }
+        Object.entries(data.hist||{}).forEach(([k,h])=>{ if(k==="^BVSP") v.hist.bench.ibov=h; else v.hist.precos[k]=h; });
+        v.hist.semDados=Object.keys(data.erros||{}).filter(k=>k!=="^BVSP");
+        if(v.hist.semDados.length) erros.push("sem histórico: "+v.hist.semDados.join(", "));
+      }).catch(e=>erros.push("histórico: "+e.message));
+      const ym=d=>d.slice(6,10)+"-"+d.slice(3,5);
+      const pCDI=bcb(4391,"dataInicial="+dBR).then(a=>{ const o={}; a.forEach(x=>{ o[ym(x.data)]=+x.valor; }); v.hist.bench.cdi=o; })
+        .then(()=>bcb(12,"dataInicial=01/"+mesH.slice(5,7)+"/"+mesH.slice(0,4))).then(a=>{    // mês corrente: acumula o CDI diário
+          const f=a.filter(x=>ym(x.data)===mesH).reduce((p,x)=>p*(1+x.valor/100),1);
+          if(a.length && !v.hist.bench.cdi[mesH]) v.hist.bench.cdiParcial={mes:mesH, valor:(f-1)*100};
+        }).catch(e=>erros.push("CDI: "+e.message));
+      const pIPCA=bcb(433,"dataInicial="+dBR).then(a=>{ const o={}; a.forEach(x=>{ o[ym(x.data)]=+x.valor; }); v.hist.bench.ipca=o; }).catch(e=>erros.push("IPCA: "+e.message));
+      await Promise.all([pH,pCDI,pIPCA]);
+      histErro=erros.join(" · ");
+      if(!erros.some(e=>/^histórico:/.test(e))){ v.hist.em=new Date().toISOString(); v.hist.ate=ultFech; }
+      salvar();
+    })().finally(()=>{ histBuscando=null; if(ui.conta==="invest") render(); });
+    return histBuscando;
+  }
+
+  function rentMensal(){
+    const v=invOk(), H=(v.hist&&v.hist.precos)||{}, B=(v.hist&&v.hist.bench)||{};
+    const ordem={compra:0,bonus:1,provento:2,venda:3};
+    const movs=v.movs.filter(m=>ordem[m.tipo]!=null).slice().sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:ordem[a.tipo]-ordem[b.tipo]);
+    if(!movs.length) return null;
+    const hoje=hojeISO(), mesH=hoje.slice(0,7), meses=mesesEntre(movs[0].data.slice(0,7), mesH);
+    // taxa diária padrão da renda fixa: média do CDI do período
+    const cdis=Object.values(B.cdi||{}); const cdiM=cdis.length?cdis.reduce((a,x)=>a+x,0)/cdis.length/100:0.012;
+    const r0=Math.pow(1+cdiM,1/30.4)-1;
+    const posMes=m=>{ const p=v.posicoes[m]; if(!p) return null; const o={}; p.itens.forEach(x=>{ const a=o[x.ativo]=o[x.ativo]||{valor:0,qt:0}; a.valor+=x.valor; a.qt+=(+x.qt||0); }); return o; };
+    const preco=(a,ms,cl)=>{                       // [preço, estimado?]
+      if(ms===mesH){ const c=v.cotacoes[a]; if(c && c.hora.slice(0,7)===mesH) return [c.preco,false]; }
+      const h=H[a]; if(h && h[ms]>0) return [h[ms],false];
+      const p=posMes(ms); if(p&&p[a]&&p[a].qt) return [p[a].valor/p[a].qt,false];
+      return [null,true];
+    };
+    function simular(taxa){                        // uma passada pelo tempo; taxa[ativo] = taxa diária da curva (renda fixa)
+      const st={}, res={}, calib={};
+      let i=0, ant={};
+      meses.forEach(ms=>{
+        const ini=ms+"-01", fim=ms===mesH?hoje:fimDoMes(ms), dm=diasEntre(ini,fim)+1, pm=posMes(ms);
+        const rec=a=>{ const o=res[a]=res[a]||{}; return o[ms]=o[ms]||{vi:ant[a]||0, fl:0, fw:0, prov:0, vf:0, est:false}; };
+        const acr=(s,d)=>{ if(s.classe==="Renda fixa"){ s.vrf*=Math.pow(1+(taxa[s.ativo]!=null?taxa[s.ativo]:r0), Math.max(0,diasEntre(s.d,d))); } s.d=d; };
+        while(i<movs.length && movs[i].data<=fim){
+          const m=movs[i++], s=st[m.ativo]=st[m.ativo]||{ativo:m.ativo, classe:m.classe, nome:(m.prod||"").split(" - ").slice(1).join(" - ")||m.prod, qt:0, vrf:0, d:m.data, dias:0, base:0, ult:null};
+          const R=rec(m.ativo), w=(dm-diasEntre(ini,m.data))/dm, q=+m.qt||0, val=+m.valor||0;
+          acr(s,m.data);
+          if(m.tipo==="compra"){ s.qt+=q; s.vrf+=val; R.fl+=val; R.fw+=w*val; s.base+=val; s.dias+=0; }
+          else if(m.tipo==="bonus"){ s.qt+=q; }
+          else if(m.tipo==="provento"){ R.prov+=val; }
+          else if(m.tipo==="venda"){
+            const sai=Math.min(q,s.qt); if(sai<=1e-9) continue;          // resgate de aplicação anterior ao extrato: fica fora
+            const valK=q>0?val*sai/q:0, frac=s.qt>0?sai/s.qt:1;
+            if(s.classe==="Renda fixa" && calib[m.ativo]==null && s.vrf>0) calib[m.ativo]={sim:s.vrf, real:valK/frac, t:m.data};
+            R.fl-=valK; R.fw-=w*valK; s.vrf*=(1-frac); s.qt-=sai; if(s.qt<1e-6){ s.qt=0; s.vrf=0; }
+          }
+        }
+        Object.values(st).forEach(s=>{
+          const R=rec(s.ativo);
+          if(s.qt<=1e-9){ R.vf=0; }
+          else if(s.classe==="Renda fixa"){
+            acr(s,fim);
+            if(pm && pm[s.ativo]){ if(calib[s.ativo]==null) calib[s.ativo]={sim:s.vrf, real:pm[s.ativo].valor, t:fim}; s.vrf=pm[s.ativo].valor; }
+            else R.est=true;
+            R.vf=s.vrf;
+          } else {
+            let [pr,est]=preco(s.ativo,ms);
+            if(pr==null){ pr=s.ult; est=true; }
+            if(pr==null){ pr=s.qt?(R.vi+R.fl)/s.qt:0; est=true; }
+            s.ult=pr; R.vf=s.qt*pr; R.est=est;
+          }
+          s.vf=R.vf;
+        });
+        ant={}; Object.values(st).forEach(s=>{ ant[s.ativo]=s.vf||0; });
+      });
+      return {st,res,calib};
+    }
+    // 1ª passada com o CDI; a taxa de cada CDB é recalibrada pela Posição da B3 (ou pelo resgate) e roda de novo
+    const p1=simular({}), taxa={};
+    Object.entries(p1.calib).forEach(([a,c])=>{
+      // dias médios aplicados (ponderados pelo valor) até o ponto de calibração
+      let sv=0, sd=0; movs.forEach(m=>{ if(m.ativo===a && m.tipo==="compra" && m.data<=c.t){ sv+=+m.valor||0; sd+=(+m.valor||0)*diasEntre(m.data,c.t); } });
+      const dmed=sv?sd/sv:0; if(dmed>5 && c.sim>0 && c.real>0) taxa[a]=(1+r0)*Math.pow(c.real/c.sim,1/dmed)-1;
+    });
+    const {st,res}=simular(taxa);
+    const taxaR=(o)=>{ if(!o) return null; const den=o.vi+o.fw; if(den<1 || (o.vi<1 && o.fl<1 && o.vf<1)) return null; return (o.vf-o.vi-o.fl+o.prov)/den; };
+    const soma=(lista,ms)=>{ const o={vi:0,fl:0,fw:0,prov:0,vf:0,est:false}; lista.forEach(a=>{ const x=res[a]&&res[a][ms]; if(x){ o.vi+=x.vi; o.fl+=x.fl; o.fw+=x.fw; o.prov+=x.prov; o.vf+=x.vf; o.est=o.est||x.est; } }); return o; };
+    const serie=(lista)=>{ const out={}; meses.forEach(ms=>{ const o=soma(lista,ms); o.r=taxaR(o); out[ms]=o; }); return out; };
+    const ativos=Object.keys(st);
+    const linhas=[{id:"total", nome:"Carteira B3", tipo:"total", s:serie(ativos)}];
+    CLASSES_INV.forEach(c=>{ const l=ativos.filter(a=>st[a].classe===c); if(l.length) linhas.push({id:c, nome:c, tipo:"classe", classe:c, s:serie(l)}); });
+    const porAtivo=ativos.map(a=>({id:a, nome:a, desc:st[a].nome, tipo:"ativo", classe:st[a].classe, s:serie([a]), valor:st[a].vf||0}));
+    // índices de referência
+    const cdi={}, ipca={}, ibov={};
+    meses.forEach(ms=>{
+      const c=B.cdi&&B.cdi[ms]; cdi[ms]={r:c!=null?c/100:(B.cdiParcial&&B.cdiParcial.mes===ms?B.cdiParcial.valor/100:null)};
+      const p=B.ipca&&B.ipca[ms]; ipca[ms]={r:p!=null?p/100:null};
+      const ib=B.ibov||{}, a1=ib[ms], a0=ib[mesAnt(ms)]; ibov[ms]={r:a1&&a0?a1/a0-1:null};
+    });
+    const bench=[{id:"cdi",nome:"CDI",s:cdi},{id:"ipca",nome:"IPCA",s:ipca},{id:"ibov",nome:"Ibovespa",s:ibov}];
+    return {meses, mesH, linhas, porAtivo, bench};
+  }
+  // acumula a cota: período = lista de meses
+  const acumula=(s,ms)=>{ let f=1, n=0; ms.forEach(m=>{ const r=s[m]&&s[m].r; if(r!=null&&isFinite(r)){ f*=1+r; n++; } }); return n?f-1:null; };
+
   /* ---- conciliação: conta corrente × investimentos ---- */
   function grupoContaInv(l){
     const h=normTxt(l.hist);
@@ -3998,6 +4141,9 @@
       const a=e.target.closest("[data-ivaba]"); if(a){ ui.invAba=a.dataset.ivaba; render(); window.scrollTo(0,0); return; }
       if(e.target.closest("[data-ivimp]")){ abrirImport("b3"); return; }
       if(e.target.closest("[data-ivcot]")){ atualizarCotacoes(true); render(); return; }
+      const ra=e.target.closest("[data-rmano]"); if(ra){ ui.rmAno=ra.dataset.rmano; render(); return; }
+      const rc=e.target.closest("[data-rmcl]"); if(rc){ ui.rmCl=rc.dataset.rmcl; render(); return; }
+      if(e.target.closest("[data-rmhist]")){ carregarHistorico(true); render(); return; }
       const ms=e.target.closest("[data-ivmovmes]"); if(ms){ ui.invMovMes=ms.dataset.ivmovmes; render(); return; }
       const nv=e.target.closest("[data-ivmnovo]"); if(nv){ v.manuais.push({nome:"",grupo:"outro",valor:0,data:new Date().toISOString().slice(0,10)}); salvar(); render(); return; }
       const dl=e.target.closest("[data-ivmdel]"); if(dl){ const i=+dl.dataset.ivmdel; modal('<h3 class="modal-tit">Apagar “'+esc(v.manuais[i].nome||"item")+'”?</h3><div class="modal-acoes"><button class="bt vazado" data-modal="cancelar">Cancelar</button><button class="bt" data-modal="ok">Apagar</button></div>').then(ok=>{ if(ok){ v.manuais.splice(i,1); salvar(); render(); } }); }
@@ -4010,6 +4156,7 @@
     }
 
     atualizarCotacoes();   // automático: só busca se a última atualização tiver mais de 15 min
+    carregarHistorico();   // fechamentos mensais para a rentabilidade (cache: só busca o que falta)
     // ---------- números ----------
     const S=(a,f)=>cent(a.reduce((s,x)=>s+(+f(x)||0),0));
     const pct=x=>x==null||!isFinite(x)?"—":(x*100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
@@ -4029,8 +4176,10 @@
     const msProv=Object.keys(provMes).sort(), ult12=msProv.slice(-12), prov12=cent(ult12.reduce((s,k)=>s+provMes[k],0));
     const fl=fluxosB3PorMes(), msFl=Object.keys(fl).sort(), mesMov=ui.invMovMes&&fl[ui.invMovMes]?ui.invMovMes:msFl[msFl.length-1];
     const fMes=fl[mesMov]||{aplic:0,resg:0,prov:0};
-    const comRent=evo.filter(e=>e.rentab!=null), ultRent=comRent[comRent.length-1];
-    const rentAno=comRent.filter(e=>e.mes.slice(0,4)===mesAtual().slice(0,4)).reduce((a,e)=>a*(1+e.rentab),1)-1;
+    const RM=rentMensal(), anoH=hojeISO().slice(0,4);
+    const tot=RM?RM.linhas[0].s:{}, msF=RM?RM.meses.filter(m=>m<RM.mesH&&tot[m].r!=null):[];
+    const ultRent=msF.length?{mes:msF[msF.length-1], rentab:tot[msF[msF.length-1]].r}:null;
+    const rentAno=RM?acumula(tot,RM.meses.filter(m=>m.slice(0,4)===anoH)):null;
     const manuais=v.manuais;
     const prev=S(manuais.filter(x=>x.grupo==="previdencia"),x=>x.valor);
     const bens=S(manuais.filter(x=>["imovel","veiculo","receber","outro"].includes(x.grupo)),x=>x.valor);
@@ -4068,6 +4217,51 @@
     const nota=t=>'<p class="sub iv-nota">'+t+'</p>';
     const kpis=arr=>'<div class="iv-kpis">'+arr.map(([r,v,s,c])=>'<div><span class="rot">'+r+'</span><div class="iv-kpi-v" style="color:'+(c||"inherit")+'">'+v+'</div>'+(s?'<span class="kpi-sub">'+s+'</span>':'')+'</div>').join("")+'</div>';
 
+    const rentTabelas=RM=>{
+      if(!RM) return "";
+      const anos=[...new Set(RM.meses.map(m=>m.slice(0,4)))], ano=anos.includes(ui.rmAno)?ui.rmAno:anos[anos.length-1];
+      const ms=RM.meses.filter(m=>m.slice(0,4)===ano), MS3=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+      const carregando=histBuscando?'<span class="kpi-sub" style="margin:0">buscando fechamentos…</span>':"";
+      const temHist=invOk().hist&&invOk().hist.em;
+      const celula=(o,bench)=>{
+        if(!o||o.r==null||!isFinite(o.r)) return '<td class="rm-vz">—</td>';
+        const tt=bench?"":"início R$ "+brl(cent(o.vi))+" · aportes líquidos R$ "+brl(cent(o.fl))+" · proventos R$ "+brl(cent(o.prov))+" · fim R$ "+brl(cent(o.vf))+(o.est?" · valor estimado":"");
+        return '<td style="color:'+corV(o.r*100)+'"'+(tt?' title="'+tt+'"':'')+'>'+pctS(o.r)+(o.est?'<sup>e</sup>':'')+'</td>'; };
+      const linha=(l,cls,extra)=>'<tr class="'+cls+'"><td>'+(l.classe&&l.tipo!=="ativo"?'<i class="iv-ponto" style="background:'+(COR_CLASSE[l.classe]||"#999")+'"></i>':'')+
+        (l.tipo==="ativo"?'<b>'+esc(l.nome)+'</b>'+(()=>{ let d=String(l.desc||""); if(d.toUpperCase().startsWith(l.nome.toUpperCase())) d=d.slice(l.nome.length).replace(/^\s*-\s*/,""); return d?'<span class="kpi-sub">'+esc(d.slice(0,34))+'</span>':""; })():esc(l.nome))+'</td>'+
+        ms.map(m=>celula(l.s[m],l.tipo==="bench")).join("")+
+        '<td class="rm-ac" style="color:'+corV((acumula(l.s,ms)||0)*100)+'">'+pctS(acumula(l.s,ms))+'</td>'+
+        '<td class="rm-ac" style="color:'+corV((acumula(l.s,RM.meses)||0)*100)+'">'+pctS(acumula(l.s,RM.meses))+'</td>'+(extra||"")+'</tr>';
+      const cab=(t,ex)=>'<thead><tr><th>'+t+'</th>'+ms.map(m=>'<th>'+MS3[+m.slice(5)-1]+(m===RM.mesH?'<span class="kpi-sub" style="margin:0">até hoje</span>':'')+'</th>').join("")+'<th>No ano</th><th>Desde o início</th>'+(ex||"")+'</tr></thead>';
+      const vAtual=l=>{ const o=l.s[RM.mesH]||l.s[RM.meses[RM.meses.length-1]]; return '<td class="rm-v">'+(o&&o.vf>0.5?brl(cent(o.vf)):"—")+'</td>'; };
+      // por grupo
+      let h=secao("Rentabilidade mensal por grupo · método de cotas")+
+        '<div class="rm-barra">'+(anos.length>1?anos.map(a=>'<button class="bt '+(a===ano?"":"vazado")+'" data-rmano="'+a+'">'+a+'</button>').join(""):"")+
+        '<button class="bt vazado" data-rmhist="1"'+(histBuscando?" disabled":"")+'>↻ Fechamentos</button>'+carregando+
+        (histErro?'<span class="iv-alerta" title="'+esc(histErro)+'">avisos</span>':'')+'</div>'+
+        '<div class="rolagem"><table class="dash-mes iv-rm">'+cab("Grupo",'<th>Valor atual</th>')+'<tbody>'+
+        RM.linhas.map(l=>linha(l,l.tipo==="total"?"rm-total":"",vAtual(l))).join("")+
+        RM.bench.map(b=>linha({...b,tipo:"bench"},"rm-bench",'<td></td>')).join("")+
+        '</tbody></table></div>';
+      // por ativo
+      const cl=ui.rmCl||"todas", classes=RM.linhas.filter(l=>l.tipo==="classe").map(l=>l.classe);
+      const ativosAno=RM.porAtivo.filter(a=>(cl==="todas"||a.classe===cl) && ms.some(m=>a.s[m]&&(a.s[m].vf>0.5||a.s[m].vi>0.5)));
+      h+=secao("Rentabilidade mensal por ativo")+
+        '<div class="rm-barra">'+["todas"].concat(classes).map(c=>'<button class="bt '+(c===cl?"":"vazado")+'" data-rmcl="'+c+'">'+(c==="todas"?"Todos":c)+'</button>').join("")+'</div>'+
+        '<div class="rolagem"><table class="dash-mes iv-rm">'+cab("Ativo",'<th>Valor atual</th>')+'<tbody>'+
+        (cl==="todas"?classes:[cl]).map(c=>{
+          const it=ativosAno.filter(a=>a.classe===c).sort((a,b)=>b.valor-a.valor||a.nome.localeCompare(b.nome)); if(!it.length) return "";
+          const g=RM.linhas.find(l=>l.classe===c);
+          return linha(g,"rm-grupo",vAtual(g))+it.map(a=>linha(a,"",vAtual(a))).join("");
+        }).join("")+'</tbody></table></div>';
+      h+=nota("Método de cotas, como a aba Input_ADP da planilha: a rentabilidade do mês desconta os aportes e resgates (cada aporte conta pelos dias em que ficou aplicado) e soma os proventos; "+
+        "“no ano” e “desde o início” acumulam os meses. Valor no fim do mês: ações, FIIs, ETFs e Tesouro = quantidade × fechamento do último dia útil do mês "+
+        "(Yahoo Finance e Tesouro Transparente; no mês atual, a cotação do dia). CDB: curva estimada pela taxa implícita entre a aplicação e a Posição da B3 ou o resgate"+
+        " — marcado com <sup>e</sup>. Passe o mouse sobre um mês para ver início, aportes, proventos e fim."+
+        (temHist?" Fechamentos atualizados em "+diaMes(invOk().hist.em.slice(0,10))+".":""));
+      return h;
+    };
+
     let html="";
     if(aba==="resumo"){
       html='<div class="iv-topo"><div><span class="rot">Patrimônio investido na B3</span><div class="iv-total">R$ '+brl(total)+'</div>'+
@@ -4087,7 +4281,7 @@
           '<span style="color:'+corV(rvV-rvC)+'">'+brlS(cent(rvV-rvC))+' ('+pctS(rvC?(rvV-rvC)/rvC:null)+')</span> sobre o custo'])+
         card("rent","#1E8A5F","Rentabilidade",'<span style="color:'+corV(ganho)+'">'+pctS(custoTot?ganho/custoTot:null)+'</span>',[
           "ganho R$ "+brl(ganho)+" sobre o custo da carteira",
-          ultRent?rotuloMes(ultRent.mes)+": "+pctS(ultRent.rentab)+" · no ano "+pctS(rentAno):"mensal: a partir da próxima Posição importada",
+          ultRent?rotuloMes(ultRent.mes)+": "+pctS(ultRent.rentab)+" · no ano "+pctS(rentAno):"mensal: carregando fechamentos…",
           "proventos 12 meses R$ "+brl(prov12)])+
         card("mov","#5B4FCF","Movimentação · "+(mesMov?abrevMes(mesMov):""),"R$ "+brlS(cent(fMes.aplic-fMes.resg)),[
           "aplicado R$ "+brl(cent(fMes.aplic))+" · resgatado R$ "+brl(cent(fMes.resg)),
@@ -4127,13 +4321,8 @@
           '<td style="color:'+corV(o.vv-o.cc)+'">'+brl(cent(o.vv-o.cc))+'</td><td>'+brl(o.re)+'</td><td>'+brl(o.pr)+'</td>'+
           '<td style="color:'+corV(o.g)+'"><b>'+brl(o.g)+'</b></td><td style="color:'+corV(o.g)+'">'+pctS(o.cc?o.g/o.cc:null)+'</td></tr>').join("")+
         '</tbody></table></div>'+
-        secao("Mês a mês")+'<div class="rolagem"><table class="dash-mes"><thead><tr><th>Mês</th><th>Patrimônio</th><th>Aportes líquidos</th><th>Proventos</th><th>Rentabilidade</th><th>Fonte</th></tr></thead><tbody>'+
-        evo.slice().reverse().map(e=>'<tr><td>'+rotuloMes(e.mes)+'</td><td>'+brl(e.valor)+'</td><td>'+brlS(e.aporte)+'</td><td>'+(e.prov?brl(e.prov):"—")+'</td>'+
-          '<td style="color:'+corV(e.rentab||0)+'">'+pctS(e.rentab)+'</td><td class="sub">'+(e.fonte==="planilha"?"sua planilha":"Posição B3")+'</td></tr>').join("")+
-        '</tbody></table></div>'+
-        nota("A rentabilidade do mês é calculada a cada Posição importada: (valor no fim − valor no início − aportes + proventos) ÷ (valor no início + metade dos aportes). "+
-          "Nos meses da planilha só o patrimônio foi trazido, porque ela não descontava os resgates."+
-          (semCusto?" Resgates de aplicações anteriores a fev/26 (R$ "+brl(semCusto)+") não têm custo no extrato e ficam fora do ganho.":""));
+        rentTabelas(RM)+
+        nota("Resgates de aplicações anteriores a fev/26"+(semCusto?" (R$ "+brl(semCusto)+")":"")+" não têm custo no extrato e ficam fora do ganho e da rentabilidade.");
     }
     else if(aba==="mov"){
       const movsMes=v.movs.filter(m=>mesDe(m.data)===mesMov&&["compra","venda","provento"].includes(m.tipo)).sort((a,b)=>a.data<b.data?1:-1);
