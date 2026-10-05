@@ -62,3 +62,22 @@ Se já existir um agendamento com esse nome: `select cron.unschedule('resumo-wha
 ## Limites
 - O resumo e a planilha só têm o que já foi importado no app.
 - Quem tiver o link consegue baixar a planilha do mês; não encaminhe a mensagem.
+
+---
+
+# Cotações automáticas (aba Investimentos)
+
+Ações, FIIs e ETFs vêm da **brapi.dev** por meio da função `cotacoes` (o token fica no Supabase, não no site).
+Tesouro Direto vem direto da API pública do Tesouro (preço de resgate do dia). CDB continua com o valor da Posição da B3.
+
+O app atualiza sozinho ao abrir a aba Investimentos e a cada 15 min com ela aberta; o botão **↻ Atualizar cotações** força.
+A cotação substitui o preço da Posição da B3 (a quantidade continua vindo da Posição).
+
+## Instalação
+1. Edge Functions › *Deploy a new function* › *Via editor* › nome `cotacoes` › cole `supabase/functions/cotacoes/index.ts` › *Deploy*.
+   Pode deixar "Verify JWT" ligado: o app chama com o login do usuário.
+2. Edge Functions › **Secrets** › `BRAPI_TOKEN` = sua chave da brapi.dev (Dashboard › Sua chave de API).
+
+## Testar
+No app, aba Investimentos › **↻ Atualizar cotações**. Aparece "N cotações atualizadas" e, em cada ativo, "cotação dd/mm hh:mm".
+Se faltar o secret, o aviso diz "falta o secret BRAPI_TOKEN no Supabase".
