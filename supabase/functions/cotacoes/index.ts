@@ -23,8 +23,10 @@ function lerResultado(r: any): Cot | null {
   if (!isFinite(preco) || preco <= 0) return null;
   return {
     preco,
-    varDia: isFinite(+r.regularMarketChangePercent) ? +r.regularMarketChangePercent : null,
-    fechAnt: isFinite(+r.regularMarketPreviousClose) ? +r.regularMarketPreviousClose : null,
+    // variação calculada pelo fechamento anterior (o changePercent da brapi às vezes vem inconsistente)
+    varDia: +r.regularMarketPreviousClose > 0 ? (preco / +r.regularMarketPreviousClose - 1) * 100
+          : isFinite(+r.regularMarketChangePercent) ? +r.regularMarketChangePercent : null,
+    fechAnt: +r.regularMarketPreviousClose > 0 ? +r.regularMarketPreviousClose : null,
     nome: r.longName || r.shortName || r.symbol,
     hora: r.regularMarketTime || new Date().toISOString(),
   };
@@ -64,15 +66,20 @@ Deno.serve(async (req) => {
   if (lote.ok && Array.isArray(lote.corpo?.results)) {
     for (const r of lote.corpo.results) { const c = lerResultado(r); if (c) precos[String(r.symbol).toUpperCase()] = c; }
   }
+  // plano gratuito: uma requisição por vez — busca em sequência e tenta de novo se a brapi pedir para aguardar
   const faltam = tickers.filter((t) => !precos[t]);
-  for (let i = 0; i < faltam.length; i += 5) {
-    await Promise.all(faltam.slice(i, i + 5).map(async (t) => {
+  const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  for (const t of faltam) {
+    for (let tent = 0; tent < 4; tent++) {
       try {
         const r = await buscar([t], token);
         const c = r.ok ? lerResultado(r.corpo?.results?.[0]) : null;
-        if (c) precos[t] = c; else erros[t] = r.corpo?.message || ("HTTP " + r.status);
+        if (c) { precos[t] = c; delete erros[t]; break; }
+        erros[t] = r.corpo?.message || ("HTTP " + r.status);
+        if (!(r.status === 429 || /simult|aguarde|limite/i.test(erros[t]))) break;
       } catch (e) { erros[t] = String(e); }
-    }));
+      await espera(600 * (tent + 1));
+    }
   }
   return json({ precos, erros, em: new Date().toISOString() });
 });
