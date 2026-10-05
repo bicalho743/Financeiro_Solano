@@ -408,6 +408,8 @@
   .iv-abas button:hover:not(.on){color:var(--tinta);background:var(--marfim)}
   .iv-topo{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;margin:26px 0 14px}
   .iv-topo-dir{text-align:right}
+  .iv-cotbar{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .iv-cotbar>.kpi-sub{margin:0}
   .iv-total{font-family:var(--serif);font-size:44px;line-height:1.05;font-variant-numeric:tabular-nums}
   .iv-aloc{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--linha-clara)}
   .iv-aloc i{display:block;height:100%}
@@ -3643,7 +3645,7 @@
     const v = dados.invest = dados.invest || {};
     v.movs=v.movs||[]; v.posicoes=v.posicoes||{};
     if(!v._cls){ v.movs.forEach(m=>{ m.classe=classeAtivo(m.prod,m.ativo); }); v._cls=true; }   // reclassifica uma vez por sessão
-    v.historico=v.historico||[]; v.precos=v.precos||{}; v.manuais=v.manuais||[];
+    v.historico=v.historico||[]; v.precos=v.precos||{}; v.manuais=v.manuais||[]; v.cotacoes=v.cotacoes||{};
     return v;
   }
   const normTxt = s => String(s==null?"":s).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
@@ -3846,7 +3848,22 @@
   // valor de mercado de cada ativo: posição da B3; sem ela, cotação da planilha; sem nada, o custo
   // com Posição da B3: ela manda (o que não está nela não está mais em custódia); custo e proventos vêm da movimentação.
   // sem Posição: quantidade da movimentação × cotação da planilha (ou o custo, para CDB e Tesouro)
+  // cotação do dia (brapi / Tesouro Direto): vale quando é do mesmo dia ou mais nova que a Posição da B3
+  function aplicarCotacao(x, dataBase){
+    const c=invOk().cotacoes[x.ativo];
+    if(!c || !(+x.qt>0) || x.classe==="Renda fixa") return x;
+    if(dataBase && c.hora.slice(0,10)<dataBase) return x;
+    const valor=cent(x.qt*c.preco);
+    const varR = c.fechAnt ? cent(x.qt*(c.preco-c.fechAnt)) : null;
+    return {...x, preco:c.preco, valor:valor, varDia:c.varDia, varDiaR:varR, cotHora:c.hora,
+      fonte:(c.fonte==="tesouro"?"Tesouro ":"cotação ")+diaMes(c.hora.slice(0,10))+(c.fonte==="tesouro"?"":" "+horaCot(c.hora))};
+  }
+  const horaCot = iso => { const d=new Date(iso); return isNaN(d)?"":d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}); };
   function carteiraAtual(){
+    const up=ultimaPosicao();
+    return carteiraBase().map(x=>aplicarCotacao(x, up&&up.data));
+  }
+  function carteiraBase(){
     const pos=carteiraB3(), up=ultimaPosicao(), v=invOk();
     if(up){
       const agr={};
@@ -3926,6 +3943,47 @@
   const contaConferida = (origem,mes) => dados.lancamentos.some(l=>l.origem===origem&&l.confExtrato&&l.data.slice(0,7)===mes);
 
   /* ---- tela ---- */
+  /* ---- cotações automáticas: B3 pela brapi (via Supabase, o token fica no servidor) e Tesouro Direto pela API do Tesouro ---- */
+  const COT_VALIDADE = 15*60*1000;   // 15 min
+  let cotBuscando=null, cotErro="";
+  function atualizarCotacoes(forcar){
+    const v=invOk();
+    if(cotBuscando) return cotBuscando;
+    if(!forcar && v.cotEm && Date.now()-new Date(v.cotEm).getTime()<COT_VALIDADE) return;
+    const base=carteiraBase().filter(x=>+x.qt>0);
+    const rv=[...new Set(base.filter(x=>!RF_CLASSES.includes(x.classe)).map(x=>x.ativo).filter(a=>/^[A-Z0-9]{4,12}$/.test(a)))];
+    const td=base.filter(x=>x.classe==="Tesouro Direto").map(x=>x.ativo);
+    if(!rv.length && !td.length) return;
+    cotBuscando=(async()=>{
+      const erros=[]; let n=0;
+      const pB3 = !rv.length ? Promise.resolve() : !sbUser ? Promise.resolve(erros.push("B3: faça login")) :
+        sb.functions.invoke("cotacoes",{body:{tickers:rv}}).then(async({data,error})=>{
+          if(error){ let m=error.message; try{ const j=await error.context.json(); m=j.erro||m; }catch(e){} throw new Error(m); }
+          Object.entries(data.precos||{}).forEach(([k,c])=>{ v.cotacoes[k]={...c, fonte:"brapi"}; n++; });
+          const fal=Object.keys(data.erros||{}); if(fal.length) erros.push("sem cotação: "+fal.join(", "));
+        }).catch(e=>{ erros.push("B3: "+e.message); });
+      const pTD = !td.length ? Promise.resolve() : fetch("https://www.tesourodireto.com.br/o/rentabilidade/investir").then(r=>r.json()).then(j=>{
+        const tit=[].concat(j.TesouroLegado||[], j.Tesouro24x7||[]);
+        const norm=t=>String(t).replace(/\s+/g," ").trim().toUpperCase();
+        td.forEach(a=>{ const t=tit.find(b=>norm(b.treasuryBondName)===norm(a));
+          if(t && +t.unitaryRedemptionValue>0){
+            const pu=+t.unitaryRedemptionValue, ant=v.cotacoes[a], hora=String(t.lastMarketPricingDate||new Date().toISOString()).slice(0,19);
+            // variação do dia: preço guardado de um dia anterior × preço de hoje
+            const fechAnt = ant && ant.hora.slice(0,10)<hora.slice(0,10) ? ant.preco : (ant&&ant.fechAnt)||null;
+            v.cotacoes[a]={preco:pu, fechAnt:fechAnt, varDia:fechAnt?(pu/fechAnt-1)*100:null, nome:t.treasuryBondName, hora:hora, fonte:"tesouro"}; n++;
+          } else erros.push(a+": sem preço no Tesouro (vale a B3)"); });
+      }).catch(e=>{ erros.push("Tesouro: "+e.message); });
+      await Promise.all([pB3,pTD]);
+      v.cotEm=new Date().toISOString(); cotErro=erros.join(" · ");
+      if(n) salvar();
+      if(forcar) avisar(n+" cotações atualizadas"+(cotErro?" · "+cotErro:""), !n);
+    })().finally(()=>{ cotBuscando=null; if(ui.conta==="invest") render(); });
+    return cotBuscando;
+  }
+  // com a tela Investimentos aberta, atualiza sozinho a cada 15 min
+  setInterval(()=>{ if(ui.conta==="invest" && document.visibilityState==="visible") atualizarCotacoes(); }, 60*1000);
+  document.addEventListener("visibilitychange",()=>{ if(ui.conta==="invest" && document.visibilityState==="visible") atualizarCotacoes(); });
+
   const RF_CLASSES = ["Tesouro Direto","Renda fixa"], RV_CLASSES = ["Ações","FIIs","ETF exterior","Cripto","Outros"];
   const ABAS_INV = [["resumo","Resumo"],["rf","Renda fixa"],["rv","Renda variável"],["rent","Rentabilidade"],["mov","Movimentação"],["conc","Conciliação"],["patr","Patrimônio"]];
   const COR_CLASSE = {"Tesouro Direto":"#2F4A3C","Renda fixa":"#6E8A78","Ações":"#1F6FB2","FIIs":"#785E28","ETF exterior":"#7D3C98","Cripto":"#D35400","Outros":"#95A5A6"};
@@ -3933,10 +3991,13 @@
     const corpo=$("#corpo"), v=invOk();
     const aba = ui.invAba = ui.invAba || "resumo";
     $("#abas").innerHTML='<div class="iv-abas" role="tablist">'+ABAS_INV.map(([k,n])=>'<button role="tab" data-ivaba="'+k+'" class="'+(k===aba?"on":"")+'">'+n+'</button>').join("")+'</div>'+
-      '<button class="bt" data-ivimp="1" style="font-size:12px;padding:6px 12px">Importar da B3</button>';
+      '<span class="iv-cotbar"><span class="kpi-sub" title="'+esc(cotErro)+'">'+(cotBuscando?"atualizando cotações…":v.cotEm?"cotações de "+diaMes(v.cotEm.slice(0,10))+" "+horaCot(v.cotEm)+(cotErro?' <span class="iv-alerta">'+esc(cotErro.length>60?"avisos (passe o mouse)":cotErro)+'</span>':""):"")+'</span>'+
+      '<button class="bt vazado" data-ivcot="1" style="font-size:12px;padding:6px 12px"'+(cotBuscando?" disabled":"")+'>↻ Atualizar cotações</button>'+
+      '<button class="bt" data-ivimp="1" style="font-size:12px;padding:6px 12px">Importar da B3</button></span>';
     const clique=e=>{
       const a=e.target.closest("[data-ivaba]"); if(a){ ui.invAba=a.dataset.ivaba; render(); window.scrollTo(0,0); return; }
       if(e.target.closest("[data-ivimp]")){ abrirImport("b3"); return; }
+      if(e.target.closest("[data-ivcot]")){ atualizarCotacoes(true); render(); return; }
       const ms=e.target.closest("[data-ivmovmes]"); if(ms){ ui.invMovMes=ms.dataset.ivmovmes; render(); return; }
       const nv=e.target.closest("[data-ivmnovo]"); if(nv){ v.manuais.push({nome:"",grupo:"outro",valor:0,data:new Date().toISOString().slice(0,10)}); salvar(); render(); return; }
       const dl=e.target.closest("[data-ivmdel]"); if(dl){ const i=+dl.dataset.ivmdel; modal('<h3 class="modal-tit">Apagar “'+esc(v.manuais[i].nome||"item")+'”?</h3><div class="modal-acoes"><button class="bt vazado" data-modal="cancelar">Cancelar</button><button class="bt" data-modal="ok">Apagar</button></div>').then(ok=>{ if(ok){ v.manuais.splice(i,1); salvar(); render(); } }); }
@@ -3948,6 +4009,7 @@
       return;
     }
 
+    atualizarCotacoes();   // automático: só busca se a última atualização tiver mais de 15 min
     // ---------- números ----------
     const S=(a,f)=>cent(a.reduce((s,x)=>s+(+f(x)||0),0));
     const pct=x=>x==null||!isFinite(x)?"—":(x*100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
@@ -3973,7 +4035,10 @@
     const prev=S(manuais.filter(x=>x.grupo==="previdencia"),x=>x.valor);
     const bens=S(manuais.filter(x=>["imovel","veiculo","receber","outro"].includes(x.grupo)),x=>x.valor);
     const dividas=S(manuais.filter(x=>x.grupo==="divida"),x=>x.valor);
-    const dataRef = up ? "posição B3 de "+diaMes(up.data)+"/"+up.data.slice(2,4) : "sem posição da B3 — cotações da planilha";
+    const cotadas=cart.filter(x=>x.cotHora);
+    const dataRef = (cotadas.length&&v.cotEm ? cotadas.length+" ativos a preço de "+diaMes(v.cotEm.slice(0,10))+" "+horaCot(v.cotEm)+" · quantidades da " : "")+
+      (up ? "posição B3 de "+diaMes(up.data)+"/"+up.data.slice(2,4) : "sem posição da B3 — cotações da planilha");
+    const comVar=cart.filter(x=>x.varDiaR!=null), varHoje=S(comVar,x=>x.varDiaR), baseHoje=S(comVar,x=>x.valor-x.varDiaR);
 
     // ---------- peças ----------
     const card=(alvo,cor,rot,valor,linhas,extra)=>'<button class="iv-card" data-ivaba="'+alvo+'" style="--c:'+cor+'">'+
@@ -3991,8 +4056,8 @@
         it.map(x=>{ const res=cent(x.valor-x.custo);
           return '<tr><td><b>'+esc(x.ativo)+'</b><span class="kpi-sub">'+esc(((rf&&x.emissor)||x.nome||"").slice(0,46))+(x.inst?' · '+esc(x.inst.replace(/ (S\/?A\b|S\.A\.|CCTVM|DE VALORES|CORRETORA).*/i,"")):"")+'</span></td>'+
             (rf?'<td>'+esc(x.indexador||"—")+'</td><td>'+(x.vencimento?x.vencimento.split("-").reverse().join("/"):"—")+'</td>'
-               :'<td>'+qtd(x.qt)+'</td><td>'+(x.qt&&x.custo?brl(cent(x.custo/x.qt)):"—")+'</td><td>'+(x.preco!=null?brl(x.preco):x.qt?brl(cent(x.valor/x.qt)):"—")+'</td>')+
-            '<td>'+brl(x.custo)+'</td><td>'+brl(x.valor)+'</td>'+
+               :'<td>'+qtd(x.qt)+'</td><td>'+(x.qt&&x.custo?brl(cent(x.custo/x.qt)):"—")+'</td><td>'+(x.preco!=null?brl(x.preco):x.qt?brl(cent(x.valor/x.qt)):"—")+(x.varDia!=null?'<span class="kpi-sub" style="color:'+corV(x.varDia)+'">'+pctS(x.varDia/100)+' no dia</span>':'')+'</td>')+
+            '<td>'+brl(x.custo)+'</td><td>'+brl(x.valor)+(x.cotHora?'<span class="kpi-sub">'+esc(x.fonte)+'</span>':'')+'</td>'+
             '<td style="color:'+corV(res)+'">'+brl(res)+'<span class="kpi-sub">'+pctS(x.custo?res/x.custo:null)+'</span></td>'+
             (rf?'':'<td>'+(x.proventos?brl(cent(x.proventos)):"—")+'</td>')+
             '<td>'+(vt?pct(x.valor/vt):"—")+'</td></tr>'; }).join("")+
@@ -4006,6 +4071,7 @@
     let html="";
     if(aba==="resumo"){
       html='<div class="iv-topo"><div><span class="rot">Patrimônio investido na B3</span><div class="iv-total">R$ '+brl(total)+'</div>'+
+        (comVar.length?'<div style="font-size:15px;margin-top:2px;color:'+corV(varHoje)+'">'+brlS(varHoje)+' ('+pctS(baseHoje?varHoje/baseHoje:null)+') no dia</div>':'')+
         '<span class="kpi-sub">'+dataRef+' · custo R$ '+brl(custoTot)+'</span></div>'+
         '<div class="iv-topo-dir"><span class="rot">Ganho desde fev/26</span><div class="iv-total" style="font-size:30px;color:'+corV(ganho)+'">R$ '+brl(ganho)+'</div>'+
         '<span class="kpi-sub">valorização + vendas + proventos</span></div></div>'+
@@ -4038,7 +4104,7 @@
         ["Resultado",brlS(cent(rfV-rfC)),pctS(rfC?(rfV-rfC)/rfC:null),corV(rfV-rfC)],["Próximo vencimento",venc?venc.vencimento.split("-").reverse().join("/"):"—",venc?venc.ativo:""]])+
         (td.length?secao("Tesouro Direto · R$ "+brl(S(td,x=>x.valor)))+tabelaAtivos(td,{rf:true}):"")+
         (cdb.length?secao("CDB e outros títulos · R$ "+brl(S(cdb,x=>x.valor)))+tabelaAtivos(cdb,{rf:true}):"")+
-        nota("Valores da Posição da B3 (Tesouro: valor bruto, antes do IR; CDB: valor na curva). O Tesouro IPCA+ 2045 paga juros semestrais, que aparecem em Proventos.");
+        nota("Tesouro: quantidade da B3 × preço de resgate do dia publicado pelo Tesouro Direto (valor bruto, antes do IR); título sem preço no Tesouro fica com o valor da Posição da B3. CDB: valor na curva, da Posição da B3. O Tesouro IPCA+ 2045 paga juros semestrais, que aparecem em Proventos.");
     }
     else if(aba==="rv"){
       const provRV=S(rv,x=>x.proventos);
@@ -4046,7 +4112,7 @@
         ["Resultado",brlS(cent(rvV-rvC)),pctS(rvC?(rvV-rvC)/rvC:null),corV(rvV-rvC)],["Proventos recebidos","R$ "+brl(provRV),"dos ativos que estão na carteira"]])+
         RV_CLASSES.filter(c=>rv.some(x=>x.classe===c)).map(c=>{ const it=rv.filter(x=>x.classe===c);
           return secao(c+" · R$ "+brl(S(it,x=>x.valor)))+tabelaAtivos(it); }).join("")+
-        nota("Preço médio e custo vêm da Movimentação da B3 desde fev/26. Cotação e valor atual vêm da Posição.");
+        nota("Preço médio e custo vêm da Movimentação da B3 desde fev/26. Quantidade vem da Posição da B3; cotação da brapi.dev (atraso de alguns minutos), atualizada sozinha a cada 15 min com esta tela aberta.");
     }
     else if(aba==="rent"){
       const porCl=CLASSES_INV.filter(c=>cart.some(x=>x.classe===c)||tudo.some(x=>x.classe===c&&(x.realizado||x.proventos))).map(c=>{
