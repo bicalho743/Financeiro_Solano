@@ -514,6 +514,9 @@
   .pv-tab th{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--cinza);font-weight:500;
              text-align:left;padding:0 6px 8px;border-bottom:1px solid var(--verde)}
   .pv-tab th.n{text-align:right}
+  .pv-tab th.pv-ord{cursor:pointer;user-select:none;white-space:nowrap}
+  .pv-tab th.pv-ord:hover,.pv-tab th.pv-ord.on{color:var(--verde)}
+  .pv-tab th.pv-ord .seta{opacity:.45;font-size:11px}.pv-tab th.pv-ord.on .seta{opacity:1}
   .pv-tab td{padding:2px 4px;border-bottom:1px solid var(--linha-clara);vertical-align:middle}
   .pv-tab col.c-data{width:128px} .pv-tab col.c-val{width:118px} .pv-tab col.c-acao{width:62px}
   .pv-tab td.valor{width:auto}
@@ -533,12 +536,19 @@
   .pv-tot b{font-family:var(--serif);font-size:30px;font-weight:500;font-variant-numeric:tabular-nums}
   /* ---- fluxo anual ---- */
   .fx-tab{border-collapse:separate;border-spacing:0;min-width:1560px;width:100%}
-  .fx-caixa{overflow:auto;max-height:calc(100vh - 150px);min-height:320px;border:1px solid var(--linha-clara);border-radius:4px;
-            overscroll-behavior:contain}
+  .fx-caixa{overflow:auto;max-height:calc(100vh - 150px);min-height:320px;border:1px solid var(--linha);border-radius:4px;
+            overscroll-behavior:contain;scrollbar-width:auto;scrollbar-color:#8E9A93 #EEEBE3}
   .fx-caixa thead th{position:sticky;top:0;z-index:2}
   .fx-caixa thead th:first-child{z-index:3}
-  .fx-caixa::-webkit-scrollbar{height:12px;width:12px}
-  .fx-caixa::-webkit-scrollbar-thumb{background:var(--linha);border-radius:6px;border:3px solid #fff}
+  .fx-caixa::-webkit-scrollbar{height:16px;width:16px}
+  .fx-caixa::-webkit-scrollbar-track{background:#EEEBE3}
+  .fx-caixa::-webkit-scrollbar-thumb{background:#8E9A93;border-radius:8px;border:3px solid #EEEBE3;min-width:60px}
+  .fx-caixa::-webkit-scrollbar-thumb:hover{background:var(--verde)}
+  .fx-caixa::-webkit-scrollbar-corner{background:#EEEBE3}
+  .corpo.largo{max-width:none}
+  .fx-nav{display:flex;gap:6px;align-items:center}
+  .fx-nav button{border:1px solid var(--linha);background:#fff;padding:5px 12px;border-radius:3px;font-size:13px;color:var(--tinta)}
+  .fx-nav button:hover{border-color:var(--verde);color:var(--verde)}
   .fx-tab th,.fx-tab td{padding:1px 2px;border-bottom:1px solid var(--linha-clara);font-size:13px;white-space:nowrap}
   .fx-tab thead th{background:#fff;text-align:right;padding:8px 6px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
                    color:var(--cinza);font-weight:500;border-bottom:1px solid var(--verde)}
@@ -2914,7 +2924,16 @@
     const extra=jaDebitados("itau",D).reduce((s,l)=>s+l.valor,0);
     return {v:cent(ini.v+movConta("itau",ymD+"-01",dep.toISOString().slice(0,10))+extra), data:D, fonte:ini.fonte};
   }
-  const saldoPrev = (p,ym) => p.saldoManual&&p.saldo!=null ? +p.saldo : saldoContaApp(ym||ymDaPrev(p)).v;
+  // mês futuro: o saldo de partida é o déficit/superávit do mês anterior (se ele tem previsão)
+  const mesAntPrev = ym => { const [a,m]=ym.split("-").map(Number); const k=m===1?(a-1)+"-12":a+"-"+String(m-1).padStart(2,"0");
+    return ym>mesAtual() && dados.previsoes && dados.previsoes[k] ? k : null; };
+  function saldoPrev(p,ym){
+    ym=ym||ymDaPrev(p);
+    if(p.saldoManual&&p.saldo!=null) return +p.saldo;
+    const ant=ym&&mesAntPrev(ym);
+    if(ant) return totaisPrev(dados.previsoes[ant],ant).resultado;
+    return saldoContaApp(ym).v;
+  }
   function totaisPrev(p,ym){
     ym=ym||ymDaPrev(p);
     const soma=(a,f)=>(a||[]).reduce((s,x)=>s+(+f(x)||0),0);
@@ -2988,11 +3007,30 @@
         '<td class="acao">'+(x.aPagar!=null&&x.aPagar<0?'<button class="pv-pagar" data-ppagar="'+lista+':'+i+'" title="Marcar como pago">✓</button>':'')+
           '<button class="apagar" data-pdel="'+lista+':'+i+'" title="Apagar linha" aria-label="Apagar linha">×</button></td></tr>';
     };
+    // ordenação só na tela (clique no cabeçalho); os índices continuam os da lista gravada
+    const ordPrev=lista=>(ui.pvOrd&&ui.pvOrd[lista])||{k:"data",dir:1};
+    const idxOrdenados=lista=>{
+      const o=ordPrev(lista), arr=p[lista].map((x,i)=>i);
+      const chave=x=>o.k==="d" ? String(x.d||"").toLowerCase()
+        : o.k==="data" ? (x.data||"")
+        : o.k==="aPagar" ? (x.aPagar==null?null:Math.abs(x.aPagar))
+        : (x.pago==null?null:+x.pago);
+      return arr.sort((a,b)=>{
+        const A=chave(p[lista][a]), B=chave(p[lista][b]);
+        const va=(A===""||A==null), vb=(B===""||B==null);
+        if(va||vb) return va&&vb ? a-b : va?1:-1;     // vazios sempre no fim
+        const c = typeof A==="string" ? A.localeCompare(B,"pt-BR") : A-B;
+        return (c||((p[lista][a].data||"").localeCompare(p[lista][b].data||"")))*o.dir || a-b;
+      });
+    };
     const tabela=(lista,titulo,nota)=>
       '<div class="tit-secao" id="pv-'+lista+'" style="margin:0 0 6px"><h3>'+titulo+'</h3></div>'+(nota?'<p class="sub" style="margin:0 0 10px">'+nota+'</p>':'')+
       '<div class="rolagem"><table class="pv-tab pv-contas"><colgroup><col class="c-data"><col><col class="c-val"><col class="c-val"><col class="c-acao"></colgroup>'+
-      '<thead><tr><th>Data</th><th>Detalhes</th><th class="n">A pagar</th><th class="n">Pago</th><th></th></tr></thead><tbody>'+
-      p[lista].map((x,i)=>linha(lista,x,i)).join("")+'</tbody></table></div>'+
+      '<thead><tr>'+[["data","Data",""],["d","Detalhes",""],["aPagar","A pagar","n"],["pago","Pago","n"]].map(([k,r,c])=>{
+        const o=ordPrev(lista), on=o.k===k;
+        return '<th class="pv-ord'+(c?" "+c:"")+(on?" on":"")+'" data-pvsort="'+lista+':'+k+'" title="Ordenar por '+r.toLowerCase()+'">'+r+
+          '<span class="seta">'+(on?(o.dir>0?" ↑":" ↓"):" ↕")+'</span></th>'; }).join("")+'<th></th></tr></thead><tbody>'+
+      idxOrdenados(lista).map(i=>linha(lista,p[lista][i],i)).join("")+'</tbody></table></div>'+
       '<button class="ver-mais" data-padd="'+lista+'">+ Adicionar linha</button>';
     const lista2=(lista,titulo,rot)=>
       '<div class="tit-secao" id="pv-'+lista+'" style="margin:26px 0 6px"><h3>'+titulo+'</h3></div>'+
@@ -3027,6 +3065,8 @@
         '<div class="pv-resumo" id="pv-resumo">'+
           '<label class="pv-l">Saldo em conta<input class="campo" data-pv="saldo" data-foco="saldo" value="'+brl(t.saldo)+'" placeholder="0,00" inputmode="decimal"></label>'+
           '<p class="sub" id="pvSaldoF" style="margin:-4px 0 6px;text-align:right">'+(p.saldoManual?'digitado · <button class="ver-mais" data-psaldoapp="1" style="padding:0">usar o dos lançamentos</button>'
+            :mesAntPrev(ui.prevMes)?(()=>{ const a=mesAntPrev(ui.prevMes), r=totaisPrev(dados.previsoes[a],a).resultado;
+              return (r<0?'déficit':'superávit')+' de '+esc(rotuloMes(a))+' · <button class="ver-mais" data-pverant="'+a+'" style="padding:0">ver</button>'; })()
             :(()=>{ const sc=saldoContaApp(ui.prevMes); return 'Itaú pelos lançamentos, até '+diaMes(sc.data); })())+'</p>'+
           '<div class="pv-l"><span>A receber</span><b id="pvReceber" style="color:#1E8A5F">'+brlS(t.receber)+'</b></div>'+
           '<div class="pv-l"><span>Anotações</span><b id="pvOutras" style="color:'+(t.outras<0?"#C0392B":"#1E8A5F")+'">'+brlS(t.outras)+'</b></div>'+
@@ -3068,6 +3108,11 @@
     };
     corpo.onclick=e=>{
       if(e.target.closest("[data-pfluxo]")){ ui.conta="fluxo"; render(); window.scrollTo(0,0); return; }
+      const va=e.target.closest("[data-pverant]");
+      if(va){ ui.prevMes=va.dataset.pverant; render(); window.scrollTo(0,0); return; }
+      const so=e.target.closest("th[data-pvsort]");
+      if(so){ const [l,k]=so.dataset.pvsort.split(":"), o=(ui.pvOrd=ui.pvOrd||{}), at=o[l]||{k:"data",dir:1};
+        o[l]= at.k===k ? {k:k,dir:-at.dir} : {k:k,dir:1}; renderPrevisao(); return; }
       if(e.target.closest("[data-psaldoapp]")){ delete p.saldoManual; p.saldo=0; salvar(); renderPrevisao(); return; }
       const rf=e.target.closest("[data-precfx]");
       if(rf){ const k=rf.dataset.precfx; p.recebidas=p.recebidas||{}; if(p.recebidas[k]) delete p.recebidas[k]; else p.recebidas[k]=true;
@@ -3113,8 +3158,13 @@
 
   function renderFluxo(){
     const corpo=$("#corpo"), fx=dados.fluxo;
+    // guarda a posição da rolagem para não voltar ao início a cada valor editado
+    const cxAnt=document.querySelector("#corpo .fx-caixa");
+    if(cxAnt) ui.fxScroll={l:cxAnt.scrollLeft, t:cxAnt.scrollTop};
     $("#abas").innerHTML='<div class="periodo"><span class="sub" style="margin:0">Expectativa de receitas e gastos, mês a mês. '+
-      'Clique num valor para mudar; o previsto da Visão geral acompanha.</span></div>';
+      'Clique num valor para mudar; o previsto da Visão geral acompanha.</span></div>'+
+      (fx?'<div class="fx-nav"><button data-fxnav="-1" title="Meses anteriores">◀</button><button data-fxnav="0">Mês atual</button>'+
+        '<button data-fxnav="1" title="Próximos meses">▶</button></div>':'');
     if(!fx){
       corpo.innerHTML='<div class="vazio"><p class="num">Sem fluxo anual ainda</p><p>Importe a planilha de orçamento (aba FLUXO ANUAL) '+
         'ou <button class="ver-mais" data-fxzero="1" style="padding:0">comece um fluxo a partir das categorias</button>.</p></div>';
@@ -3157,7 +3207,24 @@
     corpo.innerHTML='<div class="fx-caixa" style="margin-top:14px"><table class="fx-tab"><thead><tr><th>Item</th><th style="text-align:left">Categoria</th>'+
       ms.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'<th>Total ano</th></tr></thead><tbody>'+h+'</tbody></table></div>'+
       '<p class="nota-linha">Despesas: digite o valor normal (vira saída). Para lançar um valor positivo numa despesa, use +. '+
-      'Importar a planilha de novo substitui o fluxo anual.</p>';
+      'Importar a planilha de novo substitui o fluxo anual. Para andar pelos meses use ◀ ▶, a barra de rolagem ou Shift + roda do mouse.</p>';
+
+    // caixa do tamanho da tela: as duas barras de rolagem ficam sempre visíveis, sem rolar a página
+    const cx=corpo.querySelector(".fx-caixa");
+    const ajustar=c=>{ c.style.maxHeight=Math.max(320, window.innerHeight-Math.max(c.getBoundingClientRect().top,0)-16)+"px"; };
+    ajustar(cx);
+    if(!window._fxResize){ window._fxResize=true;
+      window.addEventListener("resize",()=>{ const c=document.querySelector("#corpo .fx-caixa"); if(c) ajustar(c); }); }
+    const larguraCol=()=>{ const th=cx.querySelectorAll("thead th"); return th[2]?th[2].offsetWidth:100; };
+    const fixa=()=>{ const th=cx.querySelectorAll("thead th"); return (th[0]?th[0].offsetWidth:0)+(th[1]?th[1].offsetWidth:0); };
+    const irMesAtual=suave=>{ const k=ms.indexOf(mesAtual()); const th=cx.querySelectorAll("thead th")[2+Math.max(k,0)];
+      if(th) cx.scrollTo({left:Math.max(0,th.offsetLeft-fixa()-larguraCol()), behavior:suave?"smooth":"auto"}); };
+    if(ui.fxScroll){ cx.scrollLeft=ui.fxScroll.l; cx.scrollTop=ui.fxScroll.t; } else irMesAtual(false);
+    $("#abas").onclick=e=>{
+      const b=e.target.closest("[data-fxnav]"); if(!b) return;
+      const d=+b.dataset.fxnav;
+      if(!d) irMesAtual(true); else cx.scrollBy({left:d*3*larguraCol(), behavior:"smooth"});
+    };
 
     corpo.onchange=e=>{
       const el=e.target.closest("[data-fx]"); if(!el) return;
@@ -4054,6 +4121,8 @@
 
   function render(){
     const corpo=$("#corpo"); corpo.onclick=null; corpo.onkeydown=null; corpo.onchange=null; $("#abas").onclick=null;
+    corpo.classList.toggle("largo", ui.conta==="fluxo");
+    if(ui.conta!=="fluxo") ui.fxScroll=null;
     marcarConta();
     if(ui.conta==="dash"){ renderDashboard(); return; }
     if(ui.conta==="dividas"){ renderDividas(); return; }
