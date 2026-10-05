@@ -81,3 +81,8 @@ A cotação substitui o preço da Posição da B3 (a quantidade continua vindo d
 ## Testar
 No app, aba Investimentos › **↻ Atualizar cotações**. Aparece "N cotações atualizadas" e, em cada ativo, "cotação dd/mm hh:mm".
 Se faltar o secret, o aviso diz "falta o secret BRAPI_TOKEN no Supabase".
+
+## Rentabilidade mensal (aba Investimentos › Rentabilidade)
+A mesma função `cotacoes` devolve o histórico de fechamentos mensais quando recebe `{historico:{...}}`:
+ações, FIIs e ETFs pelo Yahoo Finance (sem token; se falhar, brapi) e Tesouro pelo CSV do Tesouro Transparente.
+CDI e IPCA vêm direto da API do Banco Central. O app guarda os fechamentos e só busca de novo o que falta (ou a cada 6 h).
