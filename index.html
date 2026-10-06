@@ -492,6 +492,32 @@
   .dash-hoje .g-num:last-child .rot{font-weight:600}
   @media (max-width:860px){.dash-hoje{grid-template-columns:1fr 1fr;gap:14px 18px}}
   .iv-liq{color:#1D4ED8;font-weight:600}
+  /* painel de investimentos */
+  .ds-tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:22px}
+  @media (max-width:1150px){.ds-tiles{grid-template-columns:repeat(3,1fr)}}
+  @media (max-width:640px){.ds-tiles{grid-template-columns:1fr 1fr}}
+  .ds-tile{text-align:left;background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:12px 14px;box-shadow:var(--sombra);border-top:4px solid var(--k);cursor:pointer;font-family:inherit;color:inherit}
+  .ds-tile:hover{box-shadow:0 4px 14px rgba(16,24,40,.12)}
+  .ds-v{font-size:21px;font-weight:700;letter-spacing:-.02em;margin:3px 0 1px;white-space:nowrap}
+  .ds-v small{font-size:12px;font-weight:500;color:#6B7280;margin-left:2px}
+  .ds-prog{height:6px;background:#F3F4F6;border-radius:3px;margin-top:6px;overflow:hidden}.ds-prog i{display:block;height:100%;background:#DB2777;border-radius:3px}
+  .ds-grid{display:grid;gap:14px;margin-top:14px}.ds-3{grid-template-columns:repeat(3,1fr)}.ds-span2{grid-column:span 2}
+  @media (max-width:980px){.ds-3{grid-template-columns:1fr}.ds-span2{grid-column:auto}}
+  .ds-card{background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px 16px;box-shadow:var(--sombra);min-width:0}
+  .ds-card header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .ds-card h4{margin:0;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#374151}
+  .ds-rosca{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .ds-leg{flex:1;min-width:150px;font-size:12.5px}
+  .ds-leg div{display:grid;grid-template-columns:12px 1fr auto;gap:2px 8px;align-items:center;padding:3px 0;border-bottom:1px solid #F3F4F6}
+  .ds-leg i{width:10px;height:10px;border-radius:3px}.ds-leg b{font-weight:600}.ds-leg em{grid-column:2/4;font-style:normal;color:#6B7280;font-size:11.5px}
+  .ds-hb{display:grid;grid-template-columns:150px 1fr 82px 64px;gap:10px;align-items:center;font-size:13px;padding:4px 0}
+  .ds-hb-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ds-hb-n i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+  .ds-hb-b{height:12px;background:#F3F4F6;border-radius:4px;overflow:hidden}.ds-hb-b i{display:block;height:100%;border-radius:4px}
+  .ds-hb b{text-align:right;font-weight:600}.ds-hb em{font-style:normal;text-align:right;font-size:12px}
+  @media (max-width:640px){.ds-hb{grid-template-columns:96px 1fr 70px}.ds-hb em{display:none}}
+  .ds-li{display:grid;grid-template-columns:1fr auto 86px;gap:8px;font-size:13px;padding:5px 0;border-bottom:1px solid #F3F4F6}
+  .ds-li b{font-weight:600}.ds-li em{font-style:normal;text-align:right;color:#6B7280;font-size:12px}
+  .ds-sep{height:6px}
   .mt-refaz{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:14px 0 4px}
   .gf-leg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:#374151;margin:2px 0 6px}
   .gf-leg i{display:inline-block;width:18px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
@@ -4574,6 +4600,18 @@
     });
     return '<div class="gf-leg">'+series.map(s=>'<span><i style="background:'+s.cor+(s.tracejado?';background:repeating-linear-gradient(90deg,'+s.cor+' 0 6px,transparent 6px 9px)':'')+'"></i>'+esc(s.nome)+'</span>').join("")+'</div>'+g+'</svg>';
   }
+  function grafRosca(itens, centro, sub){
+    const tot=itens.reduce((s,x)=>s+x.v,0)||1, R=70, r=46, C=90; let a0=-Math.PI/2, g="";
+    itens.forEach(x=>{ const f=x.v/tot; if(f<=0) return; const a1=a0+f*2*Math.PI-(f<1?0.012:0), big=a1-a0>Math.PI?1:0;
+      const p=(a,rr)=>(C+rr*Math.cos(a)).toFixed(2)+" "+(C+rr*Math.sin(a)).toFixed(2);
+      g+=f>=0.999?'<circle cx="'+C+'" cy="'+C+'" r="'+((R+r)/2)+'" fill="none" stroke="'+x.cor+'" stroke-width="'+(R-r)+'"><title>'+esc(x.nome)+'</title></circle>'
+        :'<path d="M'+p(a0,R)+' A'+R+' '+R+' 0 '+big+' 1 '+p(a1,R)+' L'+p(a1,r)+' A'+r+' '+r+' 0 '+big+' 0 '+p(a0,r)+' Z" fill="'+x.cor+'"><title>'+esc(x.nome+": "+(f*100).toLocaleString("pt-BR",{maximumFractionDigits:1})+"% · R$ "+brl(cent(x.v)))+'</title></path>';
+      a0+=f*2*Math.PI; });
+    return '<div class="ds-rosca"><svg viewBox="0 0 180 180" width="170" height="170" role="img" aria-label="Alocação">'+g+
+      '<text x="90" y="86" text-anchor="middle" font-size="15" font-weight="700" fill="#111827" font-family="Inter,sans-serif">'+esc(centro)+'</text>'+
+      '<text x="90" y="104" text-anchor="middle" font-size="10" fill="#6B7280" font-family="Inter,sans-serif">'+esc(sub)+'</text></svg>'+
+      '<div class="ds-leg">'+itens.filter(x=>x.v>0).map(x=>'<div><i style="background:'+x.cor+'"></i><span>'+esc(x.nome)+'</span><b>'+(x.v/tot*100).toLocaleString("pt-BR",{maximumFractionDigits:1})+'%</b><em>R$ '+brl(cent(x.v))+'</em></div>').join("")+'</div></div>';
+  }
   function grafBarras(ms, grupos, opt={}){
     // grupos: [{nome, cor, vals:{ym:v}}] empilhados
     if(!ms.length) return '<p class="sub">Nenhum provento no período.</p>';
@@ -4769,13 +4807,60 @@
 
     let html="";
     if(aba==="resumo"){
-      html='<div class="iv-topo"><div><span class="rot">Patrimônio investido na B3</span><div class="iv-total">R$ '+brl(total)+'</div>'+
-        (comVar.length?'<div style="font-size:15px;margin-top:2px;color:'+corV(varHoje)+'">'+brlS(varHoje)+' ('+pctS(baseHoje?varHoje/baseHoje:null)+') no dia</div>':'')+
-        '<div class="iv-liq-topo">Líquido (se resgatar tudo hoje): <b>R$ '+brl(totalLiq)+'</b> <span class="kpi-sub" style="display:inline">− R$ '+brl(cent(total-totalLiq))+' de IR, IOF e custódia</span></div>'+
-        '<span class="kpi-sub">'+dataRef+' · custo R$ '+brl(custoTot)+'</span></div>'+
-        '<div class="iv-topo-dir"><span class="rot">Ganho desde fev/26</span><div class="iv-total" style="font-size:30px;color:'+corV(ganho)+'">R$ '+brl(ganho)+'</div>'+
-        '<span class="kpi-sub">valorização + vendas + proventos</span></div></div>'+
-        barraAloc(cart,total||1)+
+      // painel: indicadores no topo, gráficos no meio, detalhes por classe embaixo
+      const mt=v.meta||{}, plano=mt.plano||{}, hj=mesAtual(), metaHj=plano[hj]&&plano[hj].meta;
+      const tile=(rot,val,sub,cor,alvo,extra)=>'<button class="ds-tile" data-ivaba="'+alvo+'" style="--k:'+cor+'"><span class="rot">'+rot+'</span><div class="ds-v">'+val+'</div>'+(sub?'<span class="kpi-sub">'+sub+'</span>':'')+(extra||'')+'</button>';
+      const pctMeta=metaHj?total/metaHj:null;
+      const tiles='<div class="ds-tiles">'+
+        tile("Patrimônio investido","R$ "+brl(total),(comVar.length?'<span style="color:'+corV(varHoje)+'">'+brlS(varHoje)+' ('+pctS(baseHoje?varHoje/baseHoje:null)+') hoje</span>':"bruto, a preço de mercado"),"#1D4ED8","rf")+
+        tile("Líquido se resgatar","R$ "+brl(totalLiq),"− R$ "+brl(cent(total-totalLiq))+" de IR e custódia","#0E7490","rf")+
+        tile("Ganho desde fev/26",'<span style="color:'+corV(ganho)+'">R$ '+brl(ganho)+'</span>',pctS(custoTot?ganho/custoTot:null)+" sobre o custo","#16A34A","rent")+
+        tile("Rentabilidade no ano",'<span style="color:'+corV((rentAno||0)*100)+'">'+pctS(rentAno)+'</span>',ultRent?rotuloMes(ultRent.mes)+": "+pctS(ultRent.rentab):"carregando fechamentos…","#7C3AED","rent")+
+        tile("Renda passiva","R$ "+brl(cent(prov12/Math.max(1,ult12.length)))+"<small>/mês</small>","R$ "+brl(prov12)+" em 12 meses","#B45309","renda")+
+        tile("Meta de "+mesCurto(hj),pctMeta!=null?pct(pctMeta):"—",metaHj?"meta R$ "+brl(metaHj):"defina em Meta e projeção","#DB2777","meta",
+          pctMeta!=null?'<div class="ds-prog"><i style="width:'+Math.min(100,pctMeta*100).toFixed(1)+'%"></i></div>':'')+
+      '</div>';
+      // alocação por classe
+      const porCl={}; cart.forEach(x=>{ porCl[x.classe]=(porCl[x.classe]||0)+x.valor; });
+      const nomesCl={"Renda fixa":"CDB e títulos"};
+      const rosca=grafRosca(Object.keys(porCl).sort((a,b)=>porCl[b]-porCl[a]).map(c=>({nome:nomesCl[c]||c,v:porCl[c],cor:COR_CLASSE[c]||"#9CA3AF"})),"R$ "+milR(total),cart.length+" ativos");
+      // evolução × meta: últimos 12 meses e 12 à frente
+      const real={}; evo.forEach(l=>{ if(l.valor>0) real[l.mes]=l.valor; }); real[hj]=total;
+      let lim=hj; for(let i=0;i<12;i++) lim=proxMes(lim);
+      const ini12=(()=>{ let m=hj; for(let i=0;i<12;i++){ const [a,mm]=m.split("-").map(Number); m=mm===1?(a-1)+"-12":a+"-"+String(mm-1).padStart(2,"0"); } return m; })();
+      const ksM=Object.keys(plano).sort().filter(k=>k>=ini12&&k<=lim);
+      const evoG=grafLinhas([{nome:"Realizado",cor:"#1D4ED8",pts:Object.keys(real).sort().filter(m=>m>=ini12).map(m=>({m,v:real[m]}))},
+        ...(ksM.length?[{nome:"Meta",cor:"#DB2777",tracejado:true,pts:ksM.map(m=>({m,v:plano[m].meta}))}]:[])],{hoje:hj,h:260,rotulo:"Evolução e meta"});
+      // proventos 12 meses
+      const msP=[]; { let m=ini12; while(m<=hj){ msP.push(m); m=proxMes(m); } }
+      const gp={}; provs.forEach(p=>{ const c=p.classe==="Renda fixa"?"Tesouro Direto":p.classe||"Outros", k=mesDe(p.data); if(k<ini12) return; (gp[c]=gp[c]||{})[k]=(gp[c][k]||0)+(+p.valor||0); });
+      const provG=grafBarras(msP.filter(m=>Object.values(gp).some(g=>g[m])||m>=msProv[0]),Object.keys(gp).map(c=>({nome:c,cor:COR_CLASSE[c]||"#9CA3AF",vals:gp[c]})),{h:240,rotulo:"Proventos por mês"});
+      // maiores posições
+      const top=cart.slice().sort((a,b)=>b.valor-a.valor).slice(0,8), maxV=top.length?top[0].valor:1;
+      const topH=top.map(x=>{ const res=x.custo?(x.valor-x.custo)/x.custo:null;
+        return '<div class="ds-hb"><span class="ds-hb-n"><i style="background:'+(COR_CLASSE[x.classe]||"#999")+'"></i>'+esc(x.ativo.replace(/^Tesouro /,"TD "))+'</span>'+
+          '<span class="ds-hb-b"><i style="width:'+(x.valor/maxV*100).toFixed(1)+'%;background:'+(COR_CLASSE[x.classe]||"#999")+'"></i></span>'+
+          '<b>R$ '+milR(x.valor)+'</b><em style="color:'+corV((res||0)*100)+'">'+pctS(res)+'</em></div>'; }).join("");
+      // destaques do dia e próximos vencimentos
+      const mov=cart.filter(x=>x.varDia!=null).sort((a,b)=>b.varDia-a.varDia);
+      const linhaDia=x=>'<div class="ds-li"><span>'+esc(x.ativo.replace(/^Tesouro /,"TD "))+'</span><b style="color:'+corV(x.varDia)+'">'+pctS(x.varDia/100)+'</b><em>'+brlS(cent(x.varDiaR||0))+'</em></div>';
+      const dia=mov.length?mov.slice(0,4).map(linhaDia).join("")+(mov.length>4?'<div class="ds-sep"></div>'+mov.slice(-3).map(linhaDia).join(""):""):'<p class="sub">Sem cotações de hoje.</p>';
+      const vencs=rf.filter(x=>x.vencimento).sort((a,b)=>a.vencimento<b.vencimento?-1:1).slice(0,5)
+        .map(x=>'<div class="ds-li"><span>'+esc(x.ativo.replace(/^Tesouro /,"TD "))+'</span><b>'+x.vencimento.split("-").reverse().join("/")+'</b><em>R$ '+brl(x.valor)+'</em></div>').join("");
+      const painel=(t,corpo,alvo,cls)=>'<section class="ds-card'+(cls?" "+cls:"")+'"><header><h4>'+t+'</h4>'+(alvo?'<button class="ver-mais" data-ivaba="'+alvo+'">ver ›</button>':'')+'</header>'+corpo+'</section>';
+      html=tiles+
+        '<div class="ds-grid ds-3">'+
+          painel("Alocação da carteira",rosca,"rv")+
+          painel("Evolução × meta",evoG,"meta","ds-span2")+
+        '</div>'+
+        '<div class="ds-grid ds-3">'+
+          painel("Proventos · 12 meses",provG,"renda","ds-span2")+
+          painel("Hoje na bolsa",dia,"rv")+
+        '</div>'+
+        '<div class="ds-grid ds-3">'+
+          painel("Maiores posições",topH,"rv","ds-span2")+
+          painel("Próximos vencimentos",vencs||'<p class="sub">Nenhum título com vencimento.</p>',"rf")+
+        '</div>'+
         '<div class="iv-cards">'+
         card("rf",COR_CLASSE["Tesouro Direto"],"Renda fixa","R$ "+brl(rfV),[
           pct(total?rfV/total:0)+" da carteira · <b class=\"iv-liq\">líquido R$ "+brl(S(rf,x=>x.liq))+"</b>",
@@ -4794,7 +4879,7 @@
           "proventos R$ "+brl(cent(fMes.prov)),
           v.movs.length+" movimentações importadas"])+
         '</div>'+
-        '<div class="iv-rodape">'+
+        '<div class="iv-rodape">'+dataRef+' · custo R$ '+brl(custoTot)+' · '+
         'Patrimônio total (com previdência, bens e dívidas): <b>R$ '+brl(cent(total+prev+bens-dividas))+'</b> <button class="ver-mais" data-ivaba="patr">ver</button></div>';
     }
     else if(aba==="rf"){
