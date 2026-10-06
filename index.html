@@ -492,6 +492,13 @@
   .dash-hoje .g-num:last-child .rot{font-weight:600}
   @media (max-width:860px){.dash-hoje{grid-template-columns:1fr 1fr;gap:14px 18px}}
   .iv-liq{color:#1D4ED8;font-weight:600}
+  .gf-leg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:#374151;margin:2px 0 6px}
+  .gf-leg i{display:inline-block;width:18px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
+  .mt-params{display:flex;flex-wrap:wrap;gap:12px 22px;margin:18px 0 4px;padding:12px 16px;background:#fff;border:1px solid #E5E7EB;border-radius:12px}
+  .mt-in{display:flex;flex-direction:column;gap:3px}.mt-in>span:last-child{display:flex;align-items:center;gap:6px;font-size:13px;color:#4B5563}
+  .mt-in input{width:110px;border:1px solid #D1D5DB;border-radius:6px;padding:5px 8px;font-size:15px;font-weight:600;background:#fff}
+  .fin-cards{grid-template-columns:repeat(4,1fr)}
+  @media (max-width:860px){.fin-cards{grid-template-columns:1fr 1fr}}
   .iv-liq-topo{font-size:15px;margin-top:4px;color:#1D4ED8}.iv-liq-topo b{font-weight:700}
   .bancos{margin-top:14px;padding:14px 24px 16px;border:1px solid var(--linha);background:#fff}
   .bc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0 24px}
@@ -826,6 +833,7 @@
           <button id="btImpItau">Extrato do Itaú (conta)</button>
           <button id="btImpBB">Extrato do BB (conta)</button>
           <button id="btImpCartao">Fatura do cartão (Itaú ou BB)</button>
+          <button id="btImpFin">Demonstrativo do financiamento (PDF)</button>
           <button id="btImpB3">Investimentos B3 (movimentação ou posição)</button>
           <hr>
           <button id="btImpPlanilha">Planilha de orçamento (.xlsx)</button>
@@ -2599,6 +2607,8 @@
       return linhas;
     };
     const textoTotal = paginas.map(it=>agruparLinhas(it).map(l=>l.txt).join("\n")).join("\n");
+    // demonstrativo do financiamento imobiliário (Itaú: "Demonstrativo Descritivo de Crédito")
+    if(/Demonstrativo Descritivo de Cr[ée]dito|Evolu[çc][ãa]o de Saldo Devedor/i.test(textoTotal)){ importarFinanciamento(textoTotal); return; }
     const dataBR = s => s ? s.split("/").reverse().join("-") : "";
     const numBR  = s => parseFloat(String(s).replace(/\./g,"").replace(",","."));
 
@@ -3567,6 +3577,71 @@
   }
 
   /* ================= dívidas e parcelas (mês a mês, editável) ================= */
+  /* ================= financiamento imobiliário (demonstrativo do banco em PDF) =================
+     Lê a tabela de evolução do saldo devedor (todas as parcelas: pagas, emitida e projetadas) e o cabeçalho do contrato.
+     Atualiza: Dívidas (seção do financiamento, linha mensal e "para quitar"), Fluxo anual, previsto do mês,
+     Previsão do mês (linha do financiamento) e a dívida no Patrimônio. Os dados ficam só na sua conta, não no código. */
+  function importarFinanciamento(txt){
+    const num=t=>parseFloat(String(t).replace(/\./g,"").replace(",","."));
+    const pega=(re,f)=>{ const m=txt.match(re); return m?(f?f(m[1]):m[1]):null; };
+    const parcelas={};
+    txt.split("\n").forEach(ln=>{
+      const m=ln.match(/^\s*(\d{1,3})\s+(\d{2})\/(\d{2})\/(\d{4})\s+(.*)$/); if(!m) return;
+      const tk=m[5].split(/\s+/), ns=tk.filter(t=>/^-?[\d.]+,\d+$/.test(t)), sit=tk.find(t=>/^(Paga|Emitida|Projetada|Vencida|Atrasada)$/i.test(t))||"";
+      if(ns.length<8) return;
+      const ym=m[4]+"-"+m[3];
+      parcelas[ym]={n:+m[1], venc:m[4]+"-"+m[3]+"-"+m[2], amort:num(ns[0]), juros:num(ns[1]), seguros:cent(num(ns[3])+num(ns[4])+num(ns[5])), taxa:num(ns[6]),
+        total:num(ns[ns.length-2]), saldo:num(ns[ns.length-1]), sit:sit};
+    });
+    const ks=Object.keys(parcelas).sort();
+    if(ks.length<12){ avisar("Não consegui ler a tabela de parcelas do demonstrativo.",true); return; }
+    const op=txt.match(/Opera[çc][ãa]o:\s*Implanta[çc][ãa]o[^\n]*?Data:\s*(\d{2})\/(\d{2})\/(\d{4})[^\n]*?Valor da Opera[çc][ãa]o:\s*([\d.,]+)/i);
+    const f={banco:/ita[uú]|Demonstrativo Descritivo de Cr[ée]dito/i.test(txt)?"Itaú":"Banco", contrato:pega(/N[úu]mero do contrato\s+(\d+)/i)||"",
+      modalidade:pega(/Modalidade da Carteira\s+([A-ZÇÃÕÁÉÍÓÚ ]+?)\s*$/im)||"", sistema:pega(/Sistema de amortiza[çc][ãa]o\s+(\w+)/i)||"",
+      taxaAno:pega(/Taxa de Juros \(anual\)\s+([\d.,]+)%/i,num), taxaEfet:pega(/Taxa efetiva \(anual\)\s+([\d.,]+)%/i,num),
+      prazo:pega(/Prazo total opera[çc][ãa]o\s+(\d+)/i,Number), restantes:pega(/Prazo remanescente\s+(\d+)/i,Number),
+      valorOrig:op?num(op[4]):null, dataOrig:op?op[3]+"-"+op[2]+"-"+op[1]:null,
+      emitido:(t=>t?t.split(".").map(x=>x.padStart(2,"0")).reverse().join("-"):hojeISO())(pega(/Emitido em\s+(\d{1,2}\.\d{1,2}\.\d{4})/i)),
+      parcelas:parcelas};
+    aplicarFinanciamento(f);
+    const sq=saldoQuitacao(f);
+    salvar(); ui.conta="dividas"; render();
+    avisar("Financiamento atualizado: "+ks.length+" parcelas · saldo devedor R$ "+brl(sq.v)+" · parcela de "+rotuloMes(mesAtual())+" R$ "+brl((parcelas[mesAtual()]||{}).total||0));
+  }
+  // saldo para quitar hoje: saldo depois da última paga, já corrigido (= saldo da parcela emitida + a amortização dela)
+  function saldoQuitacao(f){
+    const ks=Object.keys(f.parcelas).sort(), em=ks.find(k=>/emitida/i.test(f.parcelas[k].sit)), pg=ks.filter(k=>/paga/i.test(f.parcelas[k].sit)).pop();
+    if(em){ const x=f.parcelas[em]; return {v:cent(x.saldo+x.amort), ref:"antes da parcela de "+diaMes(x.venc)}; }
+    return pg?{v:f.parcelas[pg].saldo, ref:"após a parcela de "+diaMes(f.parcelas[pg].venc)}:{v:0,ref:""};
+  }
+  function aplicarFinanciamento(f){
+    if(!dados.dividas) dados.dividas=dividasVazias();
+    const dv=dados.dividas, P=f.parcelas, hj=mesAtual(), ehFin=t=>/financ|casa|imobili/i.test(String(t||""));
+    dv.financ=f;
+    // linha mensal do consolidado
+    if(!dv.consolida) dv.consolida=dividasVazias().consolida;
+    let l=dv.consolida.linhas.find(x=>ehFin(x.nome)); if(!l){ l={nome:"Financ. casa",vals:{}}; dv.consolida.linhas.push(l); }
+    Object.keys(P).forEach(ym=>{ if(ym>=hj||l.vals[ym]!=null) l.vals[ym]=P[ym].total; });
+    // para quitar hoje
+    dv.quitacao=dv.quitacao||[]; let q=dv.quitacao.find(x=>ehFin(x.nome)); if(!q){ q={nome:"Financ. casa",v:0}; dv.quitacao.push(q); }
+    q.v=saldoQuitacao(f).v;
+    // Fluxo anual e previsto do mês (categoria Financiamento casa)
+    if(dados.fluxo) (dados.fluxo.linhas||[]).filter(x=>x.cat==="Financiamento casa").forEach(x=>{ x.v=x.v||{};
+      (dados.fluxo.meses||[]).forEach(ym=>{ if(P[ym]) x.v[ym]=-P[ym].total; }); });
+    Object.keys(dados.orcamentoMes||{}).forEach(ym=>{ const o=dados.orcamentoMes[ym]; if(P[ym]&&o&&o["Financiamento casa"]!=null) o["Financiamento casa"]=P[ym].total; });
+    // Previsão do mês: valor da parcela; mês futuro copiado como "pago" volta para "a pagar"
+    Object.keys(dados.previsoes||{}).forEach(ym=>{ const p=dados.previsoes[ym]; if(!P[ym]) return;
+      (p.itens||[]).concat(p.fixos||[]).filter(x=>/financ/i.test(x.d||"")).forEach(x=>{
+        if(ym>hj&&!/paga/i.test(P[ym].sit)){ x.aPagar=-P[ym].total; x.pago=null; }
+        else if(x.aPagar!=null) x.aPagar=-P[ym].total; else if(x.pago!=null) x.pago=P[ym].total;
+      }); });
+    // Patrimônio: dívida do financiamento (a com esse nome, ou a única dívida com valor próximo do saldo)
+    const v=invOk(), sd=saldoQuitacao(f).v, divs=(v.manuais||[]).filter(x=>x.grupo==="divida");
+    let d=divs.find(x=>ehFin(x.nome)) || (divs.length===1&&Math.abs(divs[0].valor-sd)/sd<0.1?divs[0]:null);
+    if(!d){ d={nome:"",grupo:"divida",valor:0}; v.manuais.push(d); }
+    d.nome="Financiamento casa ("+f.banco+")"; d.valor=sd; d.data=f.emitido||hojeISO();
+  }
+
   function dividasVazias(){
     return {parcelas:[], consorcio:[], consignados:[], quitacao:[{nome:"Financ. casa", v:0}], faturaAvulsos:{},
       consolida:{meses:[], linhas:[{nome:"Consignado",vals:{}},{nome:"Consórcio",vals:{}},{nome:"Cartão",vals:{}},{nome:"Financ. casa",vals:{}}]}};
@@ -3647,6 +3722,29 @@
           '<span class="kpi-ir"'+ir({alvo:"#dv-consignados",dica:"Ver consignados"})+'>Consignados '+brl(qConsig)+'</span>'+
         outras.map(x=>' · '+esc(x.q.nome)+' '+brl(+x.q.v||0)).join("")+'</span></div>'+
     '</section>';
+
+    // 0) financiamento imobiliário (do demonstrativo importado)
+    if(dv.financ&&dv.financ.parcelas){
+      const f=dv.financ, P=f.parcelas, ks=Object.keys(P).sort(), sq=saldoQuitacao(f);
+      const atual=P[hoje]||P[ks.find(k=>k>=hoje)], fut=ks.filter(k=>k>=hoje), pagas=ks.filter(k=>/paga/i.test(P[k].sit)).length;
+      const restTot=cent(fut.reduce((s,k)=>s+P[k].total,0)), restJur=cent(fut.reduce((s,k)=>s+P[k].juros,0));
+      const pt=x=>(x==null?"—":x.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%");
+      h+='<div class="tit-secao" id="dv-financ" style="margin-top:34px"><h3>Financiamento da casa · '+esc(f.banco)+(f.modalidade?' · '+esc(cap(f.modalidade.toLowerCase())):'')+'</h3></div>'+
+        '<section class="dash-geral fin-cards">'+
+          '<div class="g-num"><span class="rot">Saldo devedor</span><div class="v" style="color:#C0392B">R$ '+brl(sq.v)+'</div><span class="kpi-sub">'+esc(sq.ref)+'</span></div>'+
+          '<div class="g-num"><span class="rot">Parcela de '+(atual?rotuloMes(atual.venc.slice(0,7)):"—")+'</span><div class="v">R$ '+brl(atual?atual.total:0)+'</div>'+
+            '<span class="kpi-sub">'+(atual?'nº '+atual.n+' · vence '+diaMes(atual.venc)+' · '+esc(atual.sit.toLowerCase())+'<br>amortização '+brl(atual.amort)+' · juros '+brl(atual.juros)+' · seguros '+brl(atual.seguros)+' · taxa '+brl(atual.taxa):'')+'</span></div>'+
+          '<div class="g-num"><span class="rot">Faltam</span><div class="v">'+fut.length+' parcelas</div><span class="kpi-sub">'+pagas+' pagas de '+(f.prazo||ks.length)+' · última em '+(ks.length?rotuloMes(ks[ks.length-1]):"—")+'</span></div>'+
+          '<div class="g-num"><span class="rot">Ainda a pagar</span><div class="v">R$ '+brl(restTot)+'</div><span class="kpi-sub">dos quais R$ '+brl(restJur)+' de juros (sem TR futura)</span></div>'+
+        '</section>'+
+        '<p class="sub" style="margin:8px 0 10px">'+esc(f.sistema||"")+' · juros '+pt(f.taxaAno)+' a.a. (efetiva '+pt(f.taxaEfet)+') + TR'+
+          (f.valorOrig?' · contratado R$ '+brl(f.valorOrig)+(f.dataOrig?' em '+f.dataOrig.split("-").reverse().join("/"):''):'')+
+          (f.contrato?' · contrato final '+esc(String(f.contrato).slice(-4)):'')+' · demonstrativo de '+(f.emitido?f.emitido.split("-").reverse().join("/"):"—")+
+          '. Para atualizar, baixe o demonstrativo novo no app do banco e use <b>Importar › Demonstrativo do financiamento (PDF)</b>.</p>'+
+        '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Parcela</th><th>Vencimento</th><th>Amortização</th><th>Juros</th><th>Seguros + taxa</th><th>Total</th><th>Saldo devedor</th><th>Situação</th></tr></thead><tbody>'+
+        fut.slice(0,12).map(k=>{ const x=P[k]; return '<tr><td>'+x.n+'</td><td>'+x.venc.split("-").reverse().join("/")+'</td><td>'+brl(x.amort)+'</td><td>'+brl(x.juros)+'</td><td>'+brl(cent(x.seguros+x.taxa))+'</td><td><b>'+brl(x.total)+'</b></td><td>'+brl(x.saldo)+'</td><td>'+esc(x.sit)+'</td></tr>'; }).join("")+
+        '</tbody></table></div>';
+    }
 
     // 1) saída mensal consolidada
     h+='<div class="tit-secao" id="dv-mensal" style="margin-top:34px"><h3>Saída mensal com dívidas — próximos 12 meses</h3></div>'+
@@ -4101,6 +4199,21 @@
     // o último mês da planilha só vale se mudou em relação ao anterior (a planilha repete o valor nos meses futuros)
     const h2=hist.filter((x,i)=>i===0||x.valor!==hist[i-1].valor||x.mes<=new Date(Date.now()-20*864e5).toISOString().slice(0,7));
     v.historico=h2;
+    // plano da aba META: aporte (C), rentabilidade esperada do mês (E) e meta (H), mês a mês
+    const plano={};
+    for(let r=3;r<400;r++){
+      const a=cel("META","A"+r); if(a==null) break;
+      const mes=celData(a); if(!mes) continue;
+      const ap=cel("META","C"+r), tx=cel("META","E"+r), mt=cel("META","H"+r);
+      if(typeof mt!=="number") continue;
+      plano[mes.slice(0,7)]={aporte:typeof ap==="number"?cent(ap):0, taxa:typeof tx==="number"?tx:null, meta:cent(mt)};
+    }
+    if(Object.keys(plano).length){
+      const ks=Object.keys(plano).sort(), fut=ks.filter(k=>k>mesAtual()), ult=plano[ks[ks.length-1]];
+      v.meta=Object.assign(v.meta||{}, {plano:plano,
+        taxa:(v.meta&&v.meta.taxaManual)?v.meta.taxa:(ult.taxa!=null?ult.taxa:0.009),
+        aporte:(v.meta&&v.meta.aporteManual)?v.meta.aporte:((fut.filter(k=>plano[k].aporte>0).map(k=>plano[k].aporte).pop())||0)});
+    }
     // cotações de fechamento (aba Consolidado, A = código, I = fechamento)
     const dataBase=celData(cel("Consolidado","B1"))||new Date().toISOString().slice(0,10);
     for(let r=16;r<120;r++){
@@ -4123,9 +4236,11 @@
       manuais.push({nome:n, grupo:g, valor:cent(Math.abs(s)), data:dataBase});
     }
     const ja=new Set(v.manuais.map(x=>normTxt(x.nome)));
-    manuais.forEach(x=>{ if(!ja.has(normTxt(x.nome))) v.manuais.push(x); });
+    // com o financiamento importado do demonstrativo, a dívida da planilha não entra (seria contada duas vezes)
+    const temFin=!!(dados.dividas&&dados.dividas.financ);
+    manuais.forEach(x=>{ if(!ja.has(normTxt(x.nome)) && !(temFin&&x.grupo==="divida")) v.manuais.push(x); });
     salvar(); ui.conta="invest"; render();
-    avisar("Planilha de investimentos: "+h2.length+" meses de histórico · "+Object.keys(v.precos).length+" cotações · "+manuais.length+" itens de previdência e patrimônio");
+    avisar("Planilha de investimentos: "+h2.length+" meses de histórico · "+(v.meta&&v.meta.plano?Object.keys(v.meta.plano).length+" meses de meta · ":"")+Object.keys(v.precos).length+" cotações · "+manuais.length+" itens de previdência e patrimônio");
   }
 
   /* ---- cálculo da carteira a partir da movimentação ---- */
@@ -4425,8 +4540,45 @@
   document.addEventListener("visibilitychange",()=>{ if(ui.conta==="invest" && document.visibilityState==="visible") atualizarCotacoes(); });
 
   const RF_CLASSES = ["Tesouro Direto","Renda fixa"], RV_CLASSES = ["Ações","FIIs","ETF exterior","Cripto","Outros"];
-  const ABAS_INV = [["resumo","Resumo"],["rf","Renda fixa"],["rv","Renda variável"],["rent","Rentabilidade"],["mov","Movimentação"],["conc","Conciliação"],["patr","Patrimônio"]];
+  const ABAS_INV = [["resumo","Resumo"],["meta","Meta e projeção"],["renda","Renda passiva"],["rf","Renda fixa"],["rv","Renda variável"],["rent","Rentabilidade"],["mov","Movimentação"],["conc","Conciliação"],["patr","Patrimônio"]];
   const COR_CLASSE = {"Tesouro Direto":"#2F4A3C","Renda fixa":"#6E8A78","Ações":"#1F6FB2","FIIs":"#785E28","ETF exterior":"#7D3C98","Cripto":"#D35400","Outros":"#95A5A6"};
+  /* ================= gráficos simples (SVG): linhas no tempo e barras empilhadas ================= */
+  const mesCurto = ym => ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"][+ym.slice(5)-1]+"/"+ym.slice(2,4);
+  const milR = v => Math.abs(v)>=1e6 ? (v/1e6).toLocaleString("pt-BR",{maximumFractionDigits:1})+" mi" : Math.abs(v)>=1e3 ? Math.round(v/1e3).toLocaleString("pt-BR")+" mil" : Math.round(v).toLocaleString("pt-BR");
+  function grafLinhas(series, opt={}){
+    const ms=[...new Set(series.flatMap(s=>s.pts.map(p=>p.m)))].sort(); if(ms.length<2) return '<p class="sub">Sem dados suficientes para o gráfico.</p>';
+    const vals=series.flatMap(s=>s.pts.map(p=>p.v)), max=Math.max(...vals,0)*1.05, min=Math.min(...vals,0);
+    const L=58,R=14,T=12,B=28,W=920,H=opt.h||300, iw=W-L-R, ih=H-T-B;
+    const x=m=>L+ms.indexOf(m)*iw/(ms.length-1), y=v=>T+ih-(v-min)/((max-min)||1)*ih;
+    const ticks=[0,0.25,0.5,0.75,1].map(f=>min+(max-min)*f);
+    const passo=Math.max(1,Math.ceil(ms.length/10));
+    let g='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="'+esc(opt.rotulo||"Gráfico")+'" style="font-family:Inter,sans-serif">'+
+      ticks.map(t=>'<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(t).toFixed(1)+'" y2="'+y(t).toFixed(1)+'" stroke="#E5E7EB"/><text x="'+(L-6)+'" y="'+(y(t)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="#6B7280">'+milR(t)+'</text>').join("")+
+      ms.map((m,i)=>i%passo===0||i===ms.length-1?'<text x="'+x(m).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" fill="#6B7280">'+mesCurto(m)+'</text>':'').join("");
+    if(opt.hoje&&ms.includes(opt.hoje)) g+='<line x1="'+x(opt.hoje).toFixed(1)+'" x2="'+x(opt.hoje).toFixed(1)+'" y1="'+T+'" y2="'+(T+ih)+'" stroke="#D97706" stroke-dasharray="3 3"/><text x="'+x(opt.hoje).toFixed(1)+'" y="'+(T+9)+'" text-anchor="middle" font-size="10" fill="#B45309">hoje</text>';
+    series.forEach(s=>{ const pts=s.pts.filter(p=>ms.includes(p.m)); if(!pts.length) return;
+      g+='<path d="'+pts.map((p,i)=>(i?"L":"M")+x(p.m).toFixed(1)+" "+y(p.v).toFixed(1)).join(" ")+'" fill="none" stroke="'+s.cor+'" stroke-width="2"'+(s.tracejado?' stroke-dasharray="6 4"':'')+' stroke-linejoin="round"/>';
+      g+=pts.map(p=>'<circle cx="'+x(p.m).toFixed(1)+'" cy="'+y(p.v).toFixed(1)+'" r="'+(pts.length>60?0:3)+'" fill="'+s.cor+'"/><circle cx="'+x(p.m).toFixed(1)+'" cy="'+y(p.v).toFixed(1)+'" r="9" fill="transparent"><title>'+esc(s.nome+" · "+mesCurto(p.m)+": R$ "+brl(cent(p.v)))+'</title></circle>').join("");
+    });
+    return '<div class="gf-leg">'+series.map(s=>'<span><i style="background:'+s.cor+(s.tracejado?';background:repeating-linear-gradient(90deg,'+s.cor+' 0 6px,transparent 6px 9px)':'')+'"></i>'+esc(s.nome)+'</span>').join("")+'</div>'+g+'</svg>';
+  }
+  function grafBarras(ms, grupos, opt={}){
+    // grupos: [{nome, cor, vals:{ym:v}}] empilhados
+    if(!ms.length) return '<p class="sub">Nenhum provento no período.</p>';
+    const tot=m=>grupos.reduce((s,g)=>s+(g.vals[m]||0),0), max=Math.max(...ms.map(tot),1)*1.08;
+    const L=52,R=10,T=12,B=28,W=920,H=opt.h||240, iw=W-L-R, ih=H-T-B, bw=Math.min(38,iw/ms.length*0.7);
+    const xc=i=>L+(i+0.5)*iw/ms.length, y=v=>T+ih-v/max*ih;
+    let g='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="'+esc(opt.rotulo||"Gráfico de barras")+'" style="font-family:Inter,sans-serif">'+
+      [0,0.5,1].map(f=>'<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(max*f).toFixed(1)+'" y2="'+y(max*f).toFixed(1)+'" stroke="#E5E7EB"/><text x="'+(L-6)+'" y="'+(y(max*f)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="#6B7280">'+milR(max*f)+'</text>').join("");
+    ms.forEach((m,i)=>{ let base=0;
+      grupos.forEach(gr=>{ const v=gr.vals[m]||0; if(v<=0) return; const y1=y(base+v), y0=y(base);
+        g+='<rect x="'+(xc(i)-bw/2).toFixed(1)+'" y="'+y1.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,y0-y1-1).toFixed(1)+'" fill="'+gr.cor+'" rx="2"><title>'+esc(gr.nome+" · "+mesCurto(m)+": R$ "+brl(cent(v)))+'</title></rect>'; base+=v; });
+      g+='<text x="'+xc(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" fill="#6B7280">'+mesCurto(m)+'</text>';
+      if(tot(m)>0) g+='<text x="'+xc(i).toFixed(1)+'" y="'+(y(tot(m))-4).toFixed(1)+'" text-anchor="middle" font-size="10" fill="#374151">'+Math.round(tot(m)).toLocaleString("pt-BR")+'</text>';
+    });
+    return '<div class="gf-leg">'+grupos.filter(gr=>ms.some(m=>gr.vals[m]>0)).map(gr=>'<span><i style="background:'+gr.cor+'"></i>'+esc(gr.nome)+'</span>').join("")+'</div>'+g+'</svg>';
+  }
+
   /* ================= valor líquido (se resgatar/vender hoje) =================
      Renda fixa (Tesouro, CDB): IR regressivo sobre o rendimento de cada compra (até 180 dias 22,5% · até 360 20% · até 720 17,5% · depois 15%),
        IOF regressivo nos primeiros 30 dias e, no Tesouro, taxa de custódia da B3 (0,20% a.a., estimada pro rata desde a compra).
@@ -4630,7 +4782,7 @@
           "proventos R$ "+brl(cent(fMes.prov)),
           v.movs.length+" movimentações importadas"])+
         '</div>'+
-        '<div class="iv-rodape">Capital de partida: <b>R$ '+brl(CAPITAL_APTO.valor)+'</b> da venda do apartamento ('+diaMes(CAPITAL_APTO.data)+'/'+CAPITAL_APTO.data.slice(2,4)+') · '+
+        '<div class="iv-rodape">'+
         'Patrimônio total (com previdência, bens e dívidas): <b>R$ '+brl(cent(total+prev+bens-dividas))+'</b> <button class="ver-mais" data-ivaba="patr">ver</button></div>';
     }
     else if(aba==="rf"){
@@ -4694,6 +4846,90 @@
               '<td>'+(o.saiu?brl(cent(o.saiu)):"—")+'</td><td>'+(o.voltou?brl(cent(o.voltou)):"—")+'</td><td>'+(o.aplic?brl(cent(o.aplic)):"—")+'</td><td>'+(o.resg?brl(cent(o.resg)):"—")+'</td><td>'+(o.prov?brl(cent(o.prov)):"—")+'</td>'+
               '<td style="color:'+(Math.abs(dif)<1?"#1E8A5F":"inherit")+'">'+(Math.abs(dif)<1?"✓":brl(dif))+'</td></tr>'; }).join("");
           return '<div class="iv-bloco"><h4>'+rotuloMes(m)+'</h4><div class="rolagem"><table class="dash-mes iv-conc"><thead><tr><th>Instituição</th><th>Saiu da conta</th><th>Voltou à conta</th><th>Aplicado B3</th><th>Resgatado B3</th><th>Proventos</th><th>Diferença</th></tr></thead><tbody>'+linhas+'</tbody></table></div></div>'; }).join("");
+    }
+    else if(aba==="meta"){
+      // como as abas META e DASHBOARD da planilha: meta mês a mês × carteira realizada, e projeção a partir de hoje
+      const mt=v.meta=v.meta||{}, plano=mt.plano||{}, hj=mesAtual();
+      const taxa=mt.taxa!=null?mt.taxa:0.009, aporte=mt.aporte!=null?mt.aporte:1000, anos=mt.anos||10, infl=mt.inflacao!=null?mt.inflacao:0.045;
+      const yieldM = total>0 ? prov12/12/total : 0;
+      // realizado: histórico mensal (planilha + posições B3) e o valor de hoje
+      const real={}; evo.forEach(l=>{ if(l.valor>0) real[l.mes]=l.valor; }); real[hj]=total;
+      // projeção a partir de hoje: (patrimônio + aporte) × (1 + taxa) a cada mês
+      // mês a mês: o aporte e a taxa da planilha valem enquanto ela tiver o mês (a não ser que você mude aqui)
+      const apDe=m=>!mt.aporteManual&&plano[m]?plano[m].aporte:aporte, txDe=m=>!mt.taxaManual&&plano[m]&&plano[m].taxa!=null?plano[m].taxa:taxa;
+      const proj=[{m:hj,v:total}]; let P=total, mm=hj;
+      for(let i=0;i<anos*12;i++){ mm=proxMes(mm); P=(P+apDe(mm))*(1+txDe(mm)); proj.push({m:mm,v:P}); }
+      const fimProj=proj[proj.length-1], metaHj=plano[hj]&&plano[hj].meta;
+      const ksP=Object.keys(plano).sort(), metaFim=ksP.length?plano[ksP[ksP.length-1]]:null;
+      const fatorReal=(m)=>Math.pow(1+infl,-((+m.slice(0,4)-+hj.slice(0,4))+(+m.slice(5)-+hj.slice(5))/12));
+      const anoFim=m=>m.slice(5)==="12";
+      const linhasAno=proj.filter(p=>anoFim(p.m)||p===fimProj).map(p=>{
+        const ano=p.m.slice(0,4), mp=plano[p.m]||plano[ano+"-12"], ap=ksP.filter(k=>k.slice(0,4)===ano).reduce((s,k)=>s+plano[k].aporte,0);
+        return '<tr><td>'+ano+(p.m.slice(5)!=="12"?' <span class="kpi-sub" style="display:inline">('+mesCurto(p.m)+')</span>':'')+'</td>'+
+          '<td>'+(mp?brl(mp.meta):"—")+'</td><td><b>'+brl(cent(p.v))+'</b></td>'+
+          '<td>'+(mp?'<span style="color:'+corV(p.v-mp.meta)+'">'+brlS(cent(p.v-mp.meta))+'</span>':"—")+'</td>'+
+          '<td>'+brl(cent(p.v*fatorReal(p.m)))+'</td><td>'+brl(cent(p.v*yieldM))+'</td></tr>'; }).join("");
+      const inp=(k,val,suf,dica)=>'<label class="mt-in"><span class="rot">'+dica+'</span><span><input class="campo" data-ivmeta="'+k+'" value="'+val+'" inputmode="decimal">'+suf+'</span></label>';
+      html=kpis([["Carteira realizada","R$ "+brl(total),"investimentos na B3 hoje"],
+          ["Meta para "+rotuloMes(hj),metaHj?"R$ "+brl(metaHj):"—",metaHj?"da aba META da planilha":"importe a planilha para trazer a meta"],
+          ["Atingimento da meta",metaHj?pct(total/metaHj):"—",metaHj?(total>=metaHj?"acima da meta":"faltam R$ "+brl(cent(metaHj-total))):"",metaHj?(total>=metaHj?"#15803D":"#C0392B"):""],
+          ["Projeção em "+anos+" anos","R$ "+brl(cent(fimProj.v)),"≈ R$ "+brl(cent(fimProj.v*fatorReal(fimProj.m)))+" em dinheiro de hoje","#1D4ED8"],
+          ["Renda passiva projetada","R$ "+brl(cent(fimProj.v*yieldM))+"/mês","em "+mesCurto(fimProj.m)+", com o rendimento atual de "+pct(yieldM)+" a.m."]])+
+        '<div class="mt-params">'+
+          inp("taxa",(taxa*100).toLocaleString("pt-BR",{maximumFractionDigits:3}),"% a.m.","Rentabilidade esperada")+
+          inp("aporte",brl(aporte),mt.aporteManual?"":" <span class=\"kpi-sub\" style=\"display:inline\">(segue a planilha mês a mês)</span>","Aporte por mês (R$)")+
+          inp("anos",anos,"anos","Horizonte")+
+          inp("inflacao",(infl*100).toLocaleString("pt-BR",{maximumFractionDigits:2}),"% a.a.","Inflação (para valor de hoje)")+
+          '<span class="kpi-sub" style="align-self:end">'+((taxa*100).toLocaleString("pt-BR",{maximumFractionDigits:2}))+'% a.m. ≈ '+pct(Math.pow(1+taxa,12)-1)+' a.a. · altere e o gráfico recalcula</span>'+
+        '</div>'+
+        secao("Evolução do patrimônio · realizado, meta e projeção")+
+        grafLinhas([
+          {nome:"Realizado",cor:"#1D4ED8",pts:Object.keys(real).sort().map(m=>({m,v:real[m]}))},
+          ...(ksP.length?[{nome:"Meta da planilha",cor:"#9CA3AF",tracejado:true,pts:ksP.filter(k=>k<=fimProj.m).map(m=>({m,v:plano[m].meta}))}]:[]),
+          {nome:"Projeção a partir de hoje ("+((taxa*100).toLocaleString("pt-BR",{maximumFractionDigits:2}))+"% a.m. + aportes)",cor:"#16A34A",tracejado:true,pts:proj}
+        ],{hoje:hj,rotulo:"Evolução do patrimônio investido"})+
+        secao("Ano a ano")+'<div class="rolagem"><table class="dash-mes"><thead><tr><th>Ano</th><th>Meta (planilha)</th><th>Projeção</th><th>Projeção − meta</th><th>Em dinheiro de hoje</th><th>Renda passiva/mês</th></tr></thead><tbody>'+linhasAno+'</tbody></table></div>'+
+        (metaFim?nota("Meta final da planilha: R$ "+brl(metaFim.meta)+" em "+rotuloMes(ksP[ksP.length-1])+" — hoje você tem "+pct(total/metaFim.meta)+" dela."):"")+
+        nota("Projeção: a cada mês, (patrimônio + aporte) × (1 + rentabilidade). Valores brutos, antes do IR. “Em dinheiro de hoje” desconta a inflação informada. "+
+          "Renda passiva/mês = patrimônio projetado × rendimento mensal médio dos últimos 12 meses (proventos ÷ carteira atual).");
+      corpo.onchange=e=>{
+        const el=e.target.closest("[data-ivmeta]"); if(!el) return;
+        const k=el.dataset.ivmeta, n=numero(String(el.value).replace("−","-"));
+        if(isNaN(n)) return;
+        if(k==="taxa"){ mt.taxa=n/100; mt.taxaManual=true; }
+        else if(k==="inflacao") mt.inflacao=n/100;
+        else if(k==="anos") mt.anos=Math.max(1,Math.min(40,Math.round(n)));
+        else if(k==="aporte"){ mt.aporte=n; mt.aporteManual=true; }
+        salvar(); render();
+      };
+    }
+    else if(aba==="renda"){
+      // como a aba Renda Passiva da planilha: proventos mês a mês por tipo, média, rendimento e por ativo
+      const ms=[], ini=(()=>{ const d=new Date(); d.setMonth(d.getMonth()-23); return d.toISOString().slice(0,7); })();
+      const primeiro=msProv.length?msProv[0]:mesAtual();
+      for(let m=primeiro>ini?primeiro:ini; m<=mesAtual(); m=proxMes(m)) ms.push(m);
+      const grp={}, porAtivo={};
+      provs.forEach(m=>{ const c=m.classe==="Renda fixa"?"Tesouro Direto":m.classe||"Outros", k=mesDe(m.data);
+        (grp[c]=grp[c]||{})[k]=(grp[c][k]||0)+(+m.valor||0);
+        const a=porAtivo[m.ativo]=porAtivo[m.ativo]||{ativo:m.ativo,classe:c,t12:0,tot:0,ult:""};
+        a.tot+=(+m.valor||0); if(ult12.includes(k)) a.t12+=(+m.valor||0); if(m.data>a.ult) a.ult=m.data; });
+      const ordemC=["FIIs","Ações","Tesouro Direto","ETF exterior","Cripto","Outros"];
+      const grupos=Object.keys(grp).sort((a,b)=>ordemC.indexOf(a)-ordemC.indexOf(b)).map(c=>({nome:c,cor:COR_CLASSE[c]||"#9CA3AF",vals:grp[c]}));
+      const ultMes=mesAtual(), mAnt=(()=>{ const [a,mm]=ultMes.split("-").map(Number); return mm===1?(a-1)+"-12":a+"-"+String(mm-1).padStart(2,"0"); })();
+      const media12=ult12.length?prov12/ult12.length:0, yieldA=total>0?prov12/total:0;
+      const valAt={}; cart.forEach(x=>{ valAt[x.ativo]=x.valor; });
+      const lin=Object.values(porAtivo).sort((a,b)=>b.t12-a.t12);
+      html=kpis([["Mês passado ("+mesCurto(mAnt)+")","R$ "+brl(cent(provMes[mAnt]||0))],["Este mês até hoje","R$ "+brl(cent(provMes[ultMes]||0))],
+          ["Média mensal (12 meses)","R$ "+brl(cent(media12)),ult12.length+" meses com dados"],["Total 12 meses","R$ "+brl(prov12)],
+          ["Rendimento da carteira",pct(yieldA)+" a.a.","≈ "+pct(yieldA/12)+" ao mês sobre R$ "+brl(total)]])+
+        secao("Proventos mês a mês")+grafBarras(ms,grupos,{rotulo:"Proventos por mês"})+
+        secao("Por ativo")+'<div class="rolagem"><table class="dash-mes"><thead><tr><th>Ativo</th><th>Classe</th><th>Últimos 12 meses</th><th>Por mês (média)</th><th>Valor atual</th><th>Rendimento 12m</th><th>Último pagamento</th><th>Total recebido</th></tr></thead><tbody>'+
+        lin.map(a=>'<tr><td><b>'+esc(a.ativo)+'</b></td><td><i class="iv-ponto" style="background:'+(COR_CLASSE[a.classe]||"#999")+'"></i>'+esc(a.classe)+'</td><td>'+brl(cent(a.t12))+'</td><td>'+brl(cent(a.t12/Math.max(1,ult12.length)))+'</td>'+
+          '<td>'+(valAt[a.ativo]?brl(valAt[a.ativo]):'<span class="kpi-sub" style="display:inline">vendido</span>')+'</td><td>'+(valAt[a.ativo]?pct(a.t12/valAt[a.ativo]):"—")+'</td>'+
+          '<td>'+(a.ult?a.ult.split("-").reverse().join("/"):"—")+'</td><td>'+brl(cent(a.tot))+'</td></tr>').join("")+
+        '<tr class="iv-tot"><td>Total</td><td></td><td>'+brl(prov12)+'</td><td>'+brl(cent(media12))+'</td><td></td><td></td><td></td><td>'+brl(proventosTot)+'</td></tr></tbody></table></div>'+
+        nota("Proventos da Movimentação da B3: rendimentos de FIIs, dividendos e JCP de ações e juros semestrais do Tesouro. Rendimentos de FII são isentos de IR para pessoa física; JCP já vem com 15% retido. "+
+          "A projeção da renda passiva está na aba Meta e projeção.");
     }
     else if(aba==="patr"){
       const at=(i,k)=>' data-ivm="'+i+'" data-k="'+k+'" data-foco="ivm:'+i+':'+k+'"';
@@ -5364,6 +5600,7 @@
   $("#btImpItau").onclick=()=>abrirImport("itau");
   $("#btImpBB").onclick=()=>abrirImport("bb");
   $("#btImpCartao").onclick=()=>abrirImport("cartao");
+  $("#btImpFin").onclick=()=>abrirImport("cartao");
   $("#btImpB3").onclick=()=>abrirImport("b3");
   $("#btImpPlanilha").onclick=()=>abrirImport("planilha");
   $("#arqCsv").onchange=e=>{ if(e.target.files[0]) lerArquivo(e.target.files[0]); e.target.value=""; };
