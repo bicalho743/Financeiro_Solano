@@ -482,6 +482,15 @@
   .dash-hoje .v{font-size:26px}
   .dash-hoje .g-num:last-child .rot{font-weight:600}
   @media (max-width:860px){.dash-hoje{grid-template-columns:1fr 1fr;gap:14px 18px}}
+  .bancos{margin-top:14px;padding:14px 24px 16px;border:1px solid var(--linha);background:#fff}
+  .bc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0 24px}
+  .bc-l{display:flex;flex-direction:column;gap:2px;padding:6px 0}
+  .bc-n{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--cinza)}
+  .bc-l b{font-family:var(--serif);font-size:20px;font-weight:400;font-variant-numeric:tabular-nums}
+  .bc-t{border-left:1px solid var(--linha);padding-left:20px}
+  .bc-t .bc-n{font-weight:600;color:var(--tinta)}
+  .bc-in{font-family:var(--serif);font-size:20px;max-width:150px;padding:2px 6px}
+  @media (max-width:860px){.bc-grid{grid-template-columns:1fr 1fr;gap:6px 18px}.bc-t{border-left:none;padding-left:0}.bancos{padding:12px 16px}}
   .cheque-uso{margin:10px 0 0;padding:9px 14px;background:#FBF3E6;border-left:3px solid #E08E0B;font-size:13.5px;border-radius:2px}
   .cheque-uso b{font-weight:600;color:#9A5B07}
   .nota-totais{margin:10px 0 0;font-size:13px;line-height:1.5;color:var(--cinza)}
@@ -853,7 +862,7 @@
   // CATEGORIA + SUBCATEGORIA da aba LANÇAMENTOS (ver MAPA_PLANILHA).
   const GRUPOS = [
     {g:"Receitas", cor:"#1E8A5F", cats:["Salário","13º salário","Rendimentos","Restituição IR","Reembolso e estorno","Venda de imóvel","Outras receitas"]},
-    {g:"Financiamento e dívidas", cor:"#7D3C98", cats:["Financiamento casa","Consignado","Empréstimo recebido","Pagamento de dívidas","Consórcio","IOF e taxas","Previdência"]},
+    {g:"Financiamento e dívidas", cor:"#7D3C98", cats:["Financiamento casa","Consignado","Empréstimo recebido","Pagamento de dívidas","Santander – cheque especial","Consórcio","IOF e taxas","Previdência"]},
     {g:"Moradia", cor:"#5D6D2E", cats:["Luz (Cemig)","Água (Copasa)","Internet","IPTU","TV (Sky)","Celular (TIM)","Assinaturas","Manutenção da casa"]},
     {g:"Serviço doméstico", cor:"#9A6B00", cats:["Doméstica – salário","Doméstica – e-Social","Doméstica – transporte","Doméstica – provisão","Diarista / jardim / extras"]},
     {g:"Alimentação", cor:"#D35400", cats:["Supermercado","Padaria","Açougue","Sacolão / feira","Bar / restaurante","Almoço","Lanche"]},
@@ -958,7 +967,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:12,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:13,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -1069,6 +1078,11 @@
       // cheque especial do BB: Pix BB → Itaú com o BB negativo deixa de ser receita/empréstimo/gasto
       ligarChequeEspecial();
       dados.versao=12; dados._migrou=true;
+    }
+    if(dados.versao<13){
+      // Pix do Itaú para o Santander (cobrir o cheque especial de lá): as compras do Santander não estão no app, então conta como gasto
+      dados.lancamentos.forEach(l=>{ if(l.origem==="itau"&&l.data==="2026-10-05"&&Math.abs(l.valor+284)<0.005&&/SOLANO/i.test(l.hist)){ l.categoria="Santander – cheque especial"; l.catManual=true; } });
+      dados.versao=13; dados._migrou=true;
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -1258,11 +1272,21 @@
     }
     return h.length?'<div class="nota-totais">'+h.map(x=>'<p>'+x+'</p>').join("")+'</div>':"";
   }
-  function avisoCheque(p){
-    const c=chequeBB(); if(!c) return "";
-    const naPrev=p&&(p.itens||[]).some(x=>ehLinhaCheque(x)&&x.aPagar!=null);
-    return '<div class="cheque-uso clic-card"'+ir({conta:"bb",mes:ui.mes,alvo:"#conf",dica:"Ver a conta do BB"})+'><b>Cheque especial em uso: R$ '+brl(-c.v)+'</b> no BB (saldo de '+diaMes(c.data)+'). '+
-      (naPrev?'Já está no “A pagar”: é coberto quando o salário cair no BB.':'Não está na previsão do mês.')+'</div>';
+  // saldos nos bancos: o que você tem de verdade e quanto de cheque especial está em uso
+  function painelBancos(){
+    const it=saldoContaApp(ui.mes), bb=saldoBanco("bb"), st=saldoBanco("santander");
+    const cor=v=>v<0?"#C0392B":"var(--tinta)";
+    const linha=(nome,s,fonte,irO,extra)=>'<div class="bc-l'+(irO?' clic-card"'+ir(irO):'"')+'><span class="bc-n">'+nome+'</span>'+
+      (extra||'<b style="color:'+(s?cor(s.v):"var(--cinza)")+'">'+(s?'R$ '+brl(s.v):'—')+'</b>')+'<span class="kpi-sub">'+fonte+'</span></div>';
+    const vals=[it.v, bb?bb.v:0, st?st.v:0], tot=cent(vals.reduce((a,b)=>a+b,0)), neg=cent(vals.filter(v=>v<0).reduce((a,b)=>a+b,0));
+    return '<section class="bancos"><div class="tit-secao" style="margin:0 0 6px"><h3>Saldos nos bancos</h3></div><div class="bc-grid">'+
+      linha("Itaú",it,"pelos lançamentos, até "+diaMes(it.data),{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
+      linha("BB",bb,bb?"extrato de "+diaMes(bb.data):"importe o extrato do BB",{conta:"bb",mes:ui.mes,alvo:"#conf",dica:"Ver a conta do BB"})+
+      linha("Santander",st,st?"digitado em "+diaMes(st.data):"digite o saldo quando usar",null,
+        '<input class="campo bc-in" data-saldo-santander="1" value="'+(st?brl(st.v):"")+'" placeholder="0,00" inputmode="decimal" aria-label="Saldo do Santander" style="color:'+(st?cor(st.v):"inherit")+'">')+
+      '<div class="bc-l bc-t"><span class="bc-n">Total nas contas</span><b style="color:'+cor(tot)+'">R$ '+brl(tot)+'</b>'+
+        '<span class="kpi-sub">'+(neg<0?'<span style="color:#9A5B07">cheque especial em uso: R$ '+brl(-neg)+'</span> · já no “A pagar”':'sem cheque especial em uso')+'</span></div>'+
+    '</div></section>';
   }
   // faixa do topo da Visão geral (mês atual): saldo hoje + a receber − a pagar = sobra prevista
   function faixaHoje(){
@@ -1270,7 +1294,7 @@
     const p=dados.previsoes&&dados.previsoes[ui.mes], sc=saldoContaApp(ui.mes);
     const card=(rot,v,sub,cor,irO)=>'<div class="g-num'+(irO?' clic-card"'+ir(irO):'"')+'><span class="rot">'+rot+'</span>'+
       '<div class="v" style="color:'+cor+'">R$ '+brl(v)+'</div><span class="kpi-sub">'+sub+'</span></div>';
-    if(!p) return avisoCheque(null)+'<section class="dash-geral dash-hoje um">'+
+    if(!p) return painelBancos()+'<section class="dash-geral dash-hoje um">'+
       card("Saldo em conta hoje",sc.v,"Itaú, pelos lançamentos até "+diaMes(sc.data),sc.v<0?"#C0392B":"var(--tinta)",{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
       '<p class="sub" style="margin:0;align-self:center">Crie a <a href="#" data-abrirprev="'+ui.mes+'">previsão do mês</a> para ver quanto sobra até o fim do mês.</p></section>';
     const t=totaisPrev(p,ui.mes), nAb=p.itens.filter(x=>x.aPagar!=null&&x.aPagar<0).length;
@@ -1279,7 +1303,7 @@
       card("+ A receber",t.receber+t.outras,"receitas e anotações em aberto","#1E8A5F",{conta:"prev",mes:ui.mes,alvo:"#pv-receitas",dica:"Ver as receitas esperadas"})+
       card("− A pagar",-t.aPagar,nAb+" conta"+(nAb===1?"":"s")+" em aberto até o fim do mês","var(--tinta)",{conta:"prev",mes:ui.mes,alvo:"#pv-itens",dica:"Ver as contas a pagar"})+
       card("= "+(t.resultado<0?"Falta no mês":"Sobra no mês"),t.resultado,"previsão para "+diaMes(fimDoMes(ui.mes)),t.resultado<0?"#C0392B":"#1E8A5F",{conta:"prev",mes:ui.mes,alvo:"#pv-resumo",dica:"Ver o cálculo na previsão do mês"})+
-    '</section>'+avisoCheque(p);
+    '</section>'+painelBancos();
   }
 
   function renderDashboard(){
@@ -1467,6 +1491,14 @@
       }
     };
     corpo.onchange=e=>{
+      const sn=e.target.closest("[data-saldo-santander]");
+      if(sn){
+        const txt=String(sn.value||"").trim(), sd=(dados.saldosDia=dados.saldosDia||{}), m=(sd.santander=sd.santander||{});
+        const v=txt===""?0:numero(txt.replace("−","-"));
+        m[hojeISO()]=cent(v); syncChequePrev(); salvar(); render();
+        avisar("Saldo do Santander: R$ "+brl(v)+(v<0?" — entrou no “A pagar” da previsão.":"."));
+        return;
+      }
       const inp=e.target.closest("[data-orc]"); if(!inp) return;
       const c=inp.dataset.orc, o=Object.assign({},orcamento());
       let v=numero(String(inp.value||"0").replace("−","-"));
@@ -1598,28 +1630,39 @@
     dados.lancamentos.forEach(l=>{ if(l.origem==="bb"&&ehEncargoCheque(l.hist)&&l.categoria!=="IOF e taxas"&&!l.catManual){ l.categoria="IOF e taxas"; n++; } });
     return n;
   }
-  // cheque especial em uso: último saldo do BB (até hoje) se estiver negativo
-  function chequeBB(){
-    const sd=(dados.saldosDia||{}).bb||{}, hj=hojeISO();
+  // último saldo conhecido de uma conta (até hoje): Itaú/BB pelo extrato; Santander digitado na Visão geral
+  function saldoBanco(o){
+    const sd=(dados.saldosDia||{})[o]||{}, hj=hojeISO();
     const d=Object.keys(sd).filter(x=>x<=hj).sort().pop();
-    return d&&sd[d]<0?{v:cent(sd[d]),data:d}:null;
+    return d?{v:cent(+sd[d]),data:d}:null;
   }
-  /* Previsão do mês atual: a linha do cheque especial acompanha o saldo negativo do BB.
-     Quando o BB volta ao positivo (o salário cobriu), a linha é marcada como paga. */
-  const ehLinhaCheque = x => x.auto==="chequeBB" || /ch\w*qu?e\s+especial/i.test(x.d||"");
+  function chequeBB(){ const s=saldoBanco("bb"); return s&&s.v<0?s:null; }
+  /* Previsão do mês atual: a linha de cada cheque especial acompanha o saldo negativo da conta.
+     Quando a conta volta ao positivo, a linha é marcada como paga. */
+  const CHEQUES=[
+    {o:"bb", auto:"chequeBB", nome:"Cheque especial BB", re:/\bBB\b/i},
+    {o:"santander", auto:"chequeSantander", nome:"Cheque especial Santander", re:/santander/i}];
+  const ehLinhaDe = (c,x) => x.auto===c.auto || (/ch\w*qu?e\s+especial/i.test(x.d||"") && c.re.test(x.d||""));
+  const ehLinhaCheque = x => CHEQUES.some(c=>ehLinhaDe(c,x));
   function syncChequePrev(){
     const ym=mesAtual(), p=dados.previsoes&&dados.previsoes[ym]; if(!p) return false;
-    const temBB=Object.keys((dados.saldosDia||{}).bb||{}).some(d=>d.slice(0,7)===ym);
-    if(!temBB) return false;
-    const c=chequeBB(); let x=(p.itens||[]).find(ehLinhaCheque), mudou=false;
-    if(c){
-      if(!x){ x={d:"Cheque especial BB",data:hojeISO(),aPagar:null,pago:null,auto:"chequeBB"}; p.itens.push(x); ordenarPrev(p); mudou=true; }
-      if(x.aPagar!=null||x.auto!=="chequeBB"){
-        if(x.aPagar!==c.v||x.d!=="Cheque especial BB"||x.auto!=="chequeBB"){ x.aPagar=c.v; x.d="Cheque especial BB"; x.auto="chequeBB"; mudou=true; }
+    let mudou=false;
+    CHEQUES.forEach(cq=>{
+      const sd=(dados.saldosDia||{})[cq.o]||{};
+      // BB: só com extrato do mês importado; Santander: com qualquer saldo digitado
+      if(cq.o==="bb"?!Object.keys(sd).some(d=>d.slice(0,7)===ym):!Object.keys(sd).length) return;
+      const s=saldoBanco(cq.o), c=s&&s.v<0?s:null;
+      let x=(p.itens||[]).find(y=>ehLinhaDe(cq,y));
+      if(c){
+        if(!x){ x={d:cq.nome,data:hojeISO(),aPagar:null,pago:null,auto:cq.auto}; p.itens.push(x); ordenarPrev(p); mudou=true; }
+        // acompanha o saldo; se a linha foi paga (✓) e o saldo não mudou desde então, não reabre
+        if(x.aPagar!=null||x.auto!==cq.auto||x.saldoData!==c.data){
+          if(x.aPagar!==c.v||x.d!==cq.nome||x.auto!==cq.auto||x.saldoData!==c.data){ x.aPagar=c.v; x.d=cq.nome; x.auto=cq.auto; x.saldoData=c.data; mudou=true; }
+        }
+      } else if(x&&x.auto===cq.auto&&x.aPagar!=null){
+        x.pago=cent((x.pago||0)+Math.abs(x.aPagar)); x.aPagar=null; x.saldoData=s?s.data:null; mudou=true;
       }
-    } else if(x&&x.auto==="chequeBB"&&x.aPagar!=null){
-      x.pago=cent((x.pago||0)+Math.abs(x.aPagar)); x.aPagar=null; mudou=true;
-    }
+    });
     return mudou;
   }
   function classificar(hist,valor){
