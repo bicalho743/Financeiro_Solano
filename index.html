@@ -492,6 +492,7 @@
   .dash-hoje .g-num:last-child .rot{font-weight:600}
   @media (max-width:860px){.dash-hoje{grid-template-columns:1fr 1fr;gap:14px 18px}}
   .iv-liq{color:#1D4ED8;font-weight:600}
+  .mt-refaz{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:14px 0 4px}
   .gf-leg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:#374151;margin:2px 0 6px}
   .gf-leg i{display:inline-block;width:18px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
   .mt-params{display:flex;flex-wrap:wrap;gap:12px 22px;margin:18px 0 4px;padding:12px 16px;background:#fff;border:1px solid #E5E7EB;border-radius:12px}
@@ -4208,7 +4209,8 @@
       if(typeof mt!=="number") continue;
       plano[mes.slice(0,7)]={aporte:typeof ap==="number"?cent(ap):0, taxa:typeof tx==="number"?tx:null, meta:cent(mt)};
     }
-    if(Object.keys(plano).length){
+    // meta refeita no app não é sobrescrita pela planilha
+    if(Object.keys(plano).length && !(v.meta&&v.meta.origem==="app")){
       const ks=Object.keys(plano).sort(), fut=ks.filter(k=>k>mesAtual()), ult=plano[ks[ks.length-1]];
       v.meta=Object.assign(v.meta||{}, {plano:plano,
         taxa:(v.meta&&v.meta.taxaManual)?v.meta.taxa:(ult.taxa!=null?ult.taxa:0.009),
@@ -4542,6 +4544,16 @@
   const RF_CLASSES = ["Tesouro Direto","Renda fixa"], RV_CLASSES = ["Ações","FIIs","ETF exterior","Cripto","Outros"];
   const ABAS_INV = [["resumo","Resumo"],["meta","Meta e projeção"],["renda","Renda passiva"],["rf","Renda fixa"],["rv","Renda variável"],["rent","Rentabilidade"],["mov","Movimentação"],["conc","Conciliação"],["patr","Patrimônio"]];
   const COR_CLASSE = {"Tesouro Direto":"#2F4A3C","Renda fixa":"#6E8A78","Ações":"#1F6FB2","FIIs":"#785E28","ETF exterior":"#7D3C98","Cripto":"#D35400","Outros":"#95A5A6"};
+  /* meta refeita a partir do valor real de hoje: (meta + aporte) × (1 + taxa) a cada mês, por 25 anos */
+  function refazerMeta(total, aporte, taxa){
+    const v=invOk(), mt=v.meta=v.meta||{}, hj=mesAtual(), plano={};
+    plano[hj]={aporte:0, taxa:taxa, meta:cent(total)};
+    let M=total, m=hj;
+    for(let i=0;i<300;i++){ m=proxMes(m); M=(M+aporte)*(1+taxa); plano[m]={aporte:aporte, taxa:taxa, meta:cent(M)}; }
+    mt.plano=plano; mt.origem="app"; mt.base={mes:hj, valor:cent(total), aporte:aporte, taxa:taxa};
+    mt.aporte=aporte; mt.aporteManual=true; mt.taxa=taxa; mt.taxaManual=true;
+  }
+
   /* ================= gráficos simples (SVG): linhas no tempo e barras empilhadas ================= */
   const mesCurto = ym => ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"][+ym.slice(5)-1]+"/"+ym.slice(2,4);
   const milR = v => Math.abs(v)>=1e6 ? (v/1e6).toLocaleString("pt-BR",{maximumFractionDigits:1})+" mi" : Math.abs(v)>=1e3 ? Math.round(v/1e3).toLocaleString("pt-BR")+" mil" : Math.round(v).toLocaleString("pt-BR");
@@ -4871,7 +4883,7 @@
           '<td>'+brl(cent(p.v*fatorReal(p.m)))+'</td><td>'+brl(cent(p.v*yieldM))+'</td></tr>'; }).join("");
       const inp=(k,val,suf,dica)=>'<label class="mt-in"><span class="rot">'+dica+'</span><span><input class="campo" data-ivmeta="'+k+'" value="'+val+'" inputmode="decimal">'+suf+'</span></label>';
       html=kpis([["Carteira realizada","R$ "+brl(total),"investimentos na B3 hoje"],
-          ["Meta para "+rotuloMes(hj),metaHj?"R$ "+brl(metaHj):"—",metaHj?"da aba META da planilha":"importe a planilha para trazer a meta"],
+          ["Meta para "+rotuloMes(hj),metaHj?"R$ "+brl(metaHj):"—",metaHj?(mt.origem==="app"&&mt.base?"refeita em "+mesCurto(mt.base.mes)+" a partir de R$ "+brl(mt.base.valor):"da aba META da planilha"):"importe a planilha ou refaça a meta abaixo"],
           ["Atingimento da meta",metaHj?pct(total/metaHj):"—",metaHj?(total>=metaHj?"acima da meta":"faltam R$ "+brl(cent(metaHj-total))):"",metaHj?(total>=metaHj?"#15803D":"#C0392B"):""],
           ["Projeção em "+anos+" anos","R$ "+brl(cent(fimProj.v)),"≈ R$ "+brl(cent(fimProj.v*fatorReal(fimProj.m)))+" em dinheiro de hoje","#1D4ED8"],
           ["Renda passiva projetada","R$ "+brl(cent(fimProj.v*yieldM))+"/mês","em "+mesCurto(fimProj.m)+", com o rendimento atual de "+pct(yieldM)+" a.m."]])+
@@ -4885,13 +4897,24 @@
         secao("Evolução do patrimônio · realizado, meta e projeção")+
         grafLinhas([
           {nome:"Realizado",cor:"#1D4ED8",pts:Object.keys(real).sort().map(m=>({m,v:real[m]}))},
-          ...(ksP.length?[{nome:"Meta da planilha",cor:"#9CA3AF",tracejado:true,pts:ksP.filter(k=>k<=fimProj.m).map(m=>({m,v:plano[m].meta}))}]:[]),
+          ...(ksP.length?[{nome:mt.origem==="app"?"Meta":"Meta da planilha",cor:"#9CA3AF",tracejado:true,pts:ksP.filter(k=>k<=fimProj.m).map(m=>({m,v:plano[m].meta}))}]:[]),
           {nome:"Projeção a partir de hoje ("+((taxa*100).toLocaleString("pt-BR",{maximumFractionDigits:2}))+"% a.m. + aportes)",cor:"#16A34A",tracejado:true,pts:proj}
         ],{hoje:hj,rotulo:"Evolução do patrimônio investido"})+
-        secao("Ano a ano")+'<div class="rolagem"><table class="dash-mes"><thead><tr><th>Ano</th><th>Meta (planilha)</th><th>Projeção</th><th>Projeção − meta</th><th>Em dinheiro de hoje</th><th>Renda passiva/mês</th></tr></thead><tbody>'+linhasAno+'</tbody></table></div>'+
-        (metaFim?nota("Meta final da planilha: R$ "+brl(metaFim.meta)+" em "+rotuloMes(ksP[ksP.length-1])+" — hoje você tem "+pct(total/metaFim.meta)+" dela."):"")+
+        secao("Ano a ano")+'<div class="rolagem"><table class="dash-mes"><thead><tr><th>Ano</th><th>Meta</th><th>Projeção</th><th>Projeção − meta</th><th>Em dinheiro de hoje</th><th>Renda passiva/mês</th></tr></thead><tbody>'+linhasAno+'</tbody></table></div>'+
+        '<div class="mt-refaz"><button class="bt" data-ivmetarefaz="1" style="font-size:12.5px;padding:7px 14px">Refazer a meta a partir de hoje</button>'+
+          '<span class="kpi-sub" style="display:inline">parte da carteira atual (R$ '+brl(total)+') com o aporte e a rentabilidade acima'+
+          (mt.origem==="app"&&mt.base?' · meta atual: refeita em '+mesCurto(mt.base.mes)+', R$ '+brl(mt.base.aporte)+'/mês, '+(mt.base.taxa*100).toLocaleString("pt-BR",{maximumFractionDigits:2})+'% a.m.':' · meta atual: da planilha')+'</span></div>'+
         nota("Projeção: a cada mês, (patrimônio + aporte) × (1 + rentabilidade). Valores brutos, antes do IR. “Em dinheiro de hoje” desconta a inflação informada. "+
           "Renda passiva/mês = patrimônio projetado × rendimento mensal médio dos últimos 12 meses (proventos ÷ carteira atual).");
+      const clqAnt=corpo.onclick;
+      corpo.onclick=e=>{
+        if(e.target.closest("[data-ivmetarefaz]")){
+          refazerMeta(total, aporte, taxa); salvar(); render();
+          avisar("Meta refeita: começa em R$ "+brl(total)+" hoje, com R$ "+brl(aporte)+" por mês e "+(taxa*100).toLocaleString("pt-BR",{maximumFractionDigits:2})+"% a.m.");
+          return;
+        }
+        if(clqAnt) clqAnt(e);
+      };
       corpo.onchange=e=>{
         const el=e.target.closest("[data-ivmeta]"); if(!el) return;
         const k=el.dataset.ivmeta, n=numero(String(el.value).replace("−","-"));
