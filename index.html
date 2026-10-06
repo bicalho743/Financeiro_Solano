@@ -1644,6 +1644,9 @@
 
     const itens=[], futuros=[]; let saldoAnt=null, saldoDia=null, saldoCol=null, futuro=false;
     const diaDia={}, diaCol={};   // todos os saldos de fim de dia que o extrato traz
+    // Itaú: o último "SALDO TOTAL DISPONÍVEL DIA" não inclui o que foi lançado nos dias seguintes (ex.: compra de hoje).
+    // Saldo real = último saldo do dia + lançamentos com data posterior a ele (os do mesmo dia, listados logo abaixo, já estão no saldo)
+    let ultSaldoLinha=null; const depoisSaldo=[];
     // saldo do fim do extrato: linha "SALDO DO DIA"/"SALDO" mais recente; sem ela, a coluna de saldo da última data
     const guarda=(atual,iso,v)=>(v==null||isNaN(v))?atual:(!atual||iso>atual.iso?{iso:iso,valor:v}:atual);
     for(let i=ini;i<linhas.length;i++){
@@ -1665,12 +1668,19 @@
       if(/^S(AL)?DO/.test(ch)){
         // Itaú traz o saldo anterior na coluna de saldo, com o valor em branco
         if(/^SALDOANTERIOR/.test(ch)){ const va=sv!=null?sv:v; if(va!=null&&!isNaN(va)) saldoAnt={iso:iso,valor:va}; }
-        else { const vd=sv!=null?sv:v; saldoDia=guarda(saldoDia,iso,vd); if(vd!=null&&!isNaN(vd)) diaDia[iso]=vd; }
+        else { const vd=sv!=null?sv:v; saldoDia=guarda(saldoDia,iso,vd);
+          if(vd!=null&&!isNaN(vd)){ diaDia[iso]=vd; if(!ultSaldoLinha||iso>=ultSaldoLinha.iso){ ultSaldoLinha={iso:iso,valor:vd}; depoisSaldo.length=0; } } }
         continue;
       }
       if(sv!=null&&!isNaN(sv)){ saldoCol=guarda(saldoCol,iso,sv); diaCol[iso]=sv; }
       if(!v) continue;
       itens.push({iso:iso,hist:hist,valor:v,doc:iDoc>=0?celTexto(r[iDoc]):""});
+      if(ultSaldoLinha&&iso>ultSaldoLinha.iso) depoisSaldo.push({iso:iso,valor:v});
+    }
+    if(ultSaldoLinha&&depoisSaldo.length){
+      const isoR=depoisSaldo.reduce((m,x)=>x.iso>m?x.iso:m,ultSaldoLinha.iso);
+      const vR=Math.round((ultSaldoLinha.valor+depoisSaldo.reduce((a,x)=>a+x.valor,0))*100)/100;
+      diaDia[isoR]=vR; saldoDia={iso:isoR,valor:vR};
     }
     const dias=Object.keys(diaDia).length?diaDia:diaCol;
     return {itens:itens,futuros:futuros,saldoAnt:saldoAnt,saldoFim:saldoDia||saldoCol,
@@ -1729,18 +1739,38 @@
       // mesmo documento com valor diferente: o banco corrigiu, atualiza sem perder categoria/observação
       if(doc && origem!=="cartao"){
         const velho=porDoc.get(iso+"|"+doc+"|"+hist.slice(0,42));
-        if(velho){ velho.valor=valor; corrigidos++; meses.add(iso.slice(0,7)); return; }
+        if(velho){ velho.valor=valor; usados.add(velho); corrigidos++; meses.add(iso.slice(0,7)); return; }
       }
       const base=iso+"|"+origem+"|"+valor.toFixed(2)+"|"+hist.slice(0,42);
       let id=base, n=2; while(ids.has(id)) id=base+"#"+(n++);
       const categoria=it.categoria||classificar(hist,valor).categoria;
       if(categoria!=="Sem categoria") prontos++;
-      dados.lancamentos.push({id:id,data:iso,hist:hist,valor:valor,doc:doc,categoria:categoria,
+      const nl={id:id,data:iso,hist:hist,valor:valor,doc:doc,categoria:categoria,
                               vinculo:"PF",obs:"",origem:origem,...(it.tipo?{tipo:it.tipo}:{}),
-                              ...(origem!=="cartao"&&!it.categoria?{confExtrato:true}:{})});
+                              ...(origem!=="cartao"&&!it.categoria?{confExtrato:true}:{})};
+      dados.lancamentos.push(nl); usados.add(nl);
       ids.add(id); novos++; meses.add(iso.slice(0,7));
     });
-    return {novos:novos,repetidos:repetidos,prontos:prontos,corrigidos:corrigidos,meses:[...meses]};
+    return {novos:novos,repetidos:repetidos,prontos:prontos,corrigidos:corrigidos,meses:[...meses],tocados:usados};
+  }
+  /* O extrato novo manda: no período que ele cobre (dia seguinte ao SALDO ANTERIOR até o último lançamento),
+     o que veio de um extrato anterior e não está mais nele foi mudado pelo banco (outra data ou valor,
+     ex.: rendimento da aplicação automática lançado em 01/10 e depois refeito em 05/10). Fica riscado — o ↺ traz de volta. */
+  function riscarForaDoExtrato(r,itens,origem,g){
+    if(!itens.length) return 0;
+    let de=itens.reduce((m,x)=>x.iso<m?x.iso:m,itens[0].iso);
+    const ate=itens.reduce((m,x)=>x.iso>m?x.iso:m,itens[0].iso);
+    if(r.saldoAnt&&r.saldoAnt.iso){
+      const d=new Date(r.saldoAnt.iso+"T12:00:00"); d.setDate(d.getDate()+1); const iso=d.toISOString().slice(0,10);
+      if(iso<de) de=iso;
+    }
+    let n=0;
+    dados.lancamentos.forEach(l=>{
+      if(l.origem!==origem||l.ignorado||!l.confExtrato||g.tocados.has(l)) return;
+      if(l.data<de||l.data>ate) return;
+      l.ignorado=true; l.riscadoExtrato=true; n++;
+    });
+    return n;
   }
   function textoImport(r){
     return r.novos+" lançamento"+(r.novos===1?"":"s")+" importado"+(r.novos===1?"":"s")+
@@ -1854,11 +1884,12 @@
     if(!itens.length && !(r.futuros||[]).length){ avisar("Não encontrei lançamentos nesse arquivo.",true); return; }
     if(origem!=="cartao") gravarSaldos(r,origem);
     const g=gravarLinhas(itens,origem);
+    const riscados=origem!=="cartao"?riscarForaDoExtrato(r,itens,origem,g):0;
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
-    let fut="";
+    let fut=riscados?" · "+riscados+" lançamento"+(riscados===1?"":"s")+" de extrato anterior que o banco refez riscado"+(riscados===1?"":"s"):"";
     if(origem!=="cartao"){
       const f=gravarFuturos(r.futuros,origem), b=baixarPrevistos(origem);
-      if(f.novos||f.ligados) fut=" · "+(f.novos+f.ligados)+" agendamento"+(f.novos+f.ligados===1?"":"s")+" na Previsão do mês";
+      if(f.novos||f.ligados) fut+=" · "+(f.novos+f.ligados)+" agendamento"+(f.novos+f.ligados===1?"":"s")+" na Previsão do mês";
       if(b) fut+=" · "+b+" previsto"+(b===1?"":"s")+" marcado"+(b===1?"":"s")+" como pago"+(b===1?"":"s");
     }
     if(origem!=="cartao" && (ui.conta==="itau"||ui.conta==="bb")) ui.conta=origem;
