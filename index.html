@@ -482,6 +482,8 @@
   .dash-hoje .v{font-size:26px}
   .dash-hoje .g-num:last-child .rot{font-weight:600}
   @media (max-width:860px){.dash-hoje{grid-template-columns:1fr 1fr;gap:14px 18px}}
+  .cheque-uso{margin:10px 0 0;padding:9px 14px;background:#FBF3E6;border-left:3px solid #E08E0B;font-size:13.5px;border-radius:2px}
+  .cheque-uso b{font-weight:600;color:#9A5B07}
   .nota-totais{margin:10px 0 0;font-size:13px;line-height:1.5;color:var(--cinza)}
   .nota-totais p{margin:3px 0}.nota-totais b{color:var(--tinta);font-weight:600}
   tr.futuro td:not(.acao){opacity:.55}
@@ -860,7 +862,7 @@
     {g:"Transporte", cor:"#0B7A83", cats:["Uber / Localiza","Gasolina","Aluguel Mobi","IPVA / multas","Seguro auto","Manutenção do carro"]},
     {g:"Lazer e pessoal", cor:"#C2185B", cats:["Clube","Corrida","Passeios","Férias / viagem","Solano – pessoal","Tâmara – pessoal","Meninas","Pet","Vestuário"]},
     {g:"Transferências", cor:"#8D6E63", cats:["Transferências Tâmara"]},
-    {g:"Fora dos cálculos", cor:"#95A5A6", cats:["Cartão de crédito","Aplicação e resgate","Transferência entre minhas contas"]},
+    {g:"Fora dos cálculos", cor:"#95A5A6", cats:["Cartão de crédito","Aplicação e resgate","Transferência entre minhas contas","Cheque especial BB"]},
     {g:"", cor:"#B0AEA6", cats:["Sem categoria"]}
   ];
   const CATEGORIAS = GRUPOS.reduce((a,x)=>a.concat(x.cats),[]);
@@ -956,7 +958,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:11,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:12,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -966,7 +968,10 @@
   const CAT_FATURA = "Cartão de crédito";
   const CAT_ENTRE = "Transferência entre minhas contas";
   // não é gasto nem receita: fatura, aplicação e dinheiro passando de uma conta sua para outra (ex.: Itaú → BB)
-  const CATS_FORA = new Set([CAT_FATURA,"Aplicação e resgate",CAT_ENTRE]);
+  // Pix do BB para o Itaú usando o limite do cheque especial: o dinheiro só muda de conta; a dívida é o saldo negativo do BB.
+  // Fica fora do entrou/gastou nas duas pontas (diferente da transferência comum, cuja chegada conta como entrada).
+  const CAT_CHEQUE = "Cheque especial BB";
+  const CATS_FORA = new Set([CAT_FATURA,"Aplicação e resgate",CAT_ENTRE,CAT_CHEQUE]);
   // resgates e Pix vindos de outra conta sua contam como ENTRADA; só a saída (aplicação, envio) fica fora
   const ENTRA_FORA = new Set(["Aplicação e resgate",CAT_ENTRE]);
   const ehMov = l => !CATS_FORA.has(l.categoria) || (l.valor>0 && ENTRA_FORA.has(l.categoria));
@@ -1059,6 +1064,11 @@
       // previsão do mês: datas dentro do próprio mês e em ordem
       Object.keys(dados.previsoes||{}).forEach(ym=>{ const p=dados.previsoes[ym]; p.itens=p.itens||[]; p.fixos=p.fixos||[]; datasNoMes(ym,p); ordenarPrev(p); });
       dados.versao=11; dados._migrou=true;
+    }
+    if(dados.versao<12){
+      // cheque especial do BB: Pix BB → Itaú com o BB negativo deixa de ser receita/empréstimo/gasto
+      ligarChequeEspecial();
+      dados.versao=12; dados._migrou=true;
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -1235,8 +1245,10 @@
   }
 
   // linhas de esclarecimento abaixo dos totais: empréstimo a devolver e o que ainda está agendado
-  function notasTotais(emp,agend){
+  function notasTotais(emp,agend,cheque){
     const h=[];
+    if(cheque>=0.005)
+      h.push('<b>Veio do cheque especial do BB: R$ '+brl(cheque)+'</b>. Só mudou de conta: fica fora do Entrou e do Gastou; a dívida é o saldo negativo do BB.');
     if(Math.abs(emp)>=0.005)
       h.push('<b>Empréstimo recebido: R$ '+brl(emp)+'</b> (a devolver). Fica fora do Entrou e do Gastou.');
     if(agend.length){
@@ -1246,13 +1258,19 @@
     }
     return h.length?'<div class="nota-totais">'+h.map(x=>'<p>'+x+'</p>').join("")+'</div>':"";
   }
+  function avisoCheque(p){
+    const c=chequeBB(); if(!c) return "";
+    const naPrev=p&&(p.itens||[]).some(x=>ehLinhaCheque(x)&&x.aPagar!=null);
+    return '<div class="cheque-uso clic-card"'+ir({conta:"bb",mes:ui.mes,alvo:"#conf",dica:"Ver a conta do BB"})+'><b>Cheque especial em uso: R$ '+brl(-c.v)+'</b> no BB (saldo de '+diaMes(c.data)+'). '+
+      (naPrev?'Já está no “A pagar”: é coberto quando o salário cair no BB.':'Não está na previsão do mês.')+'</div>';
+  }
   // faixa do topo da Visão geral (mês atual): saldo hoje + a receber − a pagar = sobra prevista
   function faixaHoje(){
     if(ui.mes!==mesAtual()) return "";
     const p=dados.previsoes&&dados.previsoes[ui.mes], sc=saldoContaApp(ui.mes);
     const card=(rot,v,sub,cor,irO)=>'<div class="g-num'+(irO?' clic-card"'+ir(irO):'"')+'><span class="rot">'+rot+'</span>'+
       '<div class="v" style="color:'+cor+'">R$ '+brl(v)+'</div><span class="kpi-sub">'+sub+'</span></div>';
-    if(!p) return '<section class="dash-geral dash-hoje um">'+
+    if(!p) return avisoCheque(null)+'<section class="dash-geral dash-hoje um">'+
       card("Saldo em conta hoje",sc.v,"Itaú, pelos lançamentos até "+diaMes(sc.data),sc.v<0?"#C0392B":"var(--tinta)",{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
       '<p class="sub" style="margin:0;align-self:center">Crie a <a href="#" data-abrirprev="'+ui.mes+'">previsão do mês</a> para ver quanto sobra até o fim do mês.</p></section>';
     const t=totaisPrev(p,ui.mes), nAb=p.itens.filter(x=>x.aPagar!=null&&x.aPagar<0).length;
@@ -1261,7 +1279,7 @@
       card("+ A receber",t.receber+t.outras,"receitas e anotações em aberto","#1E8A5F",{conta:"prev",mes:ui.mes,alvo:"#pv-receitas",dica:"Ver as receitas esperadas"})+
       card("− A pagar",-t.aPagar,nAb+" conta"+(nAb===1?"":"s")+" em aberto até o fim do mês","var(--tinta)",{conta:"prev",mes:ui.mes,alvo:"#pv-itens",dica:"Ver as contas a pagar"})+
       card("= "+(t.resultado<0?"Falta no mês":"Sobra no mês"),t.resultado,"previsão para "+diaMes(fimDoMes(ui.mes)),t.resultado<0?"#C0392B":"#1E8A5F",{conta:"prev",mes:ui.mes,alvo:"#pv-resumo",dica:"Ver o cálculo na previsão do mês"})+
-    '</section>';
+    '</section>'+avisoCheque(p);
   }
 
   function renderDashboard(){
@@ -1404,7 +1422,8 @@
         '<div class="g-num clic-card"'+ir({conta:"cpf",mes:ui.mes,tipo:"s",mov:1,dica:"Ver os gastos"})+'><span class="rot">Gastou</span><div class="v">R$ '+brl(r.tS)+'</div></div>'+
         '<div class="g-num clic-card"'+ir({conta:"cpf",mes:ui.mes,tipo:"",mov:1,dica:"Ver entradas e gastos"})+'><span class="rot">'+(saldo<0?"Faltou":"Sobrou")+'</span><div class="v" style="color:'+(saldo<0?"#C0392B":"#1E8A5F")+'">R$ '+brl(saldo)+'</div></div>'+
         (ui.mes===mesAtual()?'<p class="g-hist" style="font-size:12.5px;color:var(--cinza)">Até hoje ('+diaMes(hojeISO())+'). Entrou e Gastou são os mesmos da aba Lançamentos.</p>':'')+
-      '</section>'+notasTotais(r.tEmp,agend);
+      '</section>'+notasTotais(r.tEmp,agend,
+        dados.lancamentos.filter(l=>noPeriodo(l)&&!l.ignorado&&l.categoria===CAT_CHEQUE&&l.origem!=="bb"&&l.valor>0).reduce((s,l)=>s+l.valor,0));
 
     const hoje=faixaHoje();
     $("#corpo").innerHTML=
@@ -1560,10 +1579,55 @@
   const ehQuitacaoConsignado = (hist,valor) => valor<0 && /CR[EÉ]D(ITO)?\.?\s*CONSIG/i.test(String(hist));
   // dinheiro que entra emprestado (crediário, consignado, empréstimo): não é receita
   const ehEmprestimoRecebido = (hist,valor) => valor>0 && /CREDIARIO|CR[EÉ]D(ITO)?\.?\s*CONSIG|EMPR[EÉ]STIMO|CR[EÉ]D(ITO)? PESSOAL/i.test(String(hist).normalize("NFD").replace(/[\u0300-\u036f]/g,""));
+  const ehEncargoCheque = h => /JUROS|I\.?O\.?F/i.test(h) && /SALDO DEVEDOR|LIM(ITE)?[\s.-]*ESP|DIAS SEM JUROS/i.test(String(h).normalize("NFD").replace(/[\u0300-\u036f]/g,""));
+  /* Cheque especial do BB: Pix do BB para você (Itaú) num dia em que o BB ficou negativo.
+     As duas pontas (saída no BB, chegada no Itaú com o mesmo valor, até 3 dias) viram "Cheque especial BB". */
+  function ligarChequeEspecial(){
+    const sdBB=(dados.saldosDia||{}).bb||{}, solano=h=>/SOLANO/i.test(h);
+    const trocavel=l=>!l.catManual||["Sem categoria",CAT_ENTRE,"Empréstimo recebido","Outras receitas"].includes(l.categoria);
+    let n=0;
+    dados.lancamentos.filter(l=>l.origem==="bb"&&!l.ignorado&&l.valor<0&&/PIX/i.test(l.hist)&&solano(l.hist)).forEach(b=>{
+      const usa=b.categoria===CAT_CHEQUE||(sdBB[b.data]!=null&&sdBB[b.data]<0);
+      if(!usa) return;
+      if(b.categoria!==CAT_CHEQUE){ if(!trocavel(b)&&b.categoria!=="IOF e taxas") return; b.categoria=CAT_CHEQUE; n++; }
+      const d0=new Date(b.data+"T12:00:00").getTime();
+      const par=dados.lancamentos.find(l=>l.origem==="itau"&&!l.ignorado&&Math.abs(l.valor+b.valor)<0.005&&solano(l.hist)&&
+        Math.abs(new Date(l.data+"T12:00:00").getTime()-d0)<=3*864e5);
+      if(par&&par.categoria!==CAT_CHEQUE&&trocavel(par)){ par.categoria=CAT_CHEQUE; n++; }
+    });
+    dados.lancamentos.forEach(l=>{ if(l.origem==="bb"&&ehEncargoCheque(l.hist)&&l.categoria!=="IOF e taxas"&&!l.catManual){ l.categoria="IOF e taxas"; n++; } });
+    return n;
+  }
+  // cheque especial em uso: último saldo do BB (até hoje) se estiver negativo
+  function chequeBB(){
+    const sd=(dados.saldosDia||{}).bb||{}, hj=hojeISO();
+    const d=Object.keys(sd).filter(x=>x<=hj).sort().pop();
+    return d&&sd[d]<0?{v:cent(sd[d]),data:d}:null;
+  }
+  /* Previsão do mês atual: a linha do cheque especial acompanha o saldo negativo do BB.
+     Quando o BB volta ao positivo (o salário cobriu), a linha é marcada como paga. */
+  const ehLinhaCheque = x => x.auto==="chequeBB" || /ch\w*qu?e\s+especial/i.test(x.d||"");
+  function syncChequePrev(){
+    const ym=mesAtual(), p=dados.previsoes&&dados.previsoes[ym]; if(!p) return false;
+    const temBB=Object.keys((dados.saldosDia||{}).bb||{}).some(d=>d.slice(0,7)===ym);
+    if(!temBB) return false;
+    const c=chequeBB(); let x=(p.itens||[]).find(ehLinhaCheque), mudou=false;
+    if(c){
+      if(!x){ x={d:"Cheque especial BB",data:hojeISO(),aPagar:null,pago:null,auto:"chequeBB"}; p.itens.push(x); ordenarPrev(p); mudou=true; }
+      if(x.aPagar!=null||x.auto!=="chequeBB"){
+        if(x.aPagar!==c.v||x.d!=="Cheque especial BB"||x.auto!=="chequeBB"){ x.aPagar=c.v; x.d="Cheque especial BB"; x.auto="chequeBB"; mudou=true; }
+      }
+    } else if(x&&x.auto==="chequeBB"&&x.aPagar!=null){
+      x.pago=cent((x.pago||0)+Math.abs(x.aPagar)); x.aPagar=null; mudou=true;
+    }
+    return mudou;
+  }
   function classificar(hist,valor){
     const u = hist.toUpperCase();
     if(ehQuitacaoConsignado(hist,valor)) return {categoria:"Pagamento de dívidas",vinculo:"PF"};
     if(ehEmprestimoRecebido(hist,valor)) return {categoria:"Empréstimo recebido",vinculo:"PF"};
+    // juros e IOF do cheque especial, e a devolução dos juros ("dias sem juros"): mesma categoria, para se anularem
+    if(ehEncargoCheque(hist)) return {categoria:"IOF e taxas",vinculo:"PF"};
     for(const r of dados.regras){
       if(u.includes(r.termo.toUpperCase())){
         if(ehPixEntrada(hist,valor) && GRUPO_DE[r.categoria]!=="Receitas" && !ENTRA_FORA.has(r.categoria))
@@ -1934,8 +1998,10 @@
     if(origem!=="cartao") gravarSaldos(r,origem);
     const g=gravarLinhas(itens,origem);
     const riscados=origem!=="cartao"?riscarForaDoExtrato(r,itens,origem,g):0;
+    const nCheque=origem!=="cartao"?ligarChequeEspecial():0;
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
-    let fut=riscados?" · "+riscados+" lançamento"+(riscados===1?"":"s")+" de extrato anterior que o banco refez riscado"+(riscados===1?"":"s"):"";
+    let fut=nCheque?" · "+nCheque+" ligado"+(nCheque===1?"":"s")+" ao cheque especial do BB":"";
+    fut+=riscados?" · "+riscados+" lançamento"+(riscados===1?"":"s")+" de extrato anterior que o banco refez riscado"+(riscados===1?"":"s"):"";
     if(origem!=="cartao"){
       const f=gravarFuturos(r.futuros,origem), b=baixarPrevistos(origem);
       if(f.novos||f.ligados) fut+=" · "+(f.novos+f.ligados)+" agendamento"+(f.novos+f.ligados===1?"":"s")+" na Previsão do mês";
@@ -4468,6 +4534,7 @@
     corpo.classList.toggle("largo", ui.conta==="fluxo");
     if(ui.conta!=="fluxo") ui.fxScroll=null;
     marcarConta();
+    if(syncChequePrev()) salvar();
     if(ui.conta==="dash"){ renderDashboard(); return; }
     if(ui.conta==="dividas"){ renderDividas(); return; }
     if(ui.conta==="prev"){ renderPrevisao(); return; }
@@ -4585,7 +4652,8 @@
     corpo.innerHTML =
       '<section class="totais">'+cartoes+'</section>'+
       '<p class="nota-linha">'+nota+'</p>'+
-      (ui.mes!=="tudo"?notasTotais(natureza?rNat.tEmp:0,agend):"")+
+      (ui.mes!=="tudo"?notasTotais(natureza?rNat.tEmp:0,agend,
+        natureza?lista.filter(l=>l.categoria===CAT_CHEQUE&&l.origem!=="bb"&&l.valor>0).reduce((s,l)=>s+l.valor,0):0):"")+
       (comConf?blocoConferencia(ui.conta,ui.mes,base,ini0):"")+
       (avisos.length?'<div class="avisos">'+avisos.join("")+'</div>':"")+
 
