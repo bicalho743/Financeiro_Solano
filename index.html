@@ -491,6 +491,8 @@
   .dash-hoje .v{font-size:26px}
   .dash-hoje .g-num:last-child .rot{font-weight:600}
   @media (max-width:860px){.dash-hoje{grid-template-columns:1fr 1fr;gap:14px 18px}}
+  .iv-liq{color:#1D4ED8;font-weight:600}
+  .iv-liq-topo{font-size:15px;margin-top:4px;color:#1D4ED8}.iv-liq-topo b{font-weight:700}
   .bancos{margin-top:14px;padding:14px 24px 16px;border:1px solid var(--linha);background:#fff}
   .bc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0 24px}
   .bc-l{display:flex;flex-direction:column;gap:2px;padding:6px 0}
@@ -4050,7 +4052,7 @@
       const col=(...res)=>{ for(const re of res){ const i=cab.findIndex(c=>re.test(c)); if(i>=0) return i; } return -1; };
       const iP=col(/^PRODUTO$/), iCod=col(/CODIGO DE NEGOCIACAO/,/^CODIGO$/), iI=col(/^INSTITUICAO/), iQ=col(/^QUANTIDADE$/),
             iPr=col(/PRECO DE FECHAMENTO/,/PRECO ATUALIZADO CURVA/,/PRECO ATUALIZADO MTM/), iApl=col(/VALOR APLICADO/),
-            iIdx=col(/^INDEXADOR$/), iVenc=col(/^VENCIMENTO$/), iEm=col(/^EMISSOR$/), iTipo=col(/^TIPO$/);
+            iIdx=col(/^INDEXADOR$/), iVenc=col(/^VENCIMENTO$/), iEm=col(/^EMISSOR$/), iTipo=col(/^TIPO$/), iEmis=col(/DATA DE EMISSAO/);
       // valor: na renda fixa a B3 preenche MTM, CURVA ou FECHAMENTO conforme o título — usa o primeiro que tiver número
       const iVs=[/^VALOR ATUALIZADO$/,/VALOR ATUALIZADO MTM/,/VALOR ATUALIZADO CURVA/,/VALOR ATUALIZADO FECHAMENTO/,/VALOR LIQUIDO/,/VALOR BRUTO/]
         .map(re=>cab.findIndex(c=>re.test(c))).filter(i=>i>=0);
@@ -4067,7 +4069,7 @@
         const venc=iVenc>=0?celData(r[iVenc]):null;
         itens.push({ativo:ativo, nome:prod, classe:classe, inst:iI>=0?celTexto(r[iI]):"", qt:iQ>=0?numCel(r[iQ]):null,
           preco:iPr>=0?numCel(r[iPr]):null, valor:cent(valor), aplicado:iApl>=0?numCel(r[iApl]):null,
-          indexador:iIdx>=0?celTexto(r[iIdx]):"", vencimento:venc||"", emissor:iEm>=0?celTexto(r[iEm]):""});
+          indexador:iIdx>=0?celTexto(r[iIdx]):"", vencimento:venc||"", emissor:iEm>=0?celTexto(r[iEm]):"", emissao:iEmis>=0?(celData(r[iEmis])||""):""});
       }
     });
     if(!itens.length){ avisar("Não encontrei os ativos nesse relatório de posição da B3.",true); return; }
@@ -4179,7 +4181,7 @@
         const custo = p&&p.custo>0.01 ? cent(p.custo) : (x.aplicado!=null ? cent(x.aplicado) : x.valor);
         return {ativo:x.ativo, nome:(p&&p.nome)||x.nome.split(" - ").slice(1).join(" - ")||x.nome, classe:x.classe, inst:x.inst, qt:x.qt,
           preco:x.preco, custo:custo, valor:x.valor, realizado:p?p.realizado:0, proventos:p?p.proventos:0,
-          indexador:x.indexador, vencimento:x.vencimento, emissor:x.emissor, fonte:"B3 "+diaMes(up.data), semCustoMov:!(p&&p.custo>0.01)};
+          indexador:x.indexador, vencimento:x.vencimento, emissor:x.emissor, emissao:x.emissao||"", fonte:"B3 "+diaMes(up.data), semCustoMov:!(p&&p.custo>0.01)};
       });
     }
     return Object.values(pos).filter(p=>p.qt>1e-6).map(p=>{
@@ -4425,6 +4427,47 @@
   const RF_CLASSES = ["Tesouro Direto","Renda fixa"], RV_CLASSES = ["Ações","FIIs","ETF exterior","Cripto","Outros"];
   const ABAS_INV = [["resumo","Resumo"],["rf","Renda fixa"],["rv","Renda variável"],["rent","Rentabilidade"],["mov","Movimentação"],["conc","Conciliação"],["patr","Patrimônio"]];
   const COR_CLASSE = {"Tesouro Direto":"#2F4A3C","Renda fixa":"#6E8A78","Ações":"#1F6FB2","FIIs":"#785E28","ETF exterior":"#7D3C98","Cripto":"#D35400","Outros":"#95A5A6"};
+  /* ================= valor líquido (se resgatar/vender hoje) =================
+     Renda fixa (Tesouro, CDB): IR regressivo sobre o rendimento de cada compra (até 180 dias 22,5% · até 360 20% · até 720 17,5% · depois 15%),
+       IOF regressivo nos primeiros 30 dias e, no Tesouro, taxa de custódia da B3 (0,20% a.a., estimada pro rata desde a compra).
+       Conferido com o Tesouro Direto: IPCA+ 2040 comprado em 12/02/26 → líquido R$ 123.034,06 no site, R$ 123.025 aqui.
+     Renda variável (se vender tudo hoje): ações 15% sobre o lucro, isentas se as vendas de ações no mês somarem até R$ 20 mil;
+       FIIs 20% sobre o lucro; ETFs (inclusive cripto) 15%. Prejuízo não gera imposto. Proventos de FII são isentos e não entram aqui. */
+  const IOF_TAB=[96,93,90,86,83,80,76,73,70,66,63,60,56,53,50,46,43,40,36,33,30,26,23,20,16,13,10,6,3,0];
+  const aliqIR = dias => dias<=180?0.225:dias<=360?0.20:dias<=720?0.175:0.15;
+  function lotesRF(){
+    const L={}, ord={compra:0,bonus:1,provento:2,venda:3,ignorar:4};
+    invOk().movs.slice().sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:ord[a.tipo]-ord[b.tipo]).forEach(m=>{
+      const q=+m.qt||0, l=L[m.ativo]=L[m.ativo]||[];
+      if(m.tipo==="compra"&&q>0) l.push({data:m.data,qt:q,custo:+m.valor||0});
+      else if(m.tipo==="venda"){ let r=q; while(r>1e-9&&l.length){ const a=l[0], t=Math.min(a.qt,r); a.custo-=a.custo*t/a.qt; a.qt-=t; r-=t; if(a.qt<=1e-9) l.shift(); } }
+    });
+    return L;
+  }
+  function liquidoDe(x,lotes,isentoAcoes){
+    const hj=new Date(hojeISO()+"T12:00:00"), dias=d=>Math.max(0,Math.round((hj-new Date(d+"T12:00:00"))/864e5));
+    const bruto=+x.valor||0, custo=+x.custo||0;
+    if(RF_CLASSES.includes(x.classe)){
+      let ls=(lotes[x.ativo]||[]).filter(l=>l.qt>1e-9), qL=ls.reduce((s,l)=>s+l.qt,0);
+      if(!ls.length||!(qL>0)){ ls=[{data:x.emissao||"2000-01-01",qt:1,custo:custo}]; qL=1; }
+      // custo de cada compra proporcional ao custo do ativo (o custo do ativo é o que vale na tela)
+      const cL=ls.reduce((s,l)=>s+l.custo,0)||1;
+      let ir=0, iof=0, cust=0; const aliqs=new Set();
+      ls.forEach(l=>{
+        const fr=l.qt/qL, vb=bruto*fr, cb=custo*(l.custo/cL), d=dias(l.data), g=Math.max(0,vb-cb);
+        const io= d<30 ? g*IOF_TAB[Math.max(0,d-1)]/100 : 0;
+        const a=aliqIR(d); aliqs.add(a); ir+=(g-io)*a; iof+=io;
+        if(x.classe==="Tesouro Direto") cust+=0.002*Math.min(d,3650)/365*(vb+cb)/2;
+      });
+      const imp=cent(ir+iof+cust);
+      return {liq:cent(bruto-imp), ir:cent(ir), iof:cent(iof), cust:cent(cust),
+        nota:"IR "+[...aliqs].map(a=>(a*100).toLocaleString("pt-BR")+"%").join("/")+(iof>0.005?" + IOF":"")+(cust>0.005?" + custódia":"")};
+    }
+    const g=bruto-custo, aliq=x.classe==="FIIs"?0.20:x.classe==="Ações"?(isentoAcoes?0:0.15):0.15;
+    const ir=g>0?g*aliq:0;
+    return {liq:cent(bruto-ir), ir:cent(ir), iof:0, cust:0, nota:g<=0?"sem lucro, sem IR":aliq===0?"isento (vendas até R$ 20 mil/mês)":"IR "+(aliq*100)+"% sobre o lucro"};
+  }
+
   function renderInvest(){
     const corpo=$("#corpo"), v=invOk();
     const aba = ui.invAba = ui.invAba || "resumo";
@@ -4459,8 +4502,10 @@
     const corV=x=>x<-0.004?"#C0392B":x>0.004?"#1E8A5F":"inherit";
     const qtd=q=>q==null?"—":(+q).toLocaleString("pt-BR",{maximumFractionDigits:2});
     const cart=carteiraAtual(), up=ultimaPosicao(), evo=evolucaoInv();
+    { const lt=lotesRF(), isAc=cart.filter(x=>x.classe==="Ações").reduce((s,x)=>s+(+x.valor||0),0)<=20000;
+      cart.forEach(x=>{ const r=liquidoDe(x,lt,isAc); x.liq=r.liq; x.ir=r.ir; x.iof=r.iof; x.cust=r.cust; x.liqNota=r.nota; }); }
     const tudo=Object.values(carteiraB3());
-    const total=S(cart,x=>x.valor), custoTot=S(cart,x=>x.custo);
+    const total=S(cart,x=>x.valor), custoTot=S(cart,x=>x.custo), totalLiq=S(cart,x=>x.liq);
     const rf=cart.filter(x=>RF_CLASSES.includes(x.classe)), rv=cart.filter(x=>!RF_CLASSES.includes(x.classe));
     const rfV=S(rf,x=>x.valor), rfC=S(rf,x=>x.custo), rvV=S(rv,x=>x.valor), rvC=S(rv,x=>x.custo);
     const realizado=S(tudo,x=>x.realizado), semCusto=S(tudo,x=>x.semCusto);
@@ -4496,16 +4541,17 @@
       const rf=opts.rf;
       return '<div class="rolagem"><table class="dash-mes iv-tab"><thead><tr><th>Ativo</th>'+
         (rf?'<th>Indexador</th><th>Vencimento</th>':'<th>Qtde.</th><th>Preço médio</th><th>Cotação</th>')+
-        '<th>Aplicado</th><th>Valor atual</th><th>Resultado</th>'+(rf?'':'<th>Proventos</th>')+'<th>% da classe</th></tr></thead><tbody>'+
+        '<th>Aplicado</th><th>Valor bruto</th><th>Valor líquido</th><th>Resultado</th>'+(rf?'':'<th>Proventos</th>')+'<th>% da classe</th></tr></thead><tbody>'+
         it.map(x=>{ const res=cent(x.valor-x.custo);
           return '<tr><td><b>'+esc(x.ativo)+'</b><span class="kpi-sub">'+esc(((rf&&x.emissor)||x.nome||"").slice(0,46))+(x.inst?' · '+esc(x.inst.replace(/ (S\/?A\b|S\.A\.|CCTVM|DE VALORES|CORRETORA).*/i,"")):"")+'</span></td>'+
             (rf?'<td>'+esc(x.indexador||"—")+'</td><td>'+(x.vencimento?x.vencimento.split("-").reverse().join("/"):"—")+'</td>'
                :'<td>'+qtd(x.qt)+'</td><td>'+(x.qt&&x.custo?brl(cent(x.custo/x.qt)):"—")+'</td><td>'+(x.preco!=null?brl(x.preco):x.qt?brl(cent(x.valor/x.qt)):"—")+(x.varDia!=null?'<span class="kpi-sub" style="color:'+corV(x.varDia)+'">'+pctS(x.varDia/100)+' no dia</span>':'')+'</td>')+
             '<td>'+brl(x.custo)+'</td><td>'+brl(x.valor)+(x.cotHora?'<span class="kpi-sub">'+esc(x.fonte)+'</span>':'')+'</td>'+
+            '<td class="iv-liq" title="'+esc("Bruto "+brl(x.valor)+(x.ir?" − IR "+brl(x.ir):"")+(x.iof?" − IOF "+brl(x.iof):"")+(x.cust?" − custódia "+brl(x.cust):""))+'">'+brl(x.liq)+'<span class="kpi-sub">'+esc(x.liqNota||"")+'</span></td>'+
             '<td style="color:'+corV(res)+'">'+brl(res)+'<span class="kpi-sub">'+pctS(x.custo?res/x.custo:null)+'</span></td>'+
             (rf?'':'<td>'+(x.proventos?brl(cent(x.proventos)):"—")+'</td>')+
             '<td>'+(vt?pct(x.valor/vt):"—")+'</td></tr>'; }).join("")+
-        '<tr class="iv-tot"><td>Total</td>'+(rf?'<td></td><td></td>':'<td></td><td></td><td></td>')+'<td>'+brl(ct)+'</td><td>'+brl(vt)+'</td><td style="color:'+corV(vt-ct)+'">'+brl(cent(vt-ct))+'<span class="kpi-sub">'+pctS(ct?(vt-ct)/ct:null)+'</span></td>'+(rf?'':'<td>'+brl(S(it,x=>x.proventos))+'</td>')+'<td>100%</td></tr>'+
+        '<tr class="iv-tot"><td>Total</td>'+(rf?'<td></td><td></td>':'<td></td><td></td><td></td>')+'<td>'+brl(ct)+'</td><td>'+brl(vt)+'</td><td class="iv-liq">'+brl(S(it,x=>x.liq))+'<span class="kpi-sub">− '+brl(cent(vt-S(it,x=>x.liq)))+' de impostos</span></td><td style="color:'+corV(vt-ct)+'">'+brl(cent(vt-ct))+'<span class="kpi-sub">'+pctS(ct?(vt-ct)/ct:null)+'</span></td>'+(rf?'':'<td>'+brl(S(it,x=>x.proventos))+'</td>')+'<td>100%</td></tr>'+
         '</tbody></table></div>';
     };
     const secao=t=>'<div class="tit-secao" style="margin-top:34px"><h3>'+t+'</h3></div>';
@@ -4561,17 +4607,18 @@
     if(aba==="resumo"){
       html='<div class="iv-topo"><div><span class="rot">Patrimônio investido na B3</span><div class="iv-total">R$ '+brl(total)+'</div>'+
         (comVar.length?'<div style="font-size:15px;margin-top:2px;color:'+corV(varHoje)+'">'+brlS(varHoje)+' ('+pctS(baseHoje?varHoje/baseHoje:null)+') no dia</div>':'')+
+        '<div class="iv-liq-topo">Líquido (se resgatar tudo hoje): <b>R$ '+brl(totalLiq)+'</b> <span class="kpi-sub" style="display:inline">− R$ '+brl(cent(total-totalLiq))+' de IR, IOF e custódia</span></div>'+
         '<span class="kpi-sub">'+dataRef+' · custo R$ '+brl(custoTot)+'</span></div>'+
         '<div class="iv-topo-dir"><span class="rot">Ganho desde fev/26</span><div class="iv-total" style="font-size:30px;color:'+corV(ganho)+'">R$ '+brl(ganho)+'</div>'+
         '<span class="kpi-sub">valorização + vendas + proventos</span></div></div>'+
         barraAloc(cart,total||1)+
         '<div class="iv-cards">'+
         card("rf",COR_CLASSE["Tesouro Direto"],"Renda fixa","R$ "+brl(rfV),[
-          pct(total?rfV/total:0)+" da carteira",
+          pct(total?rfV/total:0)+" da carteira · <b class=\"iv-liq\">líquido R$ "+brl(S(rf,x=>x.liq))+"</b>",
           'Tesouro R$ '+brl(S(rf.filter(x=>x.classe==="Tesouro Direto"),x=>x.valor))+' · CDB R$ '+brl(S(rf.filter(x=>x.classe==="Renda fixa"),x=>x.valor)),
           '<span style="color:'+corV(rfV-rfC)+'">'+brlS(cent(rfV-rfC))+' ('+pctS(rfC?(rfV-rfC)/rfC:null)+')</span> sobre o aplicado'])+
         card("rv",COR_CLASSE["Ações"],"Renda variável","R$ "+brl(rvV),[
-          pct(total?rvV/total:0)+" da carteira",
+          pct(total?rvV/total:0)+" da carteira · <b class=\"iv-liq\">líquido R$ "+brl(S(rv,x=>x.liq))+"</b>",
           RV_CLASSES.filter(c=>rv.some(x=>x.classe===c)).map(c=>c+" R$ "+brl(S(rv.filter(x=>x.classe===c),x=>x.valor))).join(" · "),
           '<span style="color:'+corV(rvV-rvC)+'">'+brlS(cent(rvV-rvC))+' ('+pctS(rvC?(rvV-rvC)/rvC:null)+')</span> sobre o custo'])+
         card("rent","#1E8A5F","Rentabilidade",'<span style="color:'+corV(ganho)+'">'+pctS(custoTot?ganho/custoTot:null)+'</span>',[
@@ -4589,15 +4636,16 @@
     else if(aba==="rf"){
       const td=rf.filter(x=>x.classe==="Tesouro Direto"), cdb=rf.filter(x=>x.classe==="Renda fixa");
       const venc=rf.filter(x=>x.vencimento).sort((a,b)=>a.vencimento<b.vencimento?-1:1)[0];
-      html=kpis([["Renda fixa","R$ "+brl(rfV),pct(total?rfV/total:0)+" da carteira"],["Aplicado","R$ "+brl(rfC)],
+      html=kpis([["Renda fixa (bruto)","R$ "+brl(rfV),pct(total?rfV/total:0)+" da carteira"],["Líquido","R$ "+brl(S(rf,x=>x.liq)),"− R$ "+brl(cent(rfV-S(rf,x=>x.liq)))+" de IR e custódia","#1D4ED8"],["Aplicado","R$ "+brl(rfC)],
         ["Resultado",brlS(cent(rfV-rfC)),pctS(rfC?(rfV-rfC)/rfC:null),corV(rfV-rfC)],["Próximo vencimento",venc?venc.vencimento.split("-").reverse().join("/"):"—",venc?venc.ativo:""]])+
         (td.length?secao("Tesouro Direto · R$ "+brl(S(td,x=>x.valor)))+tabelaAtivos(td,{rf:true}):"")+
         (cdb.length?secao("CDB e outros títulos · R$ "+brl(S(cdb,x=>x.valor)))+tabelaAtivos(cdb,{rf:true}):"")+
-        nota("Tesouro: quantidade da B3 × preço de resgate do dia publicado pelo Tesouro Direto (valor bruto, antes do IR); título sem preço no Tesouro fica com o valor da Posição da B3. CDB: valor na curva, da Posição da B3. O Tesouro IPCA+ 2045 paga juros semestrais, que aparecem em Proventos.");
+        nota("Tesouro: quantidade da B3 × preço de resgate do dia publicado pelo Tesouro Direto (valor bruto, antes do IR); título sem preço no Tesouro fica com o valor da Posição da B3. CDB: valor na curva, da Posição da B3. O Tesouro IPCA+ 2045 paga juros semestrais, que aparecem em Proventos. "+
+          "Líquido: bruto − IR regressivo pelo tempo de cada compra (22,5% até 180 dias, 20% até 360, 17,5% até 720, 15% depois) − IOF nos primeiros 30 dias − custódia da B3 no Tesouro (0,20% a.a., estimada). Passe o mouse no líquido para ver a conta.");
     }
     else if(aba==="rv"){
       const provRV=S(rv,x=>x.proventos);
-      html=kpis([["Renda variável","R$ "+brl(rvV),pct(total?rvV/total:0)+" da carteira"],["Custo","R$ "+brl(rvC)],
+      html=kpis([["Renda variável (bruto)","R$ "+brl(rvV),pct(total?rvV/total:0)+" da carteira"],["Líquido","R$ "+brl(S(rv,x=>x.liq)),"se vender tudo hoje","#1D4ED8"],["Custo","R$ "+brl(rvC)],
         ["Resultado",brlS(cent(rvV-rvC)),pctS(rvC?(rvV-rvC)/rvC:null),corV(rvV-rvC)],["Proventos recebidos","R$ "+brl(provRV),"dos ativos que estão na carteira"]])+
         RV_CLASSES.filter(c=>rv.some(x=>x.classe===c)).map(c=>{ const it=rv.filter(x=>x.classe===c);
           return secao(c+" · R$ "+brl(S(it,x=>x.valor)))+tabelaAtivos(it); }).join("")+
