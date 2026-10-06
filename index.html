@@ -477,6 +477,16 @@
   .cas-nota{font-size:12.5px;color:var(--cinza);margin:4px 0 8px;line-height:1.5}
   .kpi-sub{display:block;font-size:11px;color:var(--cinza);margin-top:2px}
   @media (max-width:700px){.dash-geral{grid-template-columns:1fr;gap:10px;padding:16px}.dash-geral .v{font-size:24px}}
+  .dash-hoje{grid-template-columns:repeat(4,1fr);background:#fff;border:1px solid var(--linha);margin-top:20px}
+  .dash-hoje.um{grid-template-columns:1fr 2fr}
+  .dash-hoje .v{font-size:26px}
+  .dash-hoje .g-num:last-child .rot{font-weight:600}
+  @media (max-width:860px){.dash-hoje{grid-template-columns:1fr 1fr;gap:14px 18px}}
+  .nota-totais{margin:10px 0 0;font-size:13px;line-height:1.5;color:var(--cinza)}
+  .nota-totais p{margin:3px 0}.nota-totais b{color:var(--tinta);font-weight:600}
+  tr.futuro td:not(.acao){opacity:.55}
+  tr.futuro .campo{font-style:italic}
+  .selo-agend{display:block;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:#B9770E}
   .dash-sep-sel{font-size:12.5px;color:var(--cinza);display:flex;align-items:center;gap:8px}
   /* ---- previsto × realizado ---- */
   .orc-tab td,.orc-tab th{white-space:nowrap}
@@ -960,6 +970,11 @@
   // resgates e Pix vindos de outra conta sua contam como ENTRADA; só a saída (aplicação, envio) fica fora
   const ENTRA_FORA = new Set(["Aplicação e resgate",CAT_ENTRE]);
   const ehMov = l => !CATS_FORA.has(l.categoria) || (l.valor>0 && ENTRA_FORA.has(l.categoria));
+  // empréstimo recebido (ex.: cheque especial de outra conta): dinheiro a devolver — não é receita nem abate gasto
+  const CAT_EMPREST = "Empréstimo recebido";
+  // realizado = já passou no banco (data até hoje, ou veio do extrato — compras do fim de semana vêm datadas no dia útil seguinte).
+  // O resto é agendado: conta no saldo previsto, não no que entrou/gastou.
+  const realizado = l => !!l.confExtrato || l.data<=hojeISO();
   // Pix recebido (PIX TRANSF com valor positivo) é entrada, mesmo que a regra do nome aponte para uma despesa
   const ehPixEntrada = (h,v) => v>0 && /^\s*PIX\s+TRANSF\b/i.test(h);
   const mesAtual = () => new Date().toISOString().slice(0,7);
@@ -1206,16 +1221,47 @@
   function entSai(ls){
     const liq={};
     ls.forEach(l=>{ const k=l.categoria==="Sem categoria"?(l.valor>0?"+":"-"):l.categoria; liq[k]=(liq[k]||0)+l.valor; });
-    const ent={}, sai={};
+    const ent={}, sai={}; let emp=0;
     Object.keys(liq).forEach(k=>{
       const v=liq[k]; if(Math.abs(v)<0.005) return;
+      if(k===CAT_EMPREST){ emp+=v; return; }
       if(k==="+") ent["Sem categoria"]=v;
       else if(k==="-") sai["Sem categoria"]=-v;
       else if(ehReceita(k)||(ENTRA_FORA.has(k)&&v>0)) ent[k]=v;
       else sai[k]=-v;
     });
     const soma=o=>Object.keys(o).reduce((s,k)=>s+o[k],0);
-    return {ent,sai,tE:soma(ent),tS:soma(sai)};
+    return {ent,sai,tE:soma(ent),tS:soma(sai),tEmp:emp};
+  }
+
+  // linhas de esclarecimento abaixo dos totais: empréstimo a devolver e o que ainda está agendado
+  function notasTotais(emp,agend){
+    const h=[];
+    if(Math.abs(emp)>=0.005)
+      h.push('<b>Empréstimo recebido: R$ '+brl(emp)+'</b> (a devolver). Fica fora do Entrou e do Gastou.');
+    if(agend.length){
+      const t=agend.reduce((s,l)=>s+l.valor,0), ds=agend.map(l=>l.data).sort();
+      h.push('<b>Agendado até o fim do mês: R$ '+brl(t)+'</b> em '+agend.length+' lançamento'+(agend.length===1?"":"s")+
+        ' ('+diaMes(ds[0])+(ds.length>1&&ds[ds.length-1]!==ds[0]?' a '+diaMes(ds[ds.length-1]):'')+'). Ainda não aconteceu, por isso não entra nos totais.');
+    }
+    return h.length?'<div class="nota-totais">'+h.map(x=>'<p>'+x+'</p>').join("")+'</div>':"";
+  }
+  // faixa do topo da Visão geral (mês atual): saldo hoje + a receber − a pagar = sobra prevista
+  function faixaHoje(){
+    if(ui.mes!==mesAtual()) return "";
+    const p=dados.previsoes&&dados.previsoes[ui.mes], sc=saldoContaApp(ui.mes);
+    const card=(rot,v,sub,cor,irO)=>'<div class="g-num'+(irO?' clic-card"'+ir(irO):'"')+'><span class="rot">'+rot+'</span>'+
+      '<div class="v" style="color:'+cor+'">R$ '+brl(v)+'</div><span class="kpi-sub">'+sub+'</span></div>';
+    if(!p) return '<section class="dash-geral dash-hoje um">'+
+      card("Saldo em conta hoje",sc.v,"Itaú, pelos lançamentos até "+diaMes(sc.data),sc.v<0?"#C0392B":"var(--tinta)",{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
+      '<p class="sub" style="margin:0;align-self:center">Crie a <a href="#" data-abrirprev="'+ui.mes+'">previsão do mês</a> para ver quanto sobra até o fim do mês.</p></section>';
+    const t=totaisPrev(p,ui.mes), nAb=p.itens.filter(x=>x.aPagar!=null&&x.aPagar<0).length;
+    return '<section class="dash-geral dash-hoje">'+
+      card("Saldo em conta",t.saldo,p.saldoManual?"digitado na previsão":"Itaú hoje ("+diaMes(sc.data)+")",t.saldo<0?"#C0392B":"var(--tinta)",{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
+      card("+ A receber",t.receber+t.outras,"receitas e anotações em aberto","#1E8A5F",{conta:"prev",mes:ui.mes,alvo:"#pv-receitas",dica:"Ver as receitas esperadas"})+
+      card("− A pagar",-t.aPagar,nAb+" conta"+(nAb===1?"":"s")+" em aberto até o fim do mês","var(--tinta)",{conta:"prev",mes:ui.mes,alvo:"#pv-itens",dica:"Ver as contas a pagar"})+
+      card("= "+(t.resultado<0?"Falta no mês":"Sobra no mês"),t.resultado,"previsão para "+diaMes(fimDoMes(ui.mes)),t.resultado<0?"#C0392B":"#1E8A5F",{conta:"prev",mes:ui.mes,alvo:"#pv-resumo",dica:"Ver o cálculo na previsão do mês"})+
+    '</section>';
   }
 
   function renderDashboard(){
@@ -1228,7 +1274,8 @@
     const noPeriodo=l=>ui.mes==="tudo"||l.data.slice(0,7)===ui.mes;
     // gasto real: compras do cartão entram; pagamento de fatura, aplicações e transferências entre contas ficam fora
     const valido=l=>!l.ignorado&&ehMov(l);
-    const base=dados.lancamentos.filter(l=>noPeriodo(l)&&valido(l));
+    const base=dados.lancamentos.filter(l=>noPeriodo(l)&&valido(l)&&realizado(l));
+    const agend=dados.lancamentos.filter(l=>noPeriodo(l)&&valido(l)&&!realizado(l)&&l.categoria!==CAT_EMPREST);
     const r=entSai(base), saldo=r.tE-r.tS;
     const semCat=base.filter(l=>l.categoria==="Sem categoria").length;
     const LIM=8;
@@ -1270,7 +1317,7 @@
       GRUPOS.forEach(gr=>{
         if(!gr.g||gr.g==="Fora dos cálculos") return;
         const rec=gr.g==="Receitas";
-        const itens=gr.cats.map(c=>({c:c,p:+(o[c]||0),r:rec?(real[c]||0):-(real[c]||0)}))
+        const itens=gr.cats.filter(c=>c!==CAT_EMPREST).map(c=>({c:c,p:+(o[c]||0),r:rec?(real[c]||0):-(real[c]||0)}))
           .filter(x=>ui.orcTodas||Math.abs(x.p)>0.004||Math.abs(x.r)>0.004);
         if(!itens.length) return;
         const gp=itens.reduce((s,x)=>s+x.p,0), gr_=itens.reduce((s,x)=>s+x.r,0);
@@ -1356,10 +1403,12 @@
         '<div class="g-num clic-card"'+ir({conta:"cpf",mes:ui.mes,tipo:"e",mov:1,dica:"Ver as entradas"})+'><span class="rot">Entrou</span><div class="v" style="color:#1E8A5F">R$ '+brl(r.tE)+'</div></div>'+
         '<div class="g-num clic-card"'+ir({conta:"cpf",mes:ui.mes,tipo:"s",mov:1,dica:"Ver os gastos"})+'><span class="rot">Gastou</span><div class="v">R$ '+brl(r.tS)+'</div></div>'+
         '<div class="g-num clic-card"'+ir({conta:"cpf",mes:ui.mes,tipo:"",mov:1,dica:"Ver entradas e gastos"})+'><span class="rot">'+(saldo<0?"Faltou":"Sobrou")+'</span><div class="v" style="color:'+(saldo<0?"#C0392B":"#1E8A5F")+'">R$ '+brl(saldo)+'</div></div>'+
-      '</section>';
+        (ui.mes===mesAtual()?'<p class="g-hist" style="font-size:12.5px;color:var(--cinza)">Até hoje ('+diaMes(hojeISO())+'). Entrou e Gastou são os mesmos da aba Lançamentos.</p>':'')+
+      '</section>'+notasTotais(r.tEmp,agend);
 
+    const hoje=faixaHoje();
     $("#corpo").innerHTML=
-      barraFatura()+
+      hoje+barraFatura()+
       (dados.lancamentos.length
         ? faixa+
           '<div class="dash-topo" style="margin-top:18px">'+
@@ -1367,7 +1416,7 @@
             'Pagamento de fatura, aplicações e transferências entre suas contas não entram.</p>'+
             '<button class="bt vazado" data-dadd="manual" style="font-size:12px;padding:6px 12px">+ Lançamento</button>'+
           '</div>'+
-          atencao+contasHTML()+pr.html+
+          atencao+(hoje?"":contasHTML())+pr.html+
           '<div class="paineis">'+
             '<div><div class="tit-secao"><h3>Onde mais gastou</h3></div>'+lista(r.sai,r.tS,"s")+'</div>'+
             '<div><div class="tit-secao"><h3>De onde veio</h3></div>'+lista(r.ent,r.tE,"e")+'</div>'+
@@ -1381,7 +1430,7 @@
       const dv=e.target.closest("[data-dver]");
       if(dv){ ui[dv.dataset.dver]=!ui[dv.dataset.dver]; renderDashboard(); return; }
       const ap=e.target.closest("[data-abrirprev]");
-      if(ap){ ui.conta="prev"; ui.prevMes=ap.dataset.abrirprev; render(); window.scrollTo(0,0); return; }
+      if(ap){ e.preventDefault(); ui.conta="prev"; ui.prevMes=ap.dataset.abrirprev; render(); window.scrollTo(0,0); return; }
       const ot=e.target.closest("[data-orctodas]");
       if(ot){ ui.orcTodas=!ui.orcTodas; renderDashboard(); return; }
       const dm=e.target.closest("[data-dmes]");
@@ -2758,7 +2807,7 @@
   }
 
   /* ================= gráfico de saldo ================= */
-  function grafico(serie,inicial){
+  function grafico(serie,inicial,hoje){
     if(serie.length<2) return '<p class="sub">O gráfico aparece quando o mês tiver movimento em pelo menos dois dias.</p>';
     const pts=[{data:"",saldo:inicial}].concat(serie);
     const vals=pts.map(p=>p.saldo);
@@ -2769,6 +2818,11 @@
     const y=v=>T+ih-((v-min)/((max-min)||1))*ih;
     const y0=y(0);
     const linha=pts.map((p,i)=>(i?"L":"M")+x(i).toFixed(1)+" "+y(p.saldo).toFixed(1)).join(" ");
+    // depois de hoje é projeção: linha tracejada e marca de "hoje"
+    let iHoje=-1; if(hoje) pts.forEach((p,i)=>{ if(i===0||p.data<=hoje) iHoje=i; });
+    const proj = hoje&&iHoje<pts.length-1
+      ? pts.slice(iHoje).map((p,k)=>(k?"L":"M")+x(iHoje+k).toFixed(1)+" "+y(p.saldo).toFixed(1)).join(" ") : "";
+    const real = proj ? pts.slice(0,iHoje+1).map((p,i)=>(i?"L":"M")+x(i).toFixed(1)+" "+y(p.saldo).toFixed(1)).join(" ") : linha;
     const area=linha+" L"+x(pts.length-1).toFixed(1)+" "+y0.toFixed(1)+" L"+x(0).toFixed(1)+" "+y0.toFixed(1)+" Z";
     const neg=pts.filter(p=>p.saldo<0).length;
     const marcas=pts.map((p,i)=>p.saldo<0?'<circle cx="'+x(i).toFixed(1)+'" cy="'+y(p.saldo).toFixed(1)+
@@ -2779,7 +2833,10 @@
       '<path d="'+area+'" fill="var(--verde-suave)" opacity=".16" clip-path="url(#acima)"/>'+
       '<path d="'+area+'" fill="var(--tijolo)" opacity=".14" clip-path="url(#abaixo)"/>'+
       '<line x1="'+L+'" y1="'+y0.toFixed(1)+'" x2="'+(W-R)+'" y2="'+y0.toFixed(1)+'" stroke="var(--linha)" stroke-width="1"/>'+
-      '<path d="'+linha+'" fill="none" stroke="var(--verde)" stroke-width="1.6" stroke-linejoin="round"/>'+
+      '<path d="'+real+'" fill="none" stroke="var(--verde)" stroke-width="1.6" stroke-linejoin="round"/>'+
+      (proj?'<path d="'+proj+'" fill="none" stroke="var(--cinza)" stroke-width="1.4" stroke-dasharray="4 3" stroke-linejoin="round"/>'+
+        '<line x1="'+x(iHoje).toFixed(1)+'" y1="'+T+'" x2="'+x(iHoje).toFixed(1)+'" y2="'+(H-B)+'" stroke="var(--ouro)" stroke-width="1" stroke-dasharray="2 2"/>'+
+        '<text x="'+x(iHoje).toFixed(1)+'" y="'+(T-3)+'" text-anchor="middle" font-size="9.5" fill="var(--ouro)" font-family="Jost,sans-serif">hoje</text>':'')+
       marcas+
       '<text x="4" y="'+(y(max)+4).toFixed(1)+'" font-size="9.5" fill="var(--cinza)" font-family="Jost,sans-serif">'+brl(max).split(",")[0]+'</text>'+
       '<text x="4" y="'+(y(min)+4).toFixed(1)+'" font-size="9.5" fill="var(--cinza)" font-family="Jost,sans-serif">'+brl(min).split(",")[0]+'</text>'+
@@ -2787,7 +2844,8 @@
         (serie[0]?serie[0].data.slice(8)+"/"+serie[0].data.slice(5,7):"")+'</text>'+
       '<text x="'+(W-R)+'" y="'+(H-6)+'" text-anchor="end" font-size="9.5" fill="var(--cinza)" font-family="Jost,sans-serif">'+
         (serie[serie.length-1]?serie[serie.length-1].data.slice(8)+"/"+serie[serie.length-1].data.slice(5,7):"")+'</text>'+
-      '</svg>'+(neg?'<p class="sub">'+neg+' dia'+(neg===1?"":"s")+' com saldo negativo, marcado'+(neg===1?"":"s")+' em vermelho.</p>':"");
+      '</svg>'+(proj?'<p class="sub">Linha cheia: o que já aconteceu. Tracejada: previsão com os agendamentos.</p>':'')+
+      (neg?'<p class="sub">'+neg+' dia'+(neg===1?"":"s")+' com saldo negativo'+(proj?' (contando a previsão)':'')+', marcado'+(neg===1?"":"s")+' em vermelho.</p>':"");
   }
 
   /* ================= exportação ================= */
@@ -4441,16 +4499,25 @@
     const base = natureza ? lista.filter(ehMov) : ui.conta==="cartao" ? lista : lista.filter(l=>l.origem!=="cartao");
     const semSaldo = natureza || ui.conta==="cartao";
     const soma = a => a.reduce((s,l)=>s+l.valor,0);
-    const baseGasto = base;
-    const ent=soma(base.filter(l=>l.valor>0));
-    const sai=soma(baseGasto.filter(l=>l.valor<0));
+    // totais: só o realizado; o agendado aparece à parte. Na visão por natureza, empréstimo recebido fica fora
+    // e os totais são os mesmos da Visão geral (estorno abate o gasto da própria categoria).
+    const baseReal = base.filter(realizado);
+    const agend = base.filter(l=>!realizado(l)&&l.categoria!==CAT_EMPREST);
+    const baseGasto = natureza ? baseReal.filter(l=>l.categoria!==CAT_EMPREST) : baseReal;
+    const rNat = natureza ? entSai(baseReal) : null;
+    const ent = natureza ? rNat.tE : soma(baseGasto.filter(l=>l.valor>0));
+    const sai = natureza ? -rNat.tS : soma(baseGasto.filter(l=>l.valor<0));
     const res=ent+sai;
     const ini0 = semSaldo?null:saldoInicio(ui.conta, ui.mes==="tudo"?meses[0]:ui.mes);
     const inicial = ini0?ini0.v:0;
     const comConf = !semSaldo && ui.mes!=="tudo" && (ui.conta==="itau"||ui.conta==="bb");
     const serie = semSaldo?[]:saldoDiario(base,inicial);
     const fim = serie.length?serie[serie.length-1].saldo:inicial;
-    const diasNeg = serie.filter(d=>d.saldo<0);
+    // saldo hoje: último dia já realizado; o resto da série é projeção (agendados)
+    const hj=hojeISO(), temFuturo=!semSaldo&&agend.length>0&&ui.mes!=="tudo";
+    const ateHoje=serie.filter(d=>d.data<=hj), saldoHoje=ateHoje.length?ateHoje[ateHoje.length-1].saldo:inicial;
+    const diasNeg = serie.filter(d=>d.saldo<0&&d.data<=hj);
+    const negFut = serie.filter(d=>d.saldo<0&&d.data>hj);
     const fundo = diasNeg.length?Math.min(...diasNeg.map(d=>d.saldo)):0;
 
     const porCat={}, nPorCat={};
@@ -4494,15 +4561,21 @@
     if(diasNeg.length)
       avisos.push('<div class="alerta"><div><b>'+diasNeg.length+' dia'+(diasNeg.length===1?"":"s")+
         ' no cheque especial.</b> O saldo chegou a R$ '+brl(fundo)+'.</div></div>');
+    if(negFut.length)
+      avisos.push('<div class="alerta" style="background:#FBF3E6;border-left-color:#E08E0B"><div><b>Previsão: a conta fica negativa a partir de '+diaMes(negFut[0].data)+
+        '</b> se os agendamentos forem pagos. Chega a R$ '+brl(Math.min(...negFut.map(d=>d.saldo)))+'.</div></div>');
 
     const cartoes = natureza
-      ? cartao("Entrou",ent,"pos",base.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",mov:1,dica:"Ver as entradas"})+
+      ? cartao("Entrou",ent,"pos",baseGasto.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",mov:1,dica:"Ver as entradas"})+
         cartao("Gastou",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",mov:1,dica:"Ver os gastos"})+
         cartao(res<0?"Faltou":"Sobrou",res,res<0?"neg":"pos","entrou − gastou",res<0?"#C0392B":"#1E8A5F",{tipo:"",mov:1,dica:"Ver entradas e gastos"})
-      : cartao("Entradas",ent,"pos",base.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",dica:"Ver as entradas"})+
-        cartao("Saídas",Math.abs(sai),"",base.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",dica:"Ver as saídas"})+
+      : cartao("Entradas",ent,"pos",baseGasto.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",dica:"Ver as entradas"})+
+        cartao("Saídas",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",dica:"Ver as saídas"})+
         (ui.conta==="cartao"
           ? cartao("Total do cartão",res,res<0?"neg":"pos","compras − créditos",res<0?"#C0392B":"#1E8A5F",{tipo:"",dica:"Ver as compras"})
+          : temFuturo
+          ? cartao("Saldo hoje",saldoHoje,saldoHoje<0?"neg":"","previsto em "+diaMes(serie[serie.length-1].data)+": R$ "+brl(fim),saldoHoje<0?"#C0392B":"#2E86DE",
+              {alvo:comConf?"#conf":"#saldoDia",dica:comConf?"Conferir com o saldo do banco":"Ver o saldo dia a dia"})
           : cartao("Saldo final",fim,fim<0?"neg":"",ui.mes==="tudo"?"acumulado":"em "+rotuloMes(ui.mes),fim<0?"#C0392B":"#2E86DE",
               {alvo:comConf?"#conf":"#saldoDia",dica:comConf?"Conferir com o saldo do banco":"Ver o saldo dia a dia"}));
 
@@ -4512,6 +4585,7 @@
     corpo.innerHTML =
       '<section class="totais">'+cartoes+'</section>'+
       '<p class="nota-linha">'+nota+'</p>'+
+      (ui.mes!=="tudo"?notasTotais(natureza?rNat.tEmp:0,agend):"")+
       (comConf?blocoConferencia(ui.conta,ui.mes,base,ini0):"")+
       (avisos.length?'<div class="avisos">'+avisos.join("")+'</div>':"")+
 
@@ -4522,7 +4596,7 @@
           verMais("sai",saidas.length,ui.verTodasSai)+
         '</div>'+
         '<div>'+
-          (semSaldo?"":'<div class="tit-secao" id="saldoDia"><h3>Saldo dia a dia</h3></div>'+grafico(serie,inicial)+'<div style="height:26px"></div>')+
+          (semSaldo?"":'<div class="tit-secao" id="saldoDia"><h3>Saldo dia a dia</h3></div>'+grafico(serie,inicial,temFuturo?hj:null)+'<div style="height:26px"></div>')+
           '<div class="tit-secao"><h3>De onde veio</h3></div>'+
           (vEnt.length?vEnt.map(([c,v])=>catLinha(c,v,v/maiorEnt,true,info(c,v,true))).join(""):'<p class="sub">Sem entradas neste período.</p>')+
           verMais("ent",entradas.length,ui.verTodasEnt)+
@@ -4779,8 +4853,9 @@
       return;
     }
     tb.innerHTML = lista.map(l=>
-      '<tr data-id="'+esc(l.id)+'" style="--c:'+cor(l.categoria)+'"'+(l.ignorado?' class="riscado"':(!ehMov(l)&&visaoNatureza()?' class="fora" title="Não conta como gasto"':""))+'>'+
-        '<td class="data">'+l.data.slice(8)+"/"+l.data.slice(5,7)+'</td>'+
+      '<tr data-id="'+esc(l.id)+'" style="--c:'+cor(l.categoria)+'"'+(l.ignorado?' class="riscado"':(!ehMov(l)&&visaoNatureza()?' class="fora" title="Não conta como gasto"':
+          !realizado(l)?' class="futuro" title="Agendado: ainda não aconteceu, fora dos totais"':""))+'>'+
+        '<td class="data">'+l.data.slice(8)+"/"+l.data.slice(5,7)+(!l.ignorado&&!realizado(l)?'<span class="selo-agend">agendado</span>':'')+'</td>'+
         '<td><input class="campo desc-campo" data-c="hist" value="'+esc(l.hist)+'" title="'+esc(l.hist)+'"></td>'+
         '<td><select class="campo etiqueta" data-c="categoria" style="color:'+cor(l.categoria)+
             ';background:'+rgba(cor(l.categoria),.13)+';box-shadow:inset 0 0 0 1px '+rgba(cor(l.categoria),.3)+'">'+
