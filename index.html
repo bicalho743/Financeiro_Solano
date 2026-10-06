@@ -6,7 +6,7 @@
 <title>Financeiro — Solano Bicalho</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -17,8 +17,17 @@
     --marfim:#F5F1E9; --tinta:#26251F; --cinza:#6B685F;
     --linha:#DEDBD3; --linha-clara:#EBE8E1;
     --tijolo:#C0392B; --papel:#FFFFFF;
-    --serif:'Cormorant Garamond',Georgia,serif;
-    --sans:'Jost',Futura,'Century Gothic',sans-serif;
+    /* números: Inter com algarismos alinhados e de largura fixa (colunas de valores alinham); marca: Fraunces */
+    --serif:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --sans:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --marca:'Fraunces',Georgia,serif;
+    /* cores com função: entrada, saída, alerta, informação — texto sempre com contraste ≥ 4,5:1 */
+    --pos:#15803D; --pos-bg:#ECFDF3; --pos-borda:#86EFAC;
+    --neg:#C0392B; --neg-bg:#FEF2F2; --neg-borda:#FCA5A5;
+    --alerta:#B45309; --alerta-bg:#FFFBEB; --alerta-borda:#FCD34D;
+    --info:#1D4ED8; --info-bg:#EFF6FF; --info-borda:#93C5FD;
+    --roxo:#6D28D9; --roxo-bg:#F5F3FF;
+    --fundo:#F4F6FA; --sombra:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
   }
   *{box-sizing:border-box}
   #lc{font-family:var(--sans);color:var(--tinta);background:var(--papel);
@@ -701,6 +710,91 @@
     td.valor .campo{font-size:15px}
     .paineis{margin-top:22px}
   }
+
+  /* ================= tema colorido (2026-10) ================= */
+  #lc{background:var(--fundo);font-feature-settings:"tnum" 1,"lnum" 1,"cv11" 1;color:#1F2937}
+  #lc input,#lc select{font-feature-settings:"tnum" 1,"lnum" 1}
+  .marca h1,.login-logo{font-family:var(--marca);font-weight:600;color:var(--verde)}
+  .topo{background:linear-gradient(120deg,#203A2E 0%,#2F4A3C 55%,#3D6B55 100%);border-bottom:none;color:#fff}
+  .topo .marca h1{color:#fff}.topo .marca p{color:#CFE3D6}
+  .topo .bt{background:#F2C14E;border-color:#F2C14E;color:#1F2937;font-weight:600}
+  .topo .bt.vazado{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.35);color:#fff}
+  .topo .bt.vazado:hover{background:rgba(255,255,255,.2)}
+  #barraUsuario,#barraUsuario *{color:#fff}
+  #barraUsuario button{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.35)}
+  .conta-tabs{background:#fff;box-shadow:var(--sombra);border-bottom:none;padding-top:4px;padding-bottom:4px;gap:4px}
+  .conta-tab{border-radius:999px;border-bottom:none!important;margin:4px 0;padding:8px 16px;font-size:13.5px;letter-spacing:.01em;color:#4B5563}
+  .conta-tab:hover{background:#F3F4F6;color:#111827}
+  .conta-tab.ativa,.conta-tab[data-conta=cpf].ativa{background:var(--verde);color:#fff!important;font-weight:600}
+  .conta-tab[data-conta=prev].ativa{background:var(--info)}
+  .conta-tab[data-conta=fluxo].ativa{background:#0E7490}
+  .conta-tab[data-conta=dividas].ativa{background:var(--neg)}
+  .conta-tab[data-conta=metas].ativa{background:var(--roxo)}
+  .conta-tab[data-conta=invest].ativa{background:#B45309}
+  .conta-tab.banco[data-conta=itau].ativa{background:#EC7000}
+  .conta-tab.banco[data-conta=bb].ativa{background:#0038A8}
+  .conta-tab.banco[data-conta=cartao].ativa{background:#5B4FCF}
+  .barra-periodo{background:transparent}
+  .corpo{max-width:1280px}
+  .rot,.tit-secao h3,.bc-n{letter-spacing:.08em;font-weight:600;color:#6B7280}
+  .tit-secao h3{font-size:12px}
+  .tit-secao::before{background:var(--info);height:3px;border-radius:2px}
+  .num,.dash-geral .v,.conf-v{font-weight:600;letter-spacing:-.02em}
+  td.valor,td.valor .campo,.cat-val,.dash-lin .vl,.dash-mes td,table.matriz td.n{font-weight:500}
+  /* cartões: fundo branco, sombra leve e faixa de cor pela função */
+  .dash-geral,.bancos,.conf,.dash-atencao{background:#fff;border:1px solid #E5E7EB;border-radius:12px;box-shadow:var(--sombra)}
+  .dash-hoje{padding:6px;gap:6px}
+  .dash-hoje .g-num,.dash-hoje .g-num.clic-card{margin:0;padding:14px 16px;border-radius:9px;border-left:4px solid var(--k,#9CA3AF);background:var(--kb,#F9FAFB)}
+  .dash-hoje .g-num:nth-child(1){--k:var(--info);--kb:var(--info-bg)}
+  .dash-hoje .g-num:nth-child(2){--k:#16A34A;--kb:var(--pos-bg)}
+  .dash-hoje .g-num:nth-child(3){--k:#EA580C;--kb:#FFF7ED}
+  .dash-hoje .g-num:nth-child(4){--k:#16A34A;--kb:#DCFCE7}
+  .dash-hoje .g-num:nth-child(4):has(.v[style*="C0392B"]){--k:#DC2626;--kb:#FEE2E2}
+  .dash-hoje .g-num:nth-child(1):has(.v[style*="C0392B"]){--k:#DC2626;--kb:var(--neg-bg)}
+  .dash-geral:not(.dash-hoje){background:#fff}
+  .dash-geral:not(.dash-hoje) .g-num:nth-child(1) .rot::before,.tot:nth-child(1) .rot::before{content:"▲ ";color:#16A34A}
+  .dash-geral:not(.dash-hoje) .g-num:nth-child(2) .rot::before,.tot:nth-child(2) .rot::before{content:"▼ ";color:#EA580C}
+  .tot::before{height:5px}
+  .totais{background:#fff;border:1px solid #E5E7EB;border-radius:12px;box-shadow:var(--sombra);padding:6px 4px 0}
+  /* saldos nos bancos: cor de cada banco */
+  .bc-l .bc-n::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:0;background:var(--b,#9CA3AF)}
+  .bc-grid .bc-l:nth-child(1){--b:#EC7000}.bc-grid .bc-l:nth-child(2){--b:#F4C400}.bc-grid .bc-l:nth-child(3){--b:#EC0000}
+  .bc-grid .bc-l.bc-t .bc-n::before{display:none}
+  .bc-t{background:#F9FAFB;border-radius:9px;padding:6px 14px!important;border-left:none!important}
+  /* avisos com ícone e cor por gravidade */
+  .alerta{border-radius:10px;border:1px solid var(--neg-borda);border-left:5px solid #DC2626;background:var(--neg-bg)}
+  .alerta>div::before{content:"⚠ ";color:#DC2626;font-weight:700}
+  .alerta[style*="F7F5EE"]{background:var(--alerta-bg)!important;border-color:var(--alerta-borda)!important;border-left-color:#D97706!important}
+  .alerta[style*="F7F5EE"]>div::before{content:"● ";color:#D97706}
+  .alerta[style*="F7F5EE"] b{color:var(--alerta)}
+  .alerta[style*="FBF3E6"]{border-color:var(--alerta-borda)!important;border-left-color:#D97706!important}
+  .alerta[style*="FBF3E6"] b{color:var(--alerta)}
+  .nota-totais{background:var(--info-bg);border:1px solid #DBEAFE;border-radius:10px;padding:8px 14px;color:#374151}
+  .nota-totais b{color:#1E3A8A}
+  .dash-atencao .it{border-color:#F3F4F6}
+  .dash-atencao .it .v{font-weight:600}
+  /* tabelas: cabeçalho destacado, linhas alternadas, valores com cor pelo sinal */
+  table thead th{background:#F9FAFB;color:#4B5563;font-weight:600}
+  #tabelaLanc tbody tr:nth-child(even),.pv-tab tbody tr:nth-child(even),.orc-tab tr.orc-c:nth-child(even){background:#FAFBFC}
+  tbody tr:hover{background:#EEF4FF!important}
+  td.valor.neg .campo,td.valor.neg{color:#B42318}
+  td.valor.pos .campo,td.valor.pos{color:var(--pos)}
+  .orc-tab tr.orc-g td{background:#F3F6FB;color:#1F2937}
+  .orc-tab tr.orc-t.forte td{background:#EEF2FF}
+  tr.pv-vencida td{background:#FEF2F2!important}
+  tr.pv-vencida td:first-child{box-shadow:inset 4px 0 0 #DC2626}
+  tr.pv-vencida input[data-k="d"]{color:#B42318;font-weight:600}
+  tr.pv-hoje td:first-child{box-shadow:inset 4px 0 0 #D97706}
+  .selo-venc{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:999px;margin-left:6px;vertical-align:1px}
+  .selo-venc.v{background:#FEE2E2;color:#B42318}.selo-venc.h{background:#FEF3C7;color:#92400E}
+  .selo-agend{color:var(--alerta);font-weight:600}
+  .vistas button.on{background:var(--info)}
+  .periodo select{font-weight:600}
+  .bt{border-radius:8px}
+  .dash-hoje .v,.bc-l b{font-weight:600}
+  .dash-hoje .v,.dash-geral .v,.bc-l b,.num{white-space:nowrap}
+  @media (max-width:700px){.dash-hoje .v{font-size:19px}.bc-l b{font-size:17px}.dash-hoje .g-num,.dash-hoje .g-num.clic-card{padding:10px 11px}
+    .conta-tab{padding:7px 12px;font-size:13px}}
 </style>
 
 <div id="telaLogin">
@@ -2945,13 +3039,13 @@
       '<path d="'+real+'" fill="none" stroke="var(--verde)" stroke-width="1.6" stroke-linejoin="round"/>'+
       (proj?'<path d="'+proj+'" fill="none" stroke="var(--cinza)" stroke-width="1.4" stroke-dasharray="4 3" stroke-linejoin="round"/>'+
         '<line x1="'+x(iHoje).toFixed(1)+'" y1="'+T+'" x2="'+x(iHoje).toFixed(1)+'" y2="'+(H-B)+'" stroke="var(--ouro)" stroke-width="1" stroke-dasharray="2 2"/>'+
-        '<text x="'+x(iHoje).toFixed(1)+'" y="'+(T-3)+'" text-anchor="middle" font-size="9.5" fill="var(--ouro)" font-family="Jost,sans-serif">hoje</text>':'')+
+        '<text x="'+x(iHoje).toFixed(1)+'" y="'+(T-3)+'" text-anchor="middle" font-size="9.5" fill="var(--ouro)" font-family="Inter,sans-serif">hoje</text>':'')+
       marcas+
-      '<text x="4" y="'+(y(max)+4).toFixed(1)+'" font-size="9.5" fill="var(--cinza)" font-family="Jost,sans-serif">'+brl(max).split(",")[0]+'</text>'+
-      '<text x="4" y="'+(y(min)+4).toFixed(1)+'" font-size="9.5" fill="var(--cinza)" font-family="Jost,sans-serif">'+brl(min).split(",")[0]+'</text>'+
-      '<text x="'+L+'" y="'+(H-6)+'" font-size="9.5" fill="var(--cinza)" font-family="Jost,sans-serif">'+
+      '<text x="4" y="'+(y(max)+4).toFixed(1)+'" font-size="9.5" fill="var(--cinza)" font-family="Inter,sans-serif">'+brl(max).split(",")[0]+'</text>'+
+      '<text x="4" y="'+(y(min)+4).toFixed(1)+'" font-size="9.5" fill="var(--cinza)" font-family="Inter,sans-serif">'+brl(min).split(",")[0]+'</text>'+
+      '<text x="'+L+'" y="'+(H-6)+'" font-size="9.5" fill="var(--cinza)" font-family="Inter,sans-serif">'+
         (serie[0]?serie[0].data.slice(8)+"/"+serie[0].data.slice(5,7):"")+'</text>'+
-      '<text x="'+(W-R)+'" y="'+(H-6)+'" text-anchor="end" font-size="9.5" fill="var(--cinza)" font-family="Jost,sans-serif">'+
+      '<text x="'+(W-R)+'" y="'+(H-6)+'" text-anchor="end" font-size="9.5" fill="var(--cinza)" font-family="Inter,sans-serif">'+
         (serie[serie.length-1]?serie[serie.length-1].data.slice(8)+"/"+serie[serie.length-1].data.slice(5,7):"")+'</text>'+
       '</svg>'+(proj?'<p class="sub">Linha cheia: o que já aconteceu. Tracejada: previsão com os agendamentos.</p>':'')+
       (neg?'<p class="sub">'+neg+' dia'+(neg===1?"":"s")+' com saldo negativo'+(proj?' (contando a previsão)':'')+', marcado'+(neg===1?"":"s")+' em vermelho.</p>':"");
@@ -3210,7 +3304,10 @@
     const val=(v,sinal)=>v==null?"":(sinal?brlS(v):brl(v));
     const linha=(lista,x,i)=>{
       const at=k=>' data-pv="'+lista+'" data-i="'+i+'" data-k="'+k+'" data-foco="'+lista+':'+i+':'+k+'"';
-      return '<tr>'+
+      // conta em aberto: vencida (vermelho) ou vencendo em até 3 dias (âmbar)
+      const hj=hojeISO(), d3=new Date(hj+"T12:00:00"); d3.setDate(d3.getDate()+3);
+      const aberto=x.aPagar!=null&&x.aPagar<0&&x.data, venc=aberto&&x.data<hj, logo=aberto&&!venc&&x.data<=d3.toISOString().slice(0,10);
+      return '<tr'+(venc?' class="pv-vencida" title="Vencida e ainda em aberto"':logo?' class="pv-hoje" title="Vence em até 3 dias"':'')+'>'+
         '<td><input type="date" class="campo"'+at("data")+' value="'+esc(x.data||"")+'" aria-label="Data"></td>'+
         '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes"></td>'+
         '<td class="valor"><input class="campo'+(x.aPagar>0?' pos':'')+'"'+at("aPagar")+' value="'+val(x.aPagar,true)+'" placeholder="—" inputmode="decimal" aria-label="A pagar"></td>'+
