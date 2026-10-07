@@ -1123,12 +1123,15 @@
   const CAT_ENTRE = "Transferência entre minhas contas";
   // não é gasto nem receita: fatura, aplicação e dinheiro passando de uma conta sua para outra (ex.: Itaú → BB)
   // Pix do BB para o Itaú usando o limite do cheque especial: o dinheiro só muda de conta; a dívida é o saldo negativo do BB.
-  // Fica fora do entrou/gastou nas duas pontas (diferente da transferência comum, cuja chegada conta como entrada).
+  // Fica fora do entrou/gastou nas duas pontas (transferência comum e resgate também ficam fora do Entrou).
   const CAT_CHEQUE = "Cheque especial BB";
   const CATS_FORA = new Set([CAT_FATURA,"Aplicação e resgate",CAT_ENTRE,CAT_CHEQUE]);
   // resgates e Pix vindos de outra conta sua contam como ENTRADA; só a saída (aplicação, envio) fica fora
   const ENTRA_FORA = new Set(["Aplicação e resgate",CAT_ENTRE]);
-  const ehMov = l => !CATS_FORA.has(l.categoria) || (l.valor>0 && ENTRA_FORA.has(l.categoria));
+  // ENTROU = só renda nova (salário, venda, terceiros, rendimentos). Resgate e Pix/TED de outra conta sua NÃO contam:
+  // é o mesmo dinheiro mudando de bolso (senão o salário que vai BB→Itaú→corretora→Itaú é somado várias vezes).
+  const ENTRA_CONTA = new Set();
+  const ehMov = l => !CATS_FORA.has(l.categoria) || (l.valor>0 && ENTRA_CONTA.has(l.categoria));
   // empréstimo recebido (ex.: cheque especial de outra conta): dinheiro a devolver — não é receita nem abate gasto
   const CAT_EMPREST = "Empréstimo recebido";
   // realizado = já passou no banco (data até hoje, ou veio do extrato — compras do fim de semana vêm datadas no dia útil seguinte).
@@ -1396,7 +1399,7 @@
       if(k===CAT_EMPREST){ emp+=v; return; }
       if(k==="+") ent["Sem categoria"]=v;
       else if(k==="-") sai["Sem categoria"]=-v;
-      else if(ehReceita(k)||(ENTRA_FORA.has(k)&&v>0)) ent[k]=v;
+      else if(ehReceita(k)||(ENTRA_CONTA.has(k)&&v>0)) ent[k]=v;
       else sai[k]=-v;
     });
     const soma=o=>Object.keys(o).reduce((s,k)=>s+o[k],0);
@@ -5256,9 +5259,11 @@
     if(natureza){
       const partes=["Compras do cartão contam na data da compra."];
       if(fatura) partes.push("Pagamento de fatura (R$ "+brl(fatura)+") não é gasto: as compras já estão contadas.");
-      if(aplic) partes.push("Aplicações (R$ "+brl(Math.abs(aplic))+") ficam fora; resgates contam como entrada.");
+      const resg=soma(lista.filter(l=>l.categoria==="Aplicação e resgate"&&l.valor>0));
+      if(aplic||resg) partes.push("Aplicações (R$ "+brl(Math.abs(aplic))+") e resgates (R$ "+brl(resg)+") ficam fora: só trocam o dinheiro de bolso.");
       const entre=Math.abs(soma(lista.filter(l=>l.categoria===CAT_ENTRE&&l.valor<0)));
-      if(entre) partes.push("Envios para suas outras contas (R$ "+brl(entre)+") ficam fora; o que chega delas conta como entrada.");
+      const entreIn=soma(lista.filter(l=>l.categoria===CAT_ENTRE&&l.valor>0));
+      if(entre||entreIn) partes.push("Transferências entre suas contas ficam fora (enviou R$ "+brl(entre)+", recebeu R$ "+brl(entreIn)+").");
       nota=partes.join(" ");
 
     } else nota = ui.conta==="cartao"
