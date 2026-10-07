@@ -876,6 +876,7 @@
           <button id="btExportarCsv">Exportar CSV completo</button>
           <button id="btBackup">Salvar backup</button>
           <button id="btRestaurar">Restaurar backup</button>
+          <button id="btBackupNuvem">Backups diários na nuvem…</button>
           <hr>
           <button id="btLimpar" class="perigo">Limpar tudo…</button>
         </div>
@@ -1679,6 +1680,25 @@
     };
   }
 
+  function aplicarDados(d){
+    dados.lancamentos = d.lancamentos||[];
+    dados.saldos      = d.saldos||{};
+    dados.regras      = (d.regras&&d.regras.length)?d.regras:REGRAS_PADRAO.slice();
+    dados.prolabore   = d.prolabore||0;
+    dados.faturaAberta = d.faturaAberta||null;
+    dados.faturaFechada= d.faturaFechada||null;
+    dados.orcamento   = d.orcamento||null;
+    dados.orcamentoMes= d.orcamentoMes||{};
+    dados.contas      = d.contas||{};
+    dados.previsoes   = d.previsoes||{};
+    dados.fluxo       = d.fluxo||null;
+    dados.dividas     = d.dividas||null;
+    dados.metas       = d.metas||[];
+    dados.conferencia = d.conferencia||{};
+    dados.saldosDia   = d.saldosDia||{};
+    dados.invest      = d.invest||null;
+    dados.versao      = d.versao||0;
+  }
   async function carregar(){
     try{
       // verificar sessão Supabase
@@ -1697,23 +1717,7 @@
       }
 
       if(d){
-        dados.lancamentos = d.lancamentos||[];
-        dados.saldos      = d.saldos||{};
-        dados.regras      = (d.regras&&d.regras.length)?d.regras:REGRAS_PADRAO.slice();
-        dados.prolabore   = d.prolabore||0;
-        dados.faturaAberta = d.faturaAberta||null;
-        dados.faturaFechada= d.faturaFechada||null;
-        dados.orcamento   = d.orcamento||null;
-        dados.orcamentoMes= d.orcamentoMes||{};
-        dados.contas      = d.contas||{};
-        dados.previsoes   = d.previsoes||{};
-        dados.fluxo       = d.fluxo||null;
-        dados.dividas     = d.dividas||null;
-        dados.metas       = d.metas||[];
-        dados.conferencia = d.conferencia||{};
-        dados.saldosDia   = d.saldosDia||{};
-        dados.invest      = d.invest||null;
-        dados.versao      = d.versao||0;
+        aplicarDados(d);
         migrar();
         if(dados._migrou){ delete dados._migrou; await salvarImediato(); }
         // migração: remover lançamentos do cartão com data > hoje+6 meses (bug antigo)
@@ -5751,6 +5755,40 @@
   $("#btImpPlanilha").onclick=()=>abrirImport("planilha");
   $("#arqCsv").onchange=e=>{ if(e.target.files[0]) lerArquivo(e.target.files[0]); e.target.value=""; };
   $("#btBackup").onclick=exportarBackup;
+  /* Backups diários na nuvem: tabela livro_caixa_backup, preenchida todo dia pelo Supabase (supabase/backup-diario.sql).
+     Guarda os últimos 30 dias e o dia 1º de cada mês. Aqui dá para baixar ou voltar o app para um dia. */
+  async function backupsNuvem(){
+    if(!sbUser){ avisar("Entre com a sua conta para ver os backups da nuvem.",true); return; }
+    const {data,error}=await sb.from("livro_caixa_backup").select("dia,atualizado_em").eq("user_id",sbUser.id).eq("chave",CHAVE).order("dia",{ascending:false}).limit(60);
+    if(error){ avisar(/does not exist|relation|schema cache/i.test(error.message)?"A tabela de backups ainda não existe no Supabase (rode supabase/backup-diario.sql).":"Não consegui ler os backups: "+error.message,true); return; }
+    if(!data||!data.length){ avisar("Ainda não há backup na nuvem. O primeiro sai na próxima madrugada."); return; }
+    const dm=iso=>iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4);
+    const esc2=x=>String(x).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const dia=await modal('<h3 class="modal-tit">Backups diários na nuvem</h3>'+
+      '<p class="modal-corpo">O Supabase copia seus dados todo dia às 3h. Ficam os últimos 30 dias e o dia 1º de cada mês. Escolha um dia:</p>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;max-height:300px;overflow:auto;margin:8px 0">'+
+      data.map(x=>'<button type="button" class="bt vazado" data-modal="'+esc2(x.dia)+'" title="'+(x.atualizado_em?"dados de "+new Date(x.atualizado_em).toLocaleString("pt-BR"):"")+'">'+dm(x.dia)+'</button>').join("")+
+      '</div><div class="modal-acoes"><button type="button" class="bt vazado" data-modal="cancelar">Fechar</button></div>');
+    if(!dia||!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return;
+    const acao=await modal('<h3 class="modal-tit">Backup de '+dm(dia)+'</h3>'+
+      '<p class="modal-corpo"><b>Baixar</b> salva o arquivo .json (dá para usar em “Restaurar backup”).<br>'+
+      '<b>Voltar para este dia</b> substitui tudo o que está no app pelos dados de '+dm(dia)+'. Antes, o app baixa um arquivo com os dados de agora.</p>'+
+      '<div class="modal-acoes"><button type="button" class="bt vazado" data-modal="cancelar">Cancelar</button>'+
+      '<button type="button" class="bt vazado" data-modal="baixar">Baixar</button>'+
+      '<button type="button" class="bt" data-modal="voltar" style="background:var(--tijolo);border-color:var(--tijolo)">Voltar para este dia</button></div>');
+    if(acao!=="baixar"&&acao!=="voltar") return;
+    const r=await sb.from("livro_caixa_backup").select("valor").eq("user_id",sbUser.id).eq("chave",CHAVE).eq("dia",dia).maybeSingle();
+    if(r.error||!r.data){ avisar("Não consegui baixar o backup de "+dm(dia)+".",true); return; }
+    const d=typeof r.data.valor==="string"?JSON.parse(r.data.valor):r.data.valor;
+    if(acao==="baixar"){ baixar("financeiro-nuvem-"+dia+".json",JSON.stringify(d,null,1),"application/json"); avisar("Backup de "+dm(dia)+" baixado."); return; }
+    if(!d||!Array.isArray(d.lancamentos)){ avisar("Esse backup está vazio ou inválido.",true); return; }
+    exportarBackup();
+    aplicarDados(d); migrar(); delete dados._migrou;
+    try{ await salvarImediato(); }catch(e){ avisar("Voltei o app, mas não consegui gravar na nuvem.",true); }
+    render();
+    avisar("App voltou para "+dm(dia)+" ("+dados.lancamentos.length+" lançamentos). Os dados de antes foram baixados num arquivo.");
+  }
+  $("#btBackupNuvem").onclick=backupsNuvem;
   $("#btExportar").onclick=exportarPlanilha;
   $("#btExportarCsv").onclick=exportarCSV;
   $("#btCopiarPl").onclick=copiarParaPlanilha;
