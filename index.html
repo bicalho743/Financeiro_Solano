@@ -535,6 +535,7 @@
   .bc-t{border-left:1px solid var(--linha);padding-left:20px}
   .bc-t .bc-n{font-weight:600;color:var(--tinta)}
   .bc-in{font-family:var(--serif);font-size:20px;max-width:150px;padding:2px 6px}
+  .bc-cq{display:block;font-weight:600;margin-top:2px}
   @media (max-width:860px){.bc-grid{grid-template-columns:1fr 1fr;gap:6px 18px}.bc-t{border-left:none;padding-left:0}.bancos{padding:12px 16px}}
   .cheque-uso{margin:10px 0 0;padding:9px 14px;background:#FBF3E6;border-left:3px solid #E08E0B;font-size:13.5px;border-radius:2px}
   .cheque-uso b{font-weight:600;color:#9A5B07}
@@ -1403,6 +1404,33 @@
     }
     return h.length?'<div class="nota-totais">'+h.map(x=>'<p>'+x+'</p>').join("")+'</div>':"";
   }
+  /* Cheque especial: 10 dias de uso em cada banco (Itaú, BB, Santander).
+     Conta desde o 1º dia da sequência atual de saldo negativo; "vence" = último dos 10 dias. */
+  const DIAS_CHEQUE=10;
+  const somaDias=(iso,n)=>{ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+  const difDias=(a,b)=>Math.round((new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5);
+  function saldoItauEm(D){ const ym=D.slice(0,7); return cent(saldoInicio("itau",ym).v+movConta("itau",ym+"-01",somaDias(D,1))); }
+  function usoCheque(o,s){
+    if(!s||s.v>=0) return null;
+    let ini=s.data;
+    if(o==="itau"){
+      for(let k=1;k<=120;k++){ const d=somaDias(s.data,-k); if(saldoItauEm(d)>=0) break; ini=d; }
+    } else {
+      // saldo só muda em dia com movimento: o 1º registro negativo depois do último positivo é o início
+      const sd=(dados.saldosDia||{})[o]||{};
+      for(const d of Object.keys(sd).filter(x=>x<=s.data).sort().reverse()){ if(+sd[d]>=0) break; ini=d; }
+    }
+    const hj=hojeISO(), vence=somaDias(ini,DIAS_CHEQUE-1);
+    return {ini:ini, dias:difDias(hj,ini)+1, vence:vence, resta:difDias(vence,hj)};
+  }
+  function tagCheque(o,s){
+    const u=usoCheque(o,s); if(!u) return "";
+    const cor=u.resta<0?"#C0392B":u.resta<=2?"#C0392B":"#9A5B07";
+    const txt=u.resta<0
+      ? "cheque especial: "+u.dias+" dias · venceu "+diaMes(u.vence)+" (há "+(-u.resta)+" dia"+(u.resta===-1?"":"s")+")"
+      : "cheque especial: "+u.dias+"º dia de "+DIAS_CHEQUE+" · vence "+diaMes(u.vence)+(u.resta===0?" (hoje)":u.resta===1?" (amanhã)":" (faltam "+u.resta+")");
+    return '<span class="bc-cq" style="color:'+cor+'" title="Negativo desde '+diaMes(u.ini)+'">'+txt+'</span>';
+  }
   // saldos nos bancos: o que você tem de verdade e quanto de cheque especial está em uso
   function painelBancos(){
     const it=saldoContaApp(ui.mes), bb=saldoBanco("bb"), st=saldoBanco("santander");
@@ -1411,9 +1439,9 @@
       (extra||'<b style="color:'+(s?cor(s.v):"var(--cinza)")+'">'+(s?'R$ '+brl(s.v):'—')+'</b>')+'<span class="kpi-sub">'+fonte+'</span></div>';
     const vals=[it.v, bb?bb.v:0, st?st.v:0], tot=cent(vals.reduce((a,b)=>a+b,0)), neg=cent(vals.filter(v=>v<0).reduce((a,b)=>a+b,0));
     return '<section class="bancos"><div class="tit-secao" style="margin:0 0 6px"><h3>Saldos nos bancos</h3></div><div class="bc-grid">'+
-      linha("Itaú",it,"pelos lançamentos, até "+diaMes(it.data),{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
-      linha("BB",bb,bb?"extrato de "+diaMes(bb.data):"importe o extrato do BB",{conta:"bb",mes:ui.mes,alvo:"#conf",dica:"Ver a conta do BB"})+
-      linha("Santander",st,st?"digitado em "+diaMes(st.data):"digite o saldo quando usar",null,
+      linha("Itaú",it,"pelos lançamentos, até "+diaMes(it.data)+tagCheque("itau",it),{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
+      linha("BB",bb,(bb?"extrato de "+diaMes(bb.data):"importe o extrato do BB")+tagCheque("bb",bb),{conta:"bb",mes:ui.mes,alvo:"#conf",dica:"Ver a conta do BB"})+
+      linha("Santander",st,(st?"digitado em "+diaMes(st.data):"digite o saldo quando usar")+tagCheque("santander",st),null,
         '<input class="campo bc-in" data-saldo-santander="1" value="'+(st?brl(st.v):"")+'" placeholder="0,00" inputmode="decimal" aria-label="Saldo do Santander" style="color:'+(st?cor(st.v):"inherit")+'">')+
       '<div class="bc-l bc-t"><span class="bc-n">Total nas contas</span><b style="color:'+cor(tot)+'">R$ '+brl(tot)+'</b>'+
         '<span class="kpi-sub">'+(neg<0?'<span style="color:#9A5B07">cheque especial em uso: R$ '+brl(-neg)+'</span> · já no “A pagar”':'sem cheque especial em uso')+'</span></div>'+
