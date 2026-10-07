@@ -536,6 +536,10 @@
   .bc-t .bc-n{font-weight:600;color:var(--tinta)}
   .bc-in{font-family:var(--serif);font-size:20px;max-width:150px;padding:2px 6px}
   .bc-cq{display:block;font-weight:600;margin-top:2px}
+  .totais:has(.tot-bancos){grid-template-columns:repeat(4,1fr)}
+  .tot-bancos .tb-l{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:1px 4px;margin:0 -4px;font-variant-numeric:tabular-nums}
+  .tot-bancos .tb-l b{font-weight:600}
+  @media (max-width:860px){.totais:has(.tot-bancos){grid-template-columns:1fr 1fr}}
   @media (max-width:860px){.bc-grid{grid-template-columns:1fr 1fr;gap:6px 18px}.bc-t{border-left:none;padding-left:0}.bancos{padding:12px 16px}}
   .cheque-uso{margin:10px 0 0;padding:9px 14px;background:#FBF3E6;border-left:3px solid #E08E0B;font-size:13.5px;border-radius:2px}
   .cheque-uso b{font-weight:600;color:#9A5B07}
@@ -5210,7 +5214,8 @@
     const cartoes = natureza
       ? cartao("Entrou",ent,"pos",baseGasto.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",mov:1,dica:"Ver as entradas"})+
         cartao("Gastou",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",mov:1,dica:"Ver os gastos"})+
-        cartao(res<0?"Faltou":"Sobrou",res,res<0?"neg":"pos","entrou − gastou",res<0?"#C0392B":"#1E8A5F",{tipo:"",mov:1,dica:"Ver entradas e gastos"})
+        cartao(res<0?"Faltou":"Sobrou",res,res<0?"neg":"pos","entrou − gastou",res<0?"#C0392B":"#1E8A5F",{tipo:"",mov:1,dica:"Ver entradas e gastos"})+
+        cartaoBancos()
       : cartao("Entradas",ent,"pos",baseGasto.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",dica:"Ver as entradas"})+
         cartao("Saídas",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",dica:"Ver as saídas"})+
         (ui.conta==="cartao"
@@ -5450,6 +5455,19 @@
     });
   }
 
+  // card "Bancos": saldo de hoje em cada conta (Itaú pelos lançamentos, BB pelo extrato, Santander digitado)
+  function cartaoBancos(){
+    const it=saldoContaApp(mesAtual()), bb=saldoBanco("bb"), st=saldoBanco("santander");
+    const cor=v=>v<0?"#C0392B":"var(--tinta)";
+    const lin=(nome,s,irO)=>'<div class="tb-l'+(irO?' clic-card"'+ir(irO):'"')+'><span>'+nome+'</span><b style="color:'+(s?cor(s.v):"var(--cinza)")+'">'+(s?brl(s.v):"—")+'</b></div>';
+    const tot=cent((it?it.v:0)+(bb?bb.v:0)+(st?st.v:0));
+    return '<div class="tot tot-bancos" style="--c:#2E86DE"><span class="rot">Bancos</span>'+
+      '<div class="num" style="color:'+(tot<0?"#C0392B":"#2E86DE")+'"><small>R$</small>'+brl(tot)+'</div>'+
+      lin("Itaú",it,{conta:"itau",mes:mesAtual(),alvo:"#conf",dica:"Conferir com o banco"})+
+      lin("BB",bb,{conta:"bb",mes:mesAtual(),alvo:"#conf",dica:"Ver a conta do BB"})+
+      lin("Santander",st,null)+
+      '<p class="sub">saldo hoje · '+diaMes(hojeISO())+'</p></div>';
+  }
   function cartao(rot,val,cls,sub,c,irO){
     return '<div class="tot'+(irO?' clic-card':'')+'" style="--c:'+c+'"'+(irO?ir(irO):'')+'><span class="rot">'+rot+'</span>'+
       '<div class="num" style="color:'+c+'"><small>R$</small>'+brl(val)+'</div>'+
