@@ -435,7 +435,18 @@
   .iv-aloc i{display:block;height:100%}
   .iv-leg{display:flex;flex-wrap:wrap;gap:6px 18px;margin:8px 0 0;font-size:12px;color:var(--cinza)}
   .iv-leg i,.iv-ponto{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:0}
-  .iv-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:26px}
+  .iv-cards{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-top:26px}
+  .iv-bl{display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
+  .iv-bl i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+  .iv-bk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
+  .iv-bk{background:#fff;border:1px solid var(--linha);border-top:4px solid var(--c);border-radius:6px;padding:12px 16px}
+  .iv-bk header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .iv-bk header h4{margin:0;font-size:15px}.iv-bk header b{font-size:18px;font-variant-numeric:tabular-nums}
+  .iv-bk-l{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;font-variant-numeric:tabular-nums}
+  .iv-bk-in{max-width:130px;text-align:right;padding:3px 6px}
+  @media (max-width:860px){.iv-bk-grid{grid-template-columns:1fr 1fr}}
+  @media (max-width:560px){.iv-bk-grid{grid-template-columns:1fr}}
+  @media (max-width:1300px){.iv-cards{grid-template-columns:repeat(3,1fr)}}
   @media (max-width:1100px){.iv-cards{grid-template-columns:repeat(2,1fr)}}
   @media (max-width:600px){.iv-cards{grid-template-columns:1fr}.iv-total{font-size:34px}.iv-topo-dir{text-align:left}}
   .iv-card{text-align:left;background:#fff;border:1px solid var(--linha);border-top:4px solid var(--c);border-radius:4px;padding:16px 18px 14px;
@@ -536,10 +547,6 @@
   .bc-t .bc-n{font-weight:600;color:var(--tinta)}
   .bc-in{font-family:var(--serif);font-size:20px;max-width:150px;padding:2px 6px}
   .bc-cq{display:block;font-weight:600;margin-top:2px}
-  .totais:has(.tot-bancos){grid-template-columns:repeat(4,1fr)}
-  .tot-bancos .tb-l{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:1px 4px;margin:0 -4px;font-variant-numeric:tabular-nums}
-  .tot-bancos .tb-l b{font-weight:600}
-  @media (max-width:860px){.totais:has(.tot-bancos){grid-template-columns:1fr 1fr}}
   @media (max-width:860px){.bc-grid{grid-template-columns:1fr 1fr;gap:6px 18px}.bc-t{border-left:none;padding-left:0}.bancos{padding:12px 16px}}
   .cheque-uso{margin:10px 0 0;padding:9px 14px;background:#FBF3E6;border-left:3px solid #E08E0B;font-size:13.5px;border-radius:2px}
   .cheque-uso b{font-weight:600;color:#9A5B07}
@@ -4615,7 +4622,7 @@
   document.addEventListener("visibilitychange",()=>{ if(ui.conta==="invest" && document.visibilityState==="visible") atualizarCotacoes(); });
 
   const RF_CLASSES = ["Tesouro Direto","Renda fixa"], RV_CLASSES = ["Ações","FIIs","ETF exterior","Cripto","Outros"];
-  const ABAS_INV = [["resumo","Resumo"],["meta","Meta e projeção"],["renda","Renda passiva"],["rf","Renda fixa"],["rv","Renda variável"],["rent","Rentabilidade"],["mov","Movimentação"],["conc","Conciliação"],["patr","Patrimônio"]];
+  const ABAS_INV = [["resumo","Resumo"],["bancos","Bancos"],["meta","Meta e projeção"],["renda","Renda passiva"],["rf","Renda fixa"],["rv","Renda variável"],["rent","Rentabilidade"],["mov","Movimentação"],["conc","Conciliação"],["patr","Patrimônio"]];
   const COR_CLASSE = {"Tesouro Direto":"#2F4A3C","Renda fixa":"#6E8A78","Ações":"#1F6FB2","FIIs":"#785E28","ETF exterior":"#7D3C98","Cripto":"#D35400","Outros":"#95A5A6"};
   /* meta refeita a partir do valor real de hoje: (meta + aporte) × (1 + taxa) a cada mês, por 25 anos */
   function refazerMeta(total, aporte, taxa){
@@ -4717,6 +4724,25 @@
     return {liq:cent(bruto-ir), ir:cent(ir), iof:0, cust:0, nota:g<=0?"sem lucro, sem IR":aliq===0?"isento (vendas até R$ 20 mil/mês)":"IR "+(aliq*100)+"% sobre o lucro"};
   }
 
+  /* ---- bancos: saldo em conta + investimentos em cada instituição ---- */
+  const BANCOS_INV=[["itau","Itaú","#EC7000"],["bb","BB","#F4C400"],["santander","Santander","#EC0000"],["btg","BTG","#0B2A4A"],["xp","XP","#111827"],["inter","Inter","#FF7A00"]];
+  const SALDO_DIGITADO=new Set(["santander","btg","xp","inter"]);
+  function bancoDe(inst){
+    const t=normTxt(inst);
+    if(!t) return "sem";
+    if(/ITAU/.test(t)) return "itau";
+    if(/BANCO DO BRASIL|\bBB\b|BB DTVM|BB GESTAO/.test(t)) return "bb";
+    if(/SANTANDER/.test(t)) return "santander";
+    if(/BTG/.test(t)) return "btg";
+    if(/\bXP\b|XP INVEST/.test(t)) return "xp";
+    if(/INTER\b|BANCO INTER|INTER DTVM|INTER DISTRIBUIDORA/.test(t)) return "inter";
+    return "outros";
+  }
+  function saldoContaBanco(o){
+    if(o==="itau"){ const s=saldoContaApp(mesAtual()); return s?{v:s.v,data:s.data,fonte:"pelos lançamentos"}:null; }
+    const s=saldoBanco(o); if(!s) return null;
+    return {v:s.v,data:s.data,fonte:o==="bb"?"extrato":"digitado"};
+  }
   function renderInvest(){
     const corpo=$("#corpo"), v=invOk();
     const aba = ui.invAba = ui.invAba || "resumo";
@@ -4725,6 +4751,7 @@
       '<button class="bt vazado" data-ivcot="1" style="font-size:12px;padding:6px 12px"'+(cotBuscando?" disabled":"")+'>↻ Atualizar cotações</button>'+
       '<button class="bt" data-ivimp="1" style="font-size:12px;padding:6px 12px">Importar da B3</button></span>';
     const clique=e=>{
+      if(e.target.closest("[data-saldobanco]")) return;
       const a=e.target.closest("[data-ivaba]"); if(a){ ui.invAba=a.dataset.ivaba; render(); window.scrollTo(0,0); return; }
       if(e.target.closest("[data-ivimp]")){ abrirImport("b3"); return; }
       if(e.target.closest("[data-ivcot]")){ atualizarCotacoes(true); render(); return; }
@@ -4736,6 +4763,13 @@
       const dl=e.target.closest("[data-ivmdel]"); if(dl){ const i=+dl.dataset.ivmdel; modal('<h3 class="modal-tit">Apagar “'+esc(v.manuais[i].nome||"item")+'”?</h3><div class="modal-acoes"><button class="bt vazado" data-modal="cancelar">Cancelar</button><button class="bt" data-modal="ok">Apagar</button></div>').then(ok=>{ if(ok){ v.manuais.splice(i,1); salvar(); render(); } }); }
     };
     $("#abas").onclick=clique; corpo.onclick=clique;
+    corpo.onchange=e=>{
+      const sb=e.target.closest("[data-saldobanco]"); if(!sb) return;
+      const o=sb.dataset.saldobanco, txt=String(sb.value||"").trim(), sd=(dados.saldosDia=dados.saldosDia||{}), m=(sd[o]=sd[o]||{});
+      const val=txt===""?0:numero(txt.replace("−","-"));
+      m[hojeISO()]=cent(val); if(o==="santander") syncChequePrev(); salvar(); render();
+      avisar("Saldo em conta "+(BANCOS_INV.find(b=>b[0]===o)||[0,o])[1]+": R$ "+brl(val)+".");
+    };
     if(!v.movs.length && !Object.keys(v.posicoes).length){
       corpo.innerHTML='<div class="vazio"><p class="num">Nenhum investimento ainda</p><p>Clique em <b>Importar da B3</b> e escolha o arquivo de <b>Movimentação</b> da B3 (Excel). '+
         'Depois traga também o de <b>Posição</b>, para o app saber quanto vale a carteira hoje.</p></div>';
@@ -4778,6 +4812,14 @@
       (up ? "posição B3 de "+diaMes(up.data)+"/"+up.data.slice(2,4) : "sem posição da B3 — cotações da planilha");
     const comVar=cart.filter(x=>x.varDiaR!=null), varHoje=S(comVar,x=>x.varDiaR), baseHoje=S(comVar,x=>x.valor-x.varDiaR);
 
+    // ---------- por banco ----------
+    const porBanco={}; BANCOS_INV.forEach(([k])=>porBanco[k]={inv:[],conta:saldoContaBanco(k)});
+    cart.forEach(x=>{ const k=bancoDe(x.inst); (porBanco[k]=porBanco[k]||{inv:[],conta:null}).inv.push(x); });
+    const nomeBanco=k=>(BANCOS_INV.find(b=>b[0]===k)||[0,k==="sem"?"Sem instituição":"Outras instituições"])[1];
+    const corBanco=k=>(BANCOS_INV.find(b=>b[0]===k)||[0,0,"#9CA3AF"])[2];
+    const totBanco=k=>cent((porBanco[k].conta?porBanco[k].conta.v:0)+S(porBanco[k].inv,x=>x.valor));
+    const ordBancos=Object.keys(porBanco).filter(k=>BANCOS_INV.some(b=>b[0]===k)||porBanco[k].inv.length);
+    const totContas=cent(ordBancos.reduce((s,k)=>s+(porBanco[k].conta?porBanco[k].conta.v:0),0));
     // ---------- peças ----------
     const card=(alvo,cor,rot,valor,linhas,extra)=>'<button class="iv-card" data-ivaba="'+alvo+'" style="--c:'+cor+'">'+
       '<span class="rot">'+rot+'</span><div class="iv-card-v">'+valor+'</div>'+linhas.map(l=>'<div class="iv-card-l">'+l+'</div>').join("")+(extra||"")+'<span class="iv-card-ir">ver detalhes ›</span></button>';
@@ -4909,6 +4951,10 @@
           painel("Próximos vencimentos",vencs||'<p class="sub">Nenhum título com vencimento.</p>',"rf")+
         '</div>'+
         '<div class="iv-cards">'+
+        '<button class="iv-card iv-bancos" data-ivaba="bancos" style="--c:#2E86DE"><span class="rot">Bancos</span>'+
+          '<div class="iv-card-v">R$ '+brl(cent(totContas+total))+'</div>'+
+          ordBancos.map(k=>'<div class="iv-card-l iv-bl"><span><i style="background:'+corBanco(k)+'"></i>'+esc(nomeBanco(k))+'</span><b style="color:'+(totBanco(k)<0?"#C0392B":"inherit")+'">'+brl(totBanco(k))+'</b></div>').join("")+
+          '<span class="iv-card-ir">contas + investimentos · ver detalhes ›</span></button>'+
         card("rf",COR_CLASSE["Tesouro Direto"],"Renda fixa","R$ "+brl(rfV),[
           pct(total?rfV/total:0)+" da carteira · <b class=\"iv-liq\">líquido R$ "+brl(S(rf,x=>x.liq))+"</b>",
           'Tesouro R$ '+brl(S(rf.filter(x=>x.classe==="Tesouro Direto"),x=>x.valor))+' · CDB R$ '+brl(S(rf.filter(x=>x.classe==="Renda fixa"),x=>x.valor)),
@@ -4928,6 +4974,28 @@
         '</div>'+
         '<div class="iv-rodape">'+dataRef+' · custo R$ '+brl(custoTot)+' · '+
         'Patrimônio total (com previdência, bens e dívidas): <b>R$ '+brl(cent(total+prev+bens-dividas))+'</b> <button class="ver-mais" data-ivaba="patr">ver</button></div>';
+    }
+    else if(aba==="bancos"){
+      html=kpis([["Total nos bancos","R$ "+brl(cent(totContas+total)),"contas + investimentos"],["Em conta","R$ "+brl(totContas),"saldo das contas correntes",totContas<0?"#C0392B":""],["Investido","R$ "+brl(total),"bruto, a preço de mercado","#1D4ED8"]])+
+        '<div class="iv-bk-grid">'+ordBancos.map(k=>{ const b=porBanco[k], c=b.conta, inv=b.inv, vi=S(inv,x=>x.valor);
+          const contaH=BANCOS_INV.some(x=>x[0]===k)
+            ? '<div class="iv-bk-l"><span>Conta corrente</span>'+(SALDO_DIGITADO.has(k)
+                ? '<input class="campo iv-bk-in" data-saldobanco="'+k+'" value="'+(c?brl(c.v):"")+'" placeholder="0,00" inputmode="decimal" aria-label="Saldo em conta '+esc(nomeBanco(k))+'">'
+                : '<b style="color:'+(c&&c.v<0?"#C0392B":"inherit")+'">'+(c?brl(c.v):"—")+'</b>')+'</div>'+
+              '<span class="kpi-sub">'+(c?c.fonte+" · "+diaMes(c.data):SALDO_DIGITADO.has(k)?"digite o saldo":"importe o extrato")+'</span>'
+            : '';
+          const porCl={}; inv.forEach(x=>{ porCl[x.classe]=(porCl[x.classe]||0)+x.valor; });
+          return '<section class="iv-bk" style="--c:'+corBanco(k)+'"><header><h4>'+esc(nomeBanco(k))+'</h4><b>R$ '+brl(totBanco(k))+'</b></header>'+contaH+
+            '<div class="iv-bk-l"><span>Investimentos</span><b>'+(inv.length?brl(vi):"—")+'</b></div>'+
+            (inv.length?'<span class="kpi-sub">'+Object.keys(porCl).sort((a,b)=>porCl[b]-porCl[a]).map(cl=>esc(cl)+" "+brl(porCl[cl])).join(" · ")+'</span>':'<span class="kpi-sub">nenhum ativo da B3 nesta instituição</span>')+
+            '</section>'; }).join("")+'</div>'+
+        ordBancos.filter(k=>porBanco[k].inv.length).map(k=>{ const inv=porBanco[k].inv;
+          const rfB=inv.filter(x=>RF_CLASSES.includes(x.classe)), rvB=inv.filter(x=>!RF_CLASSES.includes(x.classe));
+          return secao(esc(nomeBanco(k))+" · R$ "+brl(S(inv,x=>x.valor)))+
+            (rfB.length?'<p class="sub" style="margin:4px 0 6px"><b>Renda fixa</b></p>'+tabelaAtivos(rfB,{rf:true}):"")+
+            (rvB.length?'<p class="sub" style="margin:10px 0 6px"><b>Renda variável</b></p>'+tabelaAtivos(rvB):""); }).join("")+
+        nota("Instituição de cada ativo: a da Posição/Movimentação da B3 (custodiante). Itaú em conta: pelos lançamentos; BB: último extrato; Santander, BTG, XP e Inter: digite o saldo da conta corrente acima. "+
+          "Investimentos fora da B3 (previdência, cofrinhos sem registro na B3) não aparecem aqui — veja Patrimônio.");
     }
     else if(aba==="rf"){
       const td=rf.filter(x=>x.classe==="Tesouro Direto"), cdb=rf.filter(x=>x.classe==="Renda fixa");
@@ -5214,8 +5282,7 @@
     const cartoes = natureza
       ? cartao("Entrou",ent,"pos",baseGasto.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",mov:1,dica:"Ver as entradas"})+
         cartao("Gastou",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",mov:1,dica:"Ver os gastos"})+
-        cartao(res<0?"Faltou":"Sobrou",res,res<0?"neg":"pos","entrou − gastou",res<0?"#C0392B":"#1E8A5F",{tipo:"",mov:1,dica:"Ver entradas e gastos"})+
-        cartaoBancos()
+        cartao(res<0?"Faltou":"Sobrou",res,res<0?"neg":"pos","entrou − gastou",res<0?"#C0392B":"#1E8A5F",{tipo:"",mov:1,dica:"Ver entradas e gastos"})
       : cartao("Entradas",ent,"pos",baseGasto.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",dica:"Ver as entradas"})+
         cartao("Saídas",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",dica:"Ver as saídas"})+
         (ui.conta==="cartao"
@@ -5455,19 +5522,6 @@
     });
   }
 
-  // card "Bancos": saldo de hoje em cada conta (Itaú pelos lançamentos, BB pelo extrato, Santander digitado)
-  function cartaoBancos(){
-    const it=saldoContaApp(mesAtual()), bb=saldoBanco("bb"), st=saldoBanco("santander");
-    const cor=v=>v<0?"#C0392B":"var(--tinta)";
-    const lin=(nome,s,irO)=>'<div class="tb-l'+(irO?' clic-card"'+ir(irO):'"')+'><span>'+nome+'</span><b style="color:'+(s?cor(s.v):"var(--cinza)")+'">'+(s?brl(s.v):"—")+'</b></div>';
-    const tot=cent((it?it.v:0)+(bb?bb.v:0)+(st?st.v:0));
-    return '<div class="tot tot-bancos" style="--c:#2E86DE"><span class="rot">Bancos</span>'+
-      '<div class="num" style="color:'+(tot<0?"#C0392B":"#2E86DE")+'"><small>R$</small>'+brl(tot)+'</div>'+
-      lin("Itaú",it,{conta:"itau",mes:mesAtual(),alvo:"#conf",dica:"Conferir com o banco"})+
-      lin("BB",bb,{conta:"bb",mes:mesAtual(),alvo:"#conf",dica:"Ver a conta do BB"})+
-      lin("Santander",st,null)+
-      '<p class="sub">saldo hoje · '+diaMes(hojeISO())+'</p></div>';
-  }
   function cartao(rot,val,cls,sub,c,irO){
     return '<div class="tot'+(irO?' clic-card':'')+'" style="--c:'+c+'"'+(irO?ir(irO):'')+'><span class="rot">'+rot+'</span>'+
       '<div class="num" style="color:'+c+'"><small>R$</small>'+brl(val)+'</div>'+
