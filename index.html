@@ -1404,32 +1404,42 @@
     }
     return h.length?'<div class="nota-totais">'+h.map(x=>'<p>'+x+'</p>').join("")+'</div>':"";
   }
-  /* Cheque especial: 10 dias de uso em cada banco (Itaú, BB, Santander).
-     Conta desde o 1º dia da sequência atual de saldo negativo; "vence" = último dos 10 dias. */
-  const DIAS_CHEQUE=10;
+  /* Cheque especial: 10 dias sem juros por ciclo em cada banco. O ciclo zera no dia de renovação
+     (Itaú dia 6, BB dia 12, Santander dia 15). Conta os dias do ciclo que terminaram com saldo negativo. */
+  const DIAS_CHEQUE=10, RENOVA_CHEQUE={itau:6, bb:12, santander:15};
   const somaDias=(iso,n)=>{ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
   const difDias=(a,b)=>Math.round((new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5);
   function saldoItauEm(D){ const ym=D.slice(0,7); return cent(saldoInicio("itau",ym).v+movConta("itau",ym+"-01",somaDias(D,1))); }
+  // início do ciclo atual e data da próxima renovação
+  function cicloCheque(o){
+    const hj=hojeISO(), dia=String(RENOVA_CHEQUE[o]).padStart(2,"0");
+    let [a,m]=hj.split("-").map(Number);
+    let ini=hj.slice(0,8)+dia;
+    if(ini>hj){ m--; if(!m){m=12;a--;} ini=a+"-"+String(m).padStart(2,"0")+"-"+dia; }
+    let [a2,m2]=ini.split("-").map(Number); m2++; if(m2>12){m2=1;a2++;}
+    return {ini:ini, renova:a2+"-"+String(m2).padStart(2,"0")+"-"+dia};
+  }
   function usoCheque(o,s){
-    if(!s||s.v>=0) return null;
-    let ini=s.data;
-    if(o==="itau"){
-      for(let k=1;k<=120;k++){ const d=somaDias(s.data,-k); if(saldoItauEm(d)>=0) break; ini=d; }
-    } else {
-      // saldo só muda em dia com movimento: o 1º registro negativo depois do último positivo é o início
-      const sd=(dados.saldosDia||{})[o]||{};
-      for(const d of Object.keys(sd).filter(x=>x<=s.data).sort().reverse()){ if(+sd[d]>=0) break; ini=d; }
-    }
-    const hj=hojeISO(), vence=somaDias(ini,DIAS_CHEQUE-1);
-    return {ini:ini, dias:difDias(hj,ini)+1, vence:vence, resta:difDias(vence,hj)};
+    const hj=hojeISO(), c=cicloCheque(o), sd=(dados.saldosDia||{})[o]||{}, ks=Object.keys(sd).sort();
+    // saldo no fim do dia: Itaú pelos lançamentos; BB/Santander o último saldo registrado até o dia
+    const saldoEm = d => d===hj&&s ? s.v : o==="itau" ? saldoItauEm(d) : (()=>{ let k=null; for(const x of ks){ if(x<=d) k=x; else break; } return k?+sd[k]:null; })();
+    let usados=0, ultimo=null;
+    for(let d=c.ini; d<=hj; d=somaDias(d,1)){ const v=saldoEm(d); if(v!=null&&v<0){ usados++; ultimo=d; } }
+    const neg=!!(s&&s.v<0), resta=DIAS_CHEQUE-usados;
+    // negativo hoje: o último dia sem juros, se continuar negativo
+    const vence = neg&&resta>=0 ? somaDias(hj,resta) : null;
+    return {usados:usados, resta:resta, neg:neg, ultimo:ultimo, renova:c.renova, ini:c.ini, vence:vence&&vence<c.renova?vence:null};
   }
   function tagCheque(o,s){
-    const u=usoCheque(o,s); if(!u) return "";
-    const cor=u.resta<0?"#C0392B":u.resta<=2?"#C0392B":"#9A5B07";
-    const txt=u.resta<0
-      ? "cheque especial: "+u.dias+" dias · venceu "+diaMes(u.vence)+" (há "+(-u.resta)+" dia"+(u.resta===-1?"":"s")+")"
-      : "cheque especial: "+u.dias+"º dia de "+DIAS_CHEQUE+" · vence "+diaMes(u.vence)+(u.resta===0?" (hoje)":u.resta===1?" (amanhã)":" (faltam "+u.resta+")");
-    return '<span class="bc-cq" style="color:'+cor+'" title="Negativo desde '+diaMes(u.ini)+'">'+txt+'</span>';
+    const u=usoCheque(o,s);
+    let txt="cheque especial: "+u.usados+" de "+DIAS_CHEQUE+" dias usados", cor="var(--cinza)";
+    if(u.resta<0){ txt+=" · passou "+(-u.resta)+" dia"+(u.resta===-1?"":"s"); cor="#C0392B"; }
+    else if(u.neg){
+      cor=u.resta<=2?"#C0392B":"#9A5B07";
+      txt+=u.vence?" · vence "+diaMes(u.vence)+(u.resta===0?" (hoje)":u.resta===1?" (amanhã)":""):" · dá até a renovação";
+    } else if(u.usados){ cor="#9A5B07"; txt+=" · último "+diaMes(u.ultimo); }
+    txt+=" · renova "+diaMes(u.renova);
+    return '<span class="bc-cq" style="color:'+cor+'" title="Ciclo de '+diaMes(u.ini)+' a '+diaMes(somaDias(u.renova,-1))+'">'+txt+'</span>';
   }
   // saldos nos bancos: o que você tem de verdade e quanto de cheque especial está em uso
   function painelBancos(){
