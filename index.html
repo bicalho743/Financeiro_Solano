@@ -1406,8 +1406,8 @@
     return h.length?'<div class="nota-totais">'+h.map(x=>'<p>'+x+'</p>').join("")+'</div>':"";
   }
   /* Cheque especial: 10 dias sem juros por ciclo em cada banco. O ciclo zera no dia de renovação
-     (Itaú dia 6, BB dia 12, Santander dia 15). Conta os dias do ciclo que terminaram com saldo negativo. */
-  const DIAS_CHEQUE=10, RENOVA_CHEQUE={itau:6, bb:12, santander:15};
+     (Itaú dia 6, BB dia 1, Santander dia 15). Conta os dias do ciclo que terminaram com saldo negativo. */
+  const DIAS_CHEQUE=10, RENOVA_CHEQUE={itau:6, bb:1, santander:15};
   const somaDias=(iso,n)=>{ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
   const difDias=(a,b)=>Math.round((new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5);
   function saldoItauEm(D){ const ym=D.slice(0,7); return cent(saldoInicio("itau",ym).v+movConta("itau",ym+"-01",somaDias(D,1))); }
