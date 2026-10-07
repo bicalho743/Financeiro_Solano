@@ -86,3 +86,24 @@ Se faltar o secret, o aviso diz "falta o secret BRAPI_TOKEN no Supabase".
 A mesma função `cotacoes` devolve o histórico de fechamentos mensais quando recebe `{historico:{...}}`:
 ações, FIIs e ETFs pelo Yahoo Finance (sem token; se falhar, brapi) e Tesouro pelo CSV do Tesouro Transparente.
 CDI e IPCA vêm direto da API do Banco Central. O app guarda os fechamentos e só busca de novo o que falta (ou a cada 6 h).
+
+---
+
+# Backup diário na nuvem
+
+Todo dia às 3h (Brasília) o próprio banco copia seus dados (tabela `livro_caixa`) para `livro_caixa_backup`.
+Ficam os últimos 30 dias e, para sempre, o backup do dia 1º de cada mês. Não precisa de Edge Function nem de secret.
+
+## Instalação
+SQL Editor › cole `supabase/backup-diario.sql` › *Run*. A última linha já faz o primeiro backup e mostra quantas linhas copiou.
+
+## Usar
+No app: menu ⋯ › **Backups diários na nuvem…** › escolha o dia:
+- **Baixar**: salva o .json (serve no “Restaurar backup”);
+- **Voltar para este dia**: substitui o app pelos dados daquele dia (antes baixa um arquivo com os dados atuais).
+
+## Conferir
+```sql
+select dia, chave, atualizado_em, pg_size_pretty(pg_column_size(valor)::bigint) from livro_caixa_backup order by dia desc;
+select * from cron.job_run_details where command like '%backup_livro_caixa%' order by start_time desc limit 5;
+```
