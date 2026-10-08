@@ -547,6 +547,7 @@
   .bc-t .bc-n{font-weight:600;color:var(--tinta)}
   .bc-in{font-family:var(--serif);font-size:20px;max-width:150px;padding:2px 6px}
   .bc-cq{display:block;font-weight:600;margin-top:2px}
+  .est-fases{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:14px;line-height:1.45}
   @media (max-width:860px){.bc-grid{grid-template-columns:1fr 1fr;gap:6px 18px}.bc-t{border-left:none;padding-left:0}.bancos{padding:12px 16px}}
   .cheque-uso{margin:10px 0 0;padding:9px 14px;background:#FBF3E6;border-left:3px solid #E08E0B;font-size:13.5px;border-radius:2px}
   .cheque-uso b{font-weight:600;color:#9A5B07}
@@ -1462,13 +1463,146 @@
         '<span class="kpi-sub">'+(neg<0?'<span style="color:#9A5B07">cheque especial em uso: R$ '+brl(-neg)+'</span> · já no “A pagar”':'sem cheque especial em uso')+'</span></div>'+
     '</div></section>';
   }
+  /* ================= estratégia do cheque especial até o salário =================
+     Regras: 10 dias sem juros por ciclo em cada banco (Itaú renova dia 6, BB dia 1, Santander dia 15).
+     O negativo é coberto NO 10º dia; se o 10º dia cair em fim de semana/feriado, cobre no dia útil anterior.
+     Quem cobre é o banco que tem mais dias livres pela frente — ele passa a carregar a dívida.
+     O salário cai no BB no 5º dia útil do mês seguinte e zera tudo. */
+  function pascoa(a){ const b=a%19,c=Math.floor(a/100),d=a%100,e=Math.floor(c/4),f=c%4,g=Math.floor((c+8)/25),h=Math.floor((c-g+1)/3),
+    i=(19*b+c-e-h+15)%30,k=Math.floor(d/4),l=d%4,m=(32+2*f+2*k-i-l)%7,n=Math.floor((b+11*i+22*m)/451),mes=Math.floor((i+m-7*n+114)/31),dia=((i+m-7*n+114)%31)+1;
+    return a+"-"+String(mes).padStart(2,"0")+"-"+String(dia).padStart(2,"0"); }
+  function feriados(a){
+    const p=pascoa(a);
+    // nacionais + Belo Horizonte (Assunção 15/08, Imaculada Conceição 08/12); Carnaval e Sexta-feira Santa: bancos fechados
+    return new Set(["01-01","04-21","05-01","09-07","10-12","11-02","11-15","11-20","12-25","08-15","12-08"].map(x=>a+"-"+x)
+      .concat([somaDias(p,-48),somaDias(p,-47),somaDias(p,-2),somaDias(p,60)]));
+  }
+  const diaUtil = iso => { const w=new Date(iso+"T12:00:00").getDay(); return w!==0&&w!==6&&!feriados(+iso.slice(0,4)).has(iso); };
+  const SEMANA=["dom","seg","ter","qua","qui","sex","sáb"];
+  const diaSem = iso => SEMANA[new Date(iso+"T12:00:00").getDay()]+" "+diaMes(iso);
+  function quintoDiaUtil(ym){ let d=ym+"-01", n=0; while(true){ if(diaUtil(d)&&++n===5) return d; d=somaDias(d,1); } }
+  const inicioCiclo = (o,iso) => { const dia=RENOVA_CHEQUE[o]; let [a,m]=iso.split("-").map(Number);
+    if(+iso.slice(8)<dia){ m--; if(!m){m=12;a--;} } return a+"-"+String(m).padStart(2,"0")+"-"+String(dia).padStart(2,"0"); };
+  // Itaú dia a dia até o salário: saldo de hoje + agendamentos + contas a pagar da previsão (com data)
+  function projecaoItau(ate){
+    const hj=hojeISO(), mov={}, add=(d,v)=>{ if(d<=hj) d=somaDias(hj,1); if(d<ate) mov[d]=(mov[d]||0)+v; };
+    const exts=new Set();
+    [mesAtual(),proxMes(mesAtual())].forEach((ym,i)=>{
+      const p=(dados.previsoes||{})[ym]; if(!p) return;
+      // contas em aberto do mês (as "fixas" já pagas ficam fora, como no "A pagar"). Do mês seguinte, antes do salário,
+      // só o que já está agendado no banco: o resto costuma ser pago com o salário
+      p.itens.forEach(x=>{
+        if(x.pago!=null||x.aPagar==null||!(+x.aPagar)||ehLinhaCheque(x)||x.origem==="cartao") return;
+        if(i===1&&!x.ext) return;
+        if(x.ext) exts.add(x.ext);
+        const d=/^\d{4}-\d{2}-\d{2}$/.test(x.data||"")?x.data:(i===0?fimDoMes(ym):null);
+        if(d) add(d,+x.aPagar);
+      });
+    });
+    dados.lancamentos.forEach(l=>{ if(l.origem==="itau"&&!l.ignorado&&l.data>hj&&!exts.has(chaveExt(l.hist,l.valor))) add(l.data,l.valor); });
+    let s=saldoContaApp(mesAtual()).v; const serie=[];
+    for(let d=somaDias(hj,1); d<ate; d=somaDias(d,1)){ s=cent(s+(mov[d]||0)); serie.push({d:d,s:s}); }
+    return {hoje:saldoContaApp(mesAtual()).v, serie:serie};
+  }
+  function estrategiaCheque(){
+    const hj=hojeISO(), sal=quintoDiaUtil(proxMes(mesAtual()));
+    const pj=projecaoItau(sal), falta=d=>{ const x=pj.serie.find(y=>y.d===d); return x?Math.max(0,-x.s):Math.max(0,-pj.hoje); };
+    const negs=pj.serie.filter(x=>x.s<0);
+    const tit='<div class="tit-secao" style="margin:0 0 6px"><h3>Cheque especial até o salário</h3></div>';
+    if(pj.hoje>=0&&!negs.length) return '<section class="bancos est-cq">'+tit+'<p class="sub" style="margin:0">Pela previsão, o Itaú não fica negativo até o salário ('+diaSem(sal)+'). Nada a fazer.</p></section>';
+    const NOME={itau:"Itaú",bb:"BB",santander:"Santander"};
+    const ini0=pj.hoje<0?hj:negs[0].d;
+    const proxRenova=(o,d)=>{ const r=inicioCiclo(o,d); const [a,m]=r.split("-").map(Number); return (m===12?a+1:a)+"-"+String(m===12?1:m+1).padStart(2,"0")+"-"+r.slice(8); };
+    // dias já usados no ciclo atual de cada banco
+    const usado0={};
+    ["itau","bb","santander"].forEach(o=>{ const s=o==="itau"?saldoContaApp(mesAtual()):saldoBanco(o); usado0[o+"|"+inicioCiclo(o,hj)]=usoCheque(o,s).usados; });
+    const usa=(u,o,d)=>u[o+"|"+inicioCiclo(o,d)]||0;
+    // 10º dia de quem fica negativo a partir de "ini" (o ciclo pode renovar no caminho); cobre no 10º dia ou no dia útil anterior
+    function prazo(u,o,ini){
+      const c={}; let d=ini;
+      for(let i=0;i<70;i++,d=somaDias(d,1)){ const k=inicioCiclo(o,d); if(c[k]==null) c[k]=usa(u,o,d); if(++c[k]>=DIAS_CHEQUE) break; }
+      let cb=d; while(!diaUtil(cb)&&cb>ini) cb=somaDias(cb,-1);
+      return {decimo:d, cobre:cb};
+    }
+    // marca os dias negativos de [de, ate) e conta os que passam dos 10 (com juros)
+    function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0;
+      for(let d=de; d<ate; d=somaDias(d,1)){ const k=o+"|"+inicioCiclo(o,d); v[k]=(v[k]||0)+1; if(v[k]>DIAS_CHEQUE) juros++; }
+      return {u:v, juros:juros}; }
+    const BANCOS=["itau","bb","santander"];
+    // procura a sequência de bancos com menos dias de juros (e menos trocas) até o salário
+    let melhor=null;
+    function busca(o,de,u,fases,juros){
+      if(fases.length>12) return;
+      if(melhor&&(juros>melhor.juros||(juros===melhor.juros&&fases.length>=melhor.fases.length))) return;
+      const p=prazo(u,o,de);
+      if(p.decimo>=sal){ const m=marca(u,o,de,sal); const j=juros+m.juros;
+        const fs=fases.concat([{o:o,de:de,ate:sal,salario:true}]);
+        if(!melhor||j<melhor.juros||(j===melhor.juros&&fs.length<melhor.fases.length)) melhor={juros:j,fases:fs}; return; }
+      let opc=[];
+      if(p.cobre>de) BANCOS.filter(x=>x!==o).forEach(x=>{ if(prazo(marca(u,o,de,p.cobre).u,x,p.cobre).cobre>p.cobre) opc.push({x:x,dia:p.cobre}); });
+      if(!opc.length){
+        // ninguém tem dias livres agora: fica negativo (com juros) até o 1º dia útil em que outro banco renovou
+        BANCOS.filter(x=>x!==o).forEach(x=>{
+          let r=proxRenova(x,p.cobre);
+          while(!diaUtil(r)) r=somaDias(r,1);
+          if(r<sal&&r>de) opc.push({x:x,dia:r});
+        });
+        if(!opc.length){ const m=marca(u,o,de,sal); const j=juros+m.juros;
+          const fs=fases.concat([{o:o,de:de,ate:sal,salario:true,juros:m.juros}]);
+          if(!melhor||j<melhor.juros) melhor={juros:j,fases:fs}; return; }
+      }
+      opc.forEach(c=>{ const m=marca(u,o,de,c.dia);
+        busca(c.x,c.dia,m.u,fases.concat([{o:o,de:de,ate:c.dia,decimo:p.decimo,prox:c.x,juros:m.juros}]),juros+m.juros); });
+    }
+    // começa no Itaú, ou já no 1º dia passa a dívida para outro banco (ex.: Santander com dias do ciclo que está acabando)
+    busca("itau",ini0,usado0,[],0);
+    ["bb","santander"].forEach(x=>busca(x,ini0,usado0,[{o:"itau",de:ini0,ate:ini0,decimo:ini0,prox:x,juros:0,inicio:true}],0));
+    // valores de cada Pix: a dívida total é o negativo do Itaú sem as transferências (elas só mudam a dívida de banco)
+    const maxFalta=(de,ate)=>{ let m=0; for(let d=de; d<ate; d=somaDias(d,1)) m=Math.max(m,falta(d)); return cent(m); };
+    const fases=melhor?melhor.fases:[]; let divida=0;
+    fases.forEach((f,i)=>{ if(f.salario) return;
+      const ateNx=fases[i+1]?fases[i+1].ate:sal, precisa=maxFalta(f.ate,ateNx), o=f.o, nx=f.prox;
+      if(o==="itau"){ f.zera=falta(f.ate); f.reforco=cent(Math.max(0,precisa-f.zera)); divida=precisa; }
+      else if(nx==="itau"){ f.zera=divida; f.reforco=0; divida=0; }
+      else { f.zera=divida; f.reforco=cent(Math.max(0,precisa-divida)); divida=Math.max(divida,precisa); }
+    });
+    const fundo=negs.length?negs.reduce((m,x)=>x.s<m.s?x:m,negs[0]):{d:hj,s:pj.hoje};
+    const bb=saldoBanco("bb");
+    const linhas=fases.map((f,i)=>{
+      const dias=difDias(f.ate,f.de);
+      if(f.inicio) return '<li>Em <b>'+diaSem(f.de)+'</b>, quando o Itaú ficaria negativo: Pix do <b>'+NOME[f.prox]+'</b> para o Itaú de ~R$ '+brl(cent(f.zera+f.reforco))+
+        ' (cobre o Itaú até a próxima troca). Assim o Itaú nem entra no cheque especial agora.</li>';
+      let txt='<b>'+NOME[f.o]+'</b> negativo de '+diaSem(f.de)+' a '+diaSem(somaDias(f.ate,-1))+' · '+dias+' dia'+(dias===1?"":"s")+
+        (dias>0&&inicioCiclo(f.o,f.de)!==inicioCiclo(f.o,somaDias(f.ate,-1))?' (o ciclo renova em '+diaMes(inicioCiclo(f.o,somaDias(f.ate,-1)))+' e zera a contagem)':'')+
+        (f.juros?' <span style="color:#C0392B">· '+f.juros+' com juros</span>':'');
+      if(f.salario) txt+='<br>Em <b>'+diaSem(sal)+'</b> o salário cai no BB'+(f.o==="bb"?' e zera o negativo.':': Pix do BB para o '+NOME[f.o]+' para zerar.');
+      else{
+        const mud=f.decimo<f.ate?' (passou do 10º dia, '+diaSem(f.decimo)+': nenhum banco tinha dias livres antes)':f.decimo!==f.ate?' (10º dia '+diaSem(f.decimo)+', fim de semana/feriado → cobre antes)':' (10º dia)';
+        txt+='<br>Cobrir em <b>'+diaSem(f.ate)+'</b>'+mud+': '+
+          (f.o==="itau"
+            ? 'Pix do <b>'+NOME[f.prox]+'</b> para o Itaú de ~R$ '+brl(cent(f.zera+f.reforco))+' (zera ~R$ '+brl(f.zera)+(f.reforco?' + R$ '+brl(f.reforco)+' para os gastos até a próxima troca':'')+')'
+            : f.prox==="itau"
+              ? 'Pix do <b>Itaú</b> para o '+NOME[f.o]+' de ~R$ '+brl(f.zera)+' (zera o '+NOME[f.o]+'; o Itaú volta ao negativo)'
+              : 'Pix do <b>'+NOME[f.prox]+'</b> para o '+NOME[f.o]+' de ~R$ '+brl(f.zera)+' (zera)'+(f.reforco?' e ~R$ '+brl(f.reforco)+' para o Itaú (gastos até a próxima troca)':''))+'.';
+      }
+      return '<li>'+txt+'</li>';
+    }).join("");
+    return '<section class="bancos est-cq">'+tit+
+      '<p class="sub" style="margin:0 0 8px">Salário no BB em <b>'+diaSem(sal)+'</b> (5º dia útil). Pela previsão, o Itaú fica negativo a partir de <b>'+diaSem(ini0)+
+      '</b> e chega a <b style="color:#C0392B">R$ '+brl(fundo.s)+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia; caindo em fim de semana ou feriado, no dia útil anterior.</p>'+
+      '<ol class="est-fases">'+linhas+'</ol>'+
+      (bb&&bb.v>0?'<p class="sub" style="margin:8px 0 0">O BB tem R$ '+brl(bb.v)+' em conta ('+diaMes(bb.data)+'). Se esse dinheiro estiver livre, um Pix do BB para o Itaú evita o cheque especial.</p>':'')+
+      '<p class="sub" style="margin:4px 0 0;font-size:12px">Valores estimados com o saldo de hoje, os agendamentos do banco e as contas em aberto da previsão deste mês (sem data: fim do mês). Contas do mês que vem antes do salário e receitas não entram. Confira se o limite de cada banco cobre o valor; os dias já usados no Santander dependem do saldo digitado.</p>'+
+    '</section>';
+  }
+
   // faixa do topo da Visão geral (mês atual): saldo hoje + a receber − a pagar = sobra prevista
   function faixaHoje(){
     if(ui.mes!==mesAtual()) return "";
     const p=dados.previsoes&&dados.previsoes[ui.mes], sc=saldoContaApp(ui.mes);
     const card=(rot,v,sub,cor,irO)=>'<div class="g-num'+(irO?' clic-card"'+ir(irO):'"')+'><span class="rot">'+rot+'</span>'+
       '<div class="v" style="color:'+cor+'">R$ '+brl(v)+'</div><span class="kpi-sub">'+sub+'</span></div>';
-    if(!p) return painelBancos()+'<section class="dash-geral dash-hoje um">'+
+    if(!p) return painelBancos()+estrategiaCheque()+'<section class="dash-geral dash-hoje um">'+
       card("Saldo em conta hoje",sc.v,"Itaú, pelos lançamentos até "+diaMes(sc.data),sc.v<0?"#C0392B":"var(--tinta)",{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
       '<p class="sub" style="margin:0;align-self:center">Crie a <a href="#" data-abrirprev="'+ui.mes+'">previsão do mês</a> para ver quanto sobra até o fim do mês.</p></section>';
     const t=totaisPrev(p,ui.mes), nAb=p.itens.filter(x=>x.aPagar!=null&&x.aPagar<0).length;
@@ -1477,7 +1611,7 @@
       card("+ A receber",t.receber+t.outras,"receitas e anotações em aberto","#1E8A5F",{conta:"prev",mes:ui.mes,alvo:"#pv-receitas",dica:"Ver as receitas esperadas"})+
       card("− A pagar",-t.aPagar,nAb+" conta"+(nAb===1?"":"s")+" em aberto até o fim do mês","var(--tinta)",{conta:"prev",mes:ui.mes,alvo:"#pv-itens",dica:"Ver as contas a pagar"})+
       card("= "+(t.resultado<0?"Falta no mês":"Sobra no mês"),t.resultado,"previsão para "+diaMes(fimDoMes(ui.mes)),t.resultado<0?"#C0392B":"#1E8A5F",{conta:"prev",mes:ui.mes,alvo:"#pv-resumo",dica:"Ver o cálculo na previsão do mês"})+
-    '</section>'+painelBancos();
+    '</section>'+painelBancos()+estrategiaCheque();
   }
 
   function renderDashboard(){
