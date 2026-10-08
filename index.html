@@ -1147,7 +1147,8 @@
   const CAT_EMPREST = "Empréstimo recebido";
   // realizado = já passou no banco (data até hoje, ou veio do extrato — compras do fim de semana vêm datadas no dia útil seguinte).
   // O resto é agendado: conta no saldo previsto, não no que entrou/gastou.
-  const realizado = l => !!l.confExtrato || l.data<=hojeISO();
+  // fatura do cartão já fechada/lançada pelo banco (parcela com data futura dentro do período da fatura também conta)
+  const realizado = l => !!l.confExtrato || !!l.confFatura || l.data<=hojeISO();
   // Pix recebido (PIX TRANSF com valor positivo) é entrada, mesmo que a regra do nome aponte para uma despesa
   const ehPixEntrada = (h,v) => v>0 && /^\s*PIX\s+TRANSF\b/i.test(h);
   const mesAtual = () => new Date().toISOString().slice(0,7);
@@ -2980,7 +2981,7 @@
       const k = l.data+"|"+l.valor.toFixed(2);
       const cand = livres.get(k)||[];
       const i = cand.findIndex(x=>parecido(x.hist,l.hist));
-      if(i>=0){ const x=cand.splice(i,1)[0]; x.confFatura=true; repetidos++; return; }
+      if(i>=0){ const x=cand.splice(i,1)[0]; x.confFatura=true; if(opts.fatura) x.fatura=opts.fatura; repetidos++; return; }
       // digitado/planilha: mesmo valor até 4 dias; senão o mais próximo até 35 dias (parcelas lançadas no dia 1º);
       // senão diferença de centavos (até R$ 0,15) até 35 dias (parcela arredondada na planilha)
       // na busca larga, o lançamento do app tem que estar dentro do período da fatura (± 5 dias)
@@ -2991,7 +2992,7 @@
         const x = digitados.splice(j,1)[0];
         if(x.hist!==l.hist && !x.obs) x.obs = x.hist;
         if(Math.abs(x.valor-l.valor)>=0.005){ x.obs=(x.obs?x.obs+" · ":"")+"valor da planilha "+brl(x.valor); x.valor=l.valor; }
-        x.hist = l.hist; x.data = l.data; x.doc = l.doc; x.origem = "cartao"; x.confFatura = true;
+        x.hist = l.hist; x.data = l.data; x.doc = l.doc; x.origem = "cartao"; x.confFatura = true; if(opts.fatura) x.fatura=opts.fatura;
         if(x.categoria==="Sem categoria"){ const c=classificar(l.hist,l.valor); x.categoria=c.categoria; }
         conferidos++; mesesTocados.add(l.data.slice(0,7)); return;
       }
@@ -3003,7 +3004,7 @@
       if(l.valor > 0 && c.categoria==="Sem categoria") c = {categoria:"Reembolso e estorno"};
       if(c.categoria!=="Sem categoria") prontos++;
       dados.lancamentos.push({id, data:l.data, hist:l.hist, valor:l.valor,
-        doc:l.doc, categoria:c.categoria, vinculo:"PF", obs:"", origem:"cartao", confFatura:true});
+        doc:l.doc, categoria:c.categoria, vinculo:"PF", obs:"", origem:"cartao", confFatura:true, ...(opts.fatura?{fatura:opts.fatura}:{})});
       idsUsados.add(id); novos++;
       mesesTocados.add(l.data.slice(0,7));
     });
@@ -3051,14 +3052,15 @@
       if(pm){ const k=+pm[1], n=+pm[2]; for(let g=0; data<=fechAnt&&g<40; g++) data=somaMeses(x.iso,g+1); hist+=" PARC "+String(k).padStart(2,"0")+"/"+String(n).padStart(2,"0"); }
       if(data>fech) data=fech;
       return {data:data, hist:hist, valor:-Math.round(x.v*100)/100, doc:doc}; });
-    const rc=conciliarCartao(lancs,"itau",{largo:true, de:somaDias(fechAnt,-5), ate:somaDias(fech,5)});
+    const rc=conciliarCartao(lancs,"itau",{largo:true, de:somaDias(fechAnt,-5), ate:somaDias(fech,5), fatura:venc.slice(0,7)});
     // resumo da fatura por cartão
     dados.faturasCartao=dados.faturasCartao||{};
     const fa=dados.faturasCartao.itau;
-    if(!fa||(fa.vencimento||"")<=venc) dados.faturasCartao.itau={final:fin, vencimento:venc, fechamento:fech, total:total!=null?total:-lancs.reduce((s,x)=>s+x.valor,0), paga:/paga/i.test(titulo)};
+    const infoF={final:fin, vencimento:venc, fechamento:fech, total:total!=null?total:-lancs.reduce((s,x)=>s+x.valor,0), paga:/paga/i.test(titulo), aberta:/aberta/i.test(titulo)};
+    dados.faturasCartao["itau:"+venc.slice(0,7)]=infoF;
+    if(!fa||(fa.vencimento||"")<=venc) dados.faturasCartao.itau=infoF;
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
-    if(rc.meses.length){ ui.mes=rc.meses.sort().pop(); ui.view="mes"; }
-    ui.conta="cartao"; ui.cartao="itau";
+    ui.conta="cartao"; ui.cartao="itau"; ui.mes=venc.slice(0,7); ui.view="mes";
     salvar(); render();
     const resumo={titulo:titulo||nomeArq, venc:venc, itens:lancs.length, total:-lancs.reduce((s,x)=>s+x.valor,0), novos:rc.novos, conferidos:rc.conferidos, repetidos:rc.repetidos, fech:fech};
     if(conciliacaoLote) conciliacaoLote.faturas.push(resumo);
@@ -3322,12 +3324,21 @@
     return dados.lancamentos;
   }
   const nomeOrigem = l => NOMES_ORIGEM[l.origem]||"Outro";
-  const mesesComDados = () => [...new Set(lancDaConta().map(l=>l.data.slice(0,7)))].sort();
+  /* Nos cartões, o mês é o da FATURA (vencimento), não o da compra: a fatura de outubro tem as compras de ~28/08 a ~28/09.
+     Lançamentos importados de fatura guardam l.fatura; os outros: fecha dia 28 (Infinite) / 29 (Altus), vence no mês seguinte. */
+  function faturaDe(l){
+    if(l.fatura) return l.fatura;
+    const fecha=famCartao(l)==="bb"?29:28, [a,m,d]=l.data.split("-").map(Number);
+    let mm=m+(d<=fecha?1:2), aa=a; while(mm>12){ mm-=12; aa++; }
+    return aa+"-"+String(mm).padStart(2,"0");
+  }
+  const mesRef = l => ui.conta==="cartao" ? faturaDe(l) : l.data.slice(0,7);
+  const mesesComDados = () => [...new Set(lancDaConta().map(mesRef))].sort();
 
   function doMes(){
     const base = lancDaConta();
     return ui.mes==="tudo" ? base.slice()
-         : base.filter(l=>l.data.slice(0,7)===ui.mes);
+         : base.filter(l=>mesRef(l)===ui.mes);
   }
   function filtrados(){
     const b=ui.busca.trim().toLowerCase();
@@ -5682,8 +5693,11 @@
       nota=partes.join(" ");
 
     } else nota = ui.conta==="cartao"
-      ? (()=>{ const k=ui.cartao||"itau", f=(dados.faturasCartao||{})[k]||(k==="bb"&&dados.faturaFechada&&/5698|4691/.test(dados.faturaFechada.cartao||"")?{vencimento:dados.faturaFechada.vencimento,total:dados.faturaFechada.total}:null);
-          return NOMES_CARTAO[k]+" — compras e créditos na data da compra (parcela k: data da compra + k−1 meses)."+
+      ? (()=>{ const k=ui.cartao||"itau", fm=ui.mes&&ui.mes!=="tudo"?(dados.faturasCartao||{})[k+":"+ui.mes]:null;
+          if(fm) return NOMES_CARTAO[k]+" — fatura de "+rotuloMes(ui.mes)+": vencimento "+diaMes(fm.vencimento)+" · R$ "+brl(fm.total)+(fm.paga?" (paga)":fm.aberta?" (em aberto, parcial)":"")+
+            ". Compras de "+diaMes(somaDias(fm.fechamento,-30))+" a "+diaMes(fm.fechamento)+"; parcela na data da compra dentro desse período.";
+          const f=(dados.faturasCartao||{})[k]||(k==="bb"&&dados.faturaFechada&&/5698|4691/.test(dados.faturaFechada.cartao||"")?{vencimento:dados.faturaFechada.vencimento,total:dados.faturaFechada.total}:null);
+          return NOMES_CARTAO[k]+" — os meses são os da fatura (vencimento)."+
             (f&&f.total!=null?" Última fatura: R$ "+brl(f.total)+(f.vencimento?", vencimento "+diaMes(f.vencimento):"")+(f.paga?" (paga)":"")+".":""); })()
       : "Como no banco: a fatura do cartão aparece como um débito único e as compras do cartão não entram.";
 
