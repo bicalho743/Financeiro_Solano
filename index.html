@@ -1472,7 +1472,7 @@
     else if(u.neg){
       cor=u.resta<=2?"#C0392B":"#9A5B07";
       txt+=u.vence?" · vence "+diaMes(u.vence)+(u.resta===0?" (hoje)":u.resta===1?" (amanhã)":""):" · dá até a renovação";
-    } else if(u.usados){ cor="#9A5B07"; txt+=" · último "+diaMes(u.ultimo); }
+    } else if(u.usados){ cor="#9A5B07"; txt+="· último "+(u.ultimo?diaMes(u.ultimo):"informado à mão"); }
     txt+=" · renova "+diaMes(u.renova);
     return '<span class="bc-cq" style="color:'+cor+'" title="Ciclo de '+diaMes(u.ini)+' a '+diaMes(somaDias(u.renova,-1))+'">'+txt+'</span>';
   }
