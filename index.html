@@ -2637,9 +2637,36 @@
     return 0;
   }
 
+  /* Extrato da conta Itaú em PDF (app do Itaú: "extrato conta / lançamentos").
+     Cada linha: "DD/MM/AAAA DESCRIÇÃO [-]N,NN" ou "DD/MM/AAAA SALDO DO DIA N,NN" (saldo no fim daquele dia).
+     O SALDO DO DIA de antes do "período de visualização" é o saldo anterior.
+     Monta a mesma tabela do extrato em Excel (data | lançamentos | valor | saldo) e usa o mesmo leitor. */
+  function lerExtratoItauPDF(paginas,agruparLinhas,textoTotal){
+    const per=textoTotal.match(/per[íi]odo de visualiza[çc][ãa]o:?\s*(\d{2}\/\d{2}\/\d{4})/i);
+    const iniPer=per?per[1].split("/").reverse().join("-"):"";
+    const NUM="[-−–]?\\s?\\d{1,3}(?:\\.\\d{3})*,\\d{2}";
+    const RE=new RegExp("^(\\d{2}\\/\\d{2}\\/\\d{4})\\s+(.+?)\\s+("+NUM+")(?:\\s+("+NUM+"))?$");
+    const num=s=>s?s.replace(/[−–]/,"-").replace(/\s/g,""):"";
+    const linhas=[["data","lançamentos","valor (R$)","saldo (R$)"]];
+    paginas.forEach(itens=>agruparLinhas(itens).forEach(l=>{
+      const t=celTexto(l.txt);
+      if(/^lan[çc]amentos futuros|^sa[íi]das futuras/i.test(t)){ linhas.push(["lançamentos futuros"]); return; }
+      const m=t.match(RE); if(!m) return;
+      let desc=m[2].trim();
+      if(/^SALDO\b/i.test(desc)){
+        const iso=m[1].split("/").reverse().join("-");
+        if(/^SALDO DO DIA$/i.test(desc) && iniPer && iso<iniPer) desc="SALDO ANTERIOR";
+        linhas.push([m[1],desc,"",num(m[4]||m[3])]); return;
+      }
+      linhas.push([m[1],desc,num(m[3]),num(m[4])]);
+    }));
+    if(linhas.length<2) return {erro:"Não encontrei lançamentos no extrato em PDF. Use o PDF baixado do app do Itaú, sem alterar."};
+    return linhasParaItens(linhas);
+  }
+
   /* ================= importação PDF da fatura do cartão — sem API ================= */
   async function importarFaturaPDF(arq){
-    avisar("Lendo a fatura…");
+    avisar("Lendo o PDF…");
 
     // configurar worker do PDF.js
     if(typeof pdfjsLib==="undefined"){
@@ -2693,6 +2720,10 @@
     const textoTotal = paginas.map(it=>agruparLinhas(it).map(l=>l.txt).join("\n")).join("\n");
     // demonstrativo do financiamento imobiliário (Itaú: "Demonstrativo Descritivo de Crédito")
     if(/Demonstrativo Descritivo de Cr[ée]dito|Evolu[çc][ãa]o de Saldo Devedor/i.test(textoTotal)){ importarFinanciamento(textoTotal); return; }
+    // extrato da conta corrente do Itaú em PDF (app do Itaú: "extrato conta / lançamentos")
+    if(/extrato conta\s*\/\s*lan[çc]amentos/i.test(textoTotal) && /SALDO DO DIA/i.test(textoTotal)){
+      concluirImport(lerExtratoItauPDF(paginas,agruparLinhas,textoTotal),"itau",textoTotal); return;
+    }
     const dataBR = s => s ? s.split("/").reverse().join("-") : "";
     const numBR  = s => parseFloat(String(s).replace(/\./g,"").replace(",","."));
 
