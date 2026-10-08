@@ -548,7 +548,15 @@
   .bc-in{font-family:var(--serif);font-size:20px;max-width:150px;padding:2px 6px}
   .bc-cq{display:block;font-weight:600;margin-top:2px}
   .bc-aj{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--cinza);margin-top:4px}.bc-aj input{width:56px;padding:2px 6px}
-  .est-fases{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:14px;line-height:1.45}
+  .est-card{display:flex;align-items:center;gap:28px;padding:12px 24px}
+  .est-card .est-l{display:flex;flex-direction:column;gap:2px}
+  .est-card .est-ver{margin-left:auto;font-size:13px;color:var(--cinza);white-space:nowrap}
+  .est-tab{overflow-x:auto}.est-tab table{border-collapse:collapse;width:100%;font-size:13px}
+  .est-tab th,.est-tab td{padding:6px 8px;border-bottom:1px solid var(--linha);text-align:left;white-space:nowrap}
+  .est-tab .n{text-align:right;font-variant-numeric:tabular-nums}.est-tab .o{white-space:normal;color:var(--cinza);font-size:12px;min-width:160px}
+  .est-tab tfoot td{border-bottom:none}.est-passou{opacity:.45}
+  #modalCaixa:has(.est-tab){max-width:860px;width:calc(100vw - 32px)}
+  @media (max-width:860px){.est-card{flex-wrap:wrap;gap:8px 18px;padding:12px 16px}.est-card .est-ver{margin-left:0}}
   @media (max-width:860px){.bc-grid{grid-template-columns:1fr 1fr;gap:6px 18px}.bc-t{border-left:none;padding-left:0}.bancos{padding:12px 16px}}
   .cheque-uso{margin:10px 0 0;padding:9px 14px;background:#FBF3E6;border-left:3px solid #E08E0B;font-size:13.5px;border-radius:2px}
   .cheque-uso b{font-weight:600;color:#9A5B07}
@@ -884,7 +892,7 @@
         </div>
       </div>
       <div id="barraUsuario"></div>
-      <input type="file" id="arqCsv" accept=".csv,.txt,.ofx,.xlsx,.xls,.xlsm,.pdf" hidden>
+      <input type="file" id="arqCsv" accept=".csv,.txt,.ofx,.xlsx,.xls,.xlsm,.excel,.pdf" hidden>
       <input type="file" id="arqPdf" accept=".pdf,application/pdf" hidden>
       <input type="file" id="arqJson" accept=".json,application/json" hidden>
     </div>
@@ -1414,14 +1422,17 @@
   /* Cheque especial: 10 dias sem juros por ciclo em cada banco. O ciclo zera no dia de renovação
      (Itaú dia 6, BB dia 1, Santander dia 15). Conta os dias do ciclo que terminaram com saldo negativo. */
   const DIAS_CHEQUE=10, RENOVA_CHEQUE={itau:6, bb:1, santander:15};
-  const somaDias=(iso,n)=>{ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+  const _sd={};
+  const somaDias=(iso,n)=>{ const ck=iso+"|"+n; if(_sd[ck]) return _sd[ck]; const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return _sd[ck]=d.toISOString().slice(0,10); };
   const difDias=(a,b)=>Math.round((new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5);
   function saldoItauEm(D){ const ym=D.slice(0,7); return cent(saldoInicio("itau",ym).v+movConta("itau",ym+"-01",somaDias(D,1))); }
   // início do ciclo atual e data da próxima renovação. O ciclo sempre começa em dia útil:
   // se o dia de renovação cai em fim de semana/feriado, o ciclo novo começa no próximo dia útil (o anterior vai até a véspera)
   function renovaEm(o,a,m){ if(m<1){m+=12;a--;} if(m>12){m-=12;a++;}
     let d=a+"-"+String(m).padStart(2,"0")+"-"+String(RENOVA_CHEQUE[o]).padStart(2,"0"); while(!diaUtil(d)) d=somaDias(d,1); return d; }
-  function inicioCiclo(o,iso){ const [a,m]=iso.split("-").map(Number);
+  const _ic={};
+  function inicioCiclo(o,iso){ const ck=o+iso; return _ic[ck]||(_ic[ck]=inicioCiclo0(o,iso)); }
+  function inicioCiclo0(o,iso){ const [a,m]=iso.split("-").map(Number);
     for(let k=1;k>=-2;k--){ const r=renovaEm(o,a,m+k); if(r<=iso) return r; } return renovaEm(o,a,m-2); }
   function cicloCheque(o){
     const ini=inicioCiclo(o,hojeISO()), [a,m]=ini.split("-").map(Number);
@@ -1478,13 +1489,16 @@
   function pascoa(a){ const b=a%19,c=Math.floor(a/100),d=a%100,e=Math.floor(c/4),f=c%4,g=Math.floor((c+8)/25),h=Math.floor((c-g+1)/3),
     i=(19*b+c-e-h+15)%30,k=Math.floor(d/4),l=d%4,m=(32+2*f+2*k-i-l)%7,n=Math.floor((b+11*i+22*m)/451),mes=Math.floor((i+m-7*n+114)/31),dia=((i+m-7*n+114)%31)+1;
     return a+"-"+String(mes).padStart(2,"0")+"-"+String(dia).padStart(2,"0"); }
+  const _fer={};
   function feriados(a){
+    if(_fer[a]) return _fer[a];
     const p=pascoa(a);
     // nacionais + Belo Horizonte (Assunção 15/08, Imaculada Conceição 08/12); Carnaval e Sexta-feira Santa: bancos fechados
-    return new Set(["01-01","04-21","05-01","09-07","10-12","11-02","11-15","11-20","12-25","08-15","12-08"].map(x=>a+"-"+x)
+    return _fer[a]=new Set(["01-01","04-21","05-01","09-07","10-12","11-02","11-15","11-20","12-25","08-15","12-08"].map(x=>a+"-"+x)
       .concat([somaDias(p,-48),somaDias(p,-47),somaDias(p,-2),somaDias(p,60)]));
   }
-  const diaUtil = iso => { const w=new Date(iso+"T12:00:00").getDay(); return w!==0&&w!==6&&!feriados(+iso.slice(0,4)).has(iso); };
+  const _du={};
+  const diaUtil = iso => { if(iso in _du) return _du[iso]; const w=new Date(iso+"T12:00:00").getDay(); return _du[iso]=(w!==0&&w!==6&&!feriados(+iso.slice(0,4)).has(iso)); };
   const SEMANA=["dom","seg","ter","qua","qui","sex","sáb"];
   const diaSem = iso => SEMANA[new Date(iso+"T12:00:00").getDay()]+" "+diaMes(iso);
   function quintoDiaUtil(ym){ let d=ym+"-01", n=0; while(true){ if(diaUtil(d)&&++n===5) return d; d=somaDias(d,1); } }
@@ -1509,14 +1523,30 @@
     for(let d=somaDias(hj,1); d<ate; d=somaDias(d,1)){ s=cent(s+(mov[d]||0)); serie.push({d:d,s:s}); }
     return {hoje:saldoContaApp(mesAtual()).v, serie:serie};
   }
+  let cacheEst={k:null,html:""};
   function estrategiaCheque(){
     const hj=hojeISO(), sal=quintoDiaUtil(proxMes(mesAtual()));
-    const pj=projecaoItau(sal), falta=d=>{ const x=pj.serie.find(y=>y.d===d); return x?Math.max(0,-x.s):Math.max(0,-pj.hoje); };
-    const negs=pj.serie.filter(x=>x.s<0);
-    const tit='<div class="tit-secao" style="margin:0 0 6px"><h3>Cheque especial até o salário</h3></div>';
-    if(pj.hoje>=0&&!negs.length) return '<section class="bancos est-cq">'+tit+'<p class="sub" style="margin:0">Pela previsão, o Itaú não fica negativo até o salário ('+diaSem(sal)+'). Nada a fazer.</p></section>';
+    const pj=projecaoItau(sal);
+    const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.livreAte,
+      ["itau","bb","santander"].map(o=>usoCheque(o,o==="itau"?saldoContaApp(mesAtual()):saldoBanco(o)).usados)]);
+    if(cacheEst.k!==kc) cacheEst={k:kc,r:montaEstrategia(hj,sal,pj)};
+    return cacheEst.r.card;
+  }
+  function detalheEstrategia(){ estrategiaCheque(); return cacheEst.r.detalhe; }
+  function montaEstrategia(hj,sal,pj){
+    // dívida que já está em outro banco (ex.: Pix do BB para o Itaú usando o limite do BB): faz parte do total a carregar até o salário
+    const dev={bb:0,santander:0}; ["bb","santander"].forEach(o=>{ const x=saldoBanco(o); if(x&&x.v<0) dev[o]=-x.v; });
+    const devOut=cent(dev.bb+dev.santander);
+    const falta=d=>{ const x=pj.serie.find(y=>y.d===d); return Math.max(0,cent(devOut-(x?x.s:pj.hoje))); };
+    const negs=pj.serie.filter(x=>x.s-devOut<0);
+    const dono=dev.bb||dev.santander?(dev.bb>=dev.santander?"bb":"santander"):null;
+    if(pj.hoje-devOut>=0&&!negs.length) return {card:'<section class="bancos est-card"><div class="est-l"><span class="bc-n">10 dias sem juros</span>'+
+      '<span class="kpi-sub">Pela previsão, nenhuma conta fica negativa até o salário ('+diaSem(sal)+').</span></div></section>', detalhe:""};
     const NOME={itau:"Itaú",bb:"BB",santander:"Santander"};
-    const ini0=pj.hoje<0?hj:negs[0].d;
+    // hoje já conta nos dias usados (usoCheque): quem está negativo hoje segue a partir de amanhã
+    const ini0=(dono||pj.hoje<0)?hj:negs[0].d;
+    // desde quando o banco que carrega a dívida está negativo
+    const desde=o=>{ const sd=(dados.saldosDia||{})[o]||{}; let d=hj; for(let i=0;i<40;i++){ const p=somaDias(d,-1), ks=Object.keys(sd).filter(k=>k<=p).sort(), v=ks.length?+sd[ks[ks.length-1]]:null; if(v==null||v>=0) break; d=p; } return d; };
     const proxRenova=(o,d)=>{ const r=inicioCiclo(o,d), [a,m]=r.split("-").map(Number); let n=renovaEm(o,a,m+1); if(n<=r) n=renovaEm(o,a,m+2); return n; };
     // dias já usados no ciclo atual de cada banco
     const usado0={};
@@ -1534,37 +1564,49 @@
     }
     // marca os dias negativos de [de, ate) e conta os que passam dos 10 (com juros)
     function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0;
-      for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=o+"|"+inicioCiclo(o,d); v[k]=(v[k]||0)+1; if(v[k]>DIAS_CHEQUE) juros++; }
+      // regra: cobrir NO 10º dia — o banco pode ficar negativo no máximo 9 dias do ciclo; do 10º em diante conta como juros
+      for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=o+"|"+inicioCiclo(o,d); v[k]=(v[k]||0)+1; if(v[k]>=DIAS_CHEQUE) juros++; }
       return {u:v, juros:juros}; }
     const BANCOS=["itau","bb","santander"];
-    // procura a sequência de bancos com menos dias de juros (e menos trocas) até o salário
-    let melhor=null;
-    function busca(o,de,u,fases,juros){
-      if(fases.length>12) return;
-      if(melhor&&(juros>melhor.juros||(juros===melhor.juros&&fases.length>=melhor.fases.length))) return;
-      const p=prazo(u,o,de);
-      if(p.decimo>=sal){ const m=marca(u,o,de,sal); const j=juros+m.juros;
-        const fs=fases.concat([{o:o,de:de,ate:sal,salario:true}]);
-        if(!melhor||j<melhor.juros||(j===melhor.juros&&fs.length<melhor.fases.length)) melhor={juros:j,fases:fs}; return; }
-      let opc=[];
-      if(p.cobre>de) BANCOS.filter(x=>x!==o).forEach(x=>{ if(prazo(marca(u,o,de,p.cobre).u,x,p.cobre).cobre>p.cobre) opc.push({x:x,dia:p.cobre}); });
-      if(!opc.length){
-        // ninguém tem dias livres agora: fica negativo (com juros) até o 1º dia útil em que outro banco renovou
-        BANCOS.filter(x=>x!==o).forEach(x=>{
-          let r=proxRenova(x,p.cobre);
-          while(!diaUtil(r)) r=somaDias(r,1);
-          if(r<sal&&r>de) opc.push({x:x,dia:r});
-        });
-        if(!opc.length){ const m=marca(u,o,de,sal); const j=juros+m.juros;
-          const fs=fases.concat([{o:o,de:de,ate:sal,salario:true,juros:m.juros}]);
-          if(!melhor||j<melhor.juros) melhor={juros:j,fases:fs}; return; }
+    // procura a sequência de bancos com menos dias de juros (e menos trocas) até o salário.
+    // Troca só em dia útil; a cada estado (banco, dia, dias usados) guarda o melhor resultado.
+    const memo=new Map(), melhorQue=(a,b)=>!b||a.juros<b.juros||(a.juros===b.juros&&a.fases.length<b.fases.length);
+    function resolve(o,de,u){
+      // só importam os dias usados nos ciclos que ainda estão valendo a partir de "de"
+      const k=o+"|"+de+"|"+BANCOS.map(x=>{ const c0=inicioCiclo(x,de); return Object.keys(u).filter(y=>y.startsWith(x+"|")&&y.slice(x.length+1)>=c0&&u[y]).sort().map(y=>y.slice(x.length+1)+"="+u[y]).join(";"); }).join("/");
+      if(memo.has(k)) return memo.get(k);
+      const p=prazo(u,o,de), mFim=marca(u,o,de,sal);
+      let best={juros:mFim.juros, fases:[{o:o,de:de,ate:sal,salario:true,juros:mFim.juros,decimo:p.decimo}]};
+      if(mFim.juros>0){
+        // até quando vale a pena esperar para trocar: o 10º dia deste banco ou o 1º dia útil de renovação de outro banco
+        let L=p.decimo; BANCOS.forEach(x=>{ if(x!==o){ const r=proxRenova(x,de); if(r>L) L=r; } });
+        for(let c=somaDias(de,1); c<sal&&c<=L; c=somaDias(c,1)){
+          if(!diaUtil(c)) continue;
+          const m=marca(u,o,de,c);
+          if(m.juros>best.juros) break;
+          BANCOS.forEach(x=>{
+            if(x===o) return;
+            const px=prazo(m.u,x,c); if(px.cobre<=c&&px.decimo<sal) return;
+            const r=resolve(x,c,m.u), cand={juros:m.juros+r.juros, fases:[{o:o,de:de,ate:c,decimo:p.decimo,prox:x,juros:m.juros}].concat(r.fases)};
+            if(melhorQue(cand,best)) best=cand;
+          });
+        }
       }
-      opc.forEach(c=>{ const m=marca(u,o,de,c.dia);
-        busca(c.x,c.dia,m.u,fases.concat([{o:o,de:de,ate:c.dia,decimo:p.decimo,prox:c.x,juros:m.juros}]),juros+m.juros); });
+      memo.set(k,best); return best;
     }
-    // começa no Itaú, ou já no 1º dia passa a dívida para outro banco (ex.: Santander com dias do ciclo que está acabando)
-    busca("itau",ini0,usado0,[],0);
-    ["bb","santander"].forEach(x=>busca(x,ini0,usado0,[{o:"itau",de:ini0,ate:ini0,decimo:ini0,prox:x,juros:0,inicio:true}],0));
+    // a busca começa em hoje se alguém já está negativo: tira o dia de hoje da contagem (ele é contado de novo)
+    const uIni=Object.assign({},usado0), hojeNeg=dono||(pj.hoje<0?"itau":null);
+    if(hojeNeg){ const k=hojeNeg+"|"+inicioCiclo(hojeNeg,hj); uIni[k]=Math.max(0,(uIni[k]||0)-1); }
+    let melhor=null;
+    if(dono) melhor=resolve(dono,ini0,uIni);
+    else {
+      // começa no Itaú, ou já no 1º dia passa a dívida para outro banco
+      melhor=resolve("itau",ini0,uIni);
+      if(diaUtil(ini0)) ["bb","santander"].forEach(x=>{ const r=resolve(x,ini0,uIni);
+        const cand={juros:r.juros, fases:[{o:"itau",de:ini0,ate:ini0,decimo:ini0,prox:x,juros:0,inicio:true}].concat(r.fases)};
+        if(cand.juros<melhor.juros) melhor=cand; });
+    }
+    if(melhor&&dono) melhor.fases[0].desde=desde(dono);
     // valores de cada Pix: a dívida total é o negativo do Itaú sem as transferências (elas só mudam a dívida de banco)
     const maxFalta=(de,ate)=>{ let m=0; for(let d=de; d<ate; d=somaDias(d,1)) m=Math.max(m,falta(d)); return cent(m); };
     // IOF do cheque especial (pessoa física): 0,0082% ao dia sobre o saldo devedor + 0,38% adicional sobre o valor usado.
@@ -1572,10 +1614,10 @@
     const IOF_DIA=0.000082, IOF_ADIC=0.0038;
     function iofFase(f,carga){
       let soma=0, max=0;
-      for(let d=f.de; d<f.ate; d=somaDias(d,1)){ if(!conta(f.o,d)) continue; const v=f.o==="itau"?falta(d):carga; soma+=v; max=Math.max(max,v); }
+      for(let d=f.desde||f.de; d<f.ate; d=somaDias(d,1)){ if(!conta(f.o,d)) continue; const v=f.o==="itau"?falta(d):carga; soma+=v; max=Math.max(max,v); }
       return cent(max*IOF_ADIC+soma*IOF_DIA);
     }
-    const fases=melhor?melhor.fases:[]; let divida=0;
+    const fases=melhor?melhor.fases:[]; let divida=dono?dev[dono]:0;
     fases.forEach((f,i)=>{
       f.iof=f.inicio?0:iofFase(f,divida);
       if(f.salario){ f.zera=cent((f.o==="itau"?falta(somaDias(sal,-1)):divida)+f.iof); return; }
@@ -1585,38 +1627,48 @@
       else { f.zera=cent(divida+f.iof); f.reforco=cent(Math.max(0,precisa-divida)); divida=cent(Math.max(divida,precisa)+f.iof); }
     });
     const iofTotal=cent(fases.reduce((t,f)=>t+(f.iof||0),0));
-    const fundo=negs.length?negs.reduce((m,x)=>x.s<m.s?x:m,negs[0]):{d:hj,s:pj.hoje};
+    const fundo=negs.length?(x=>({d:x.d,s:cent(x.s-devOut)}))(negs.reduce((m,x)=>x.s<m.s?x:m,negs[0])):{d:hj,s:cent(pj.hoje-devOut)};
     const bb=saldoBanco("bb");
-    const linhas=fases.map((f,i)=>{
-      const dias=difDias(f.ate,f.de);
-      if(f.inicio) return '<li>Em <b>'+diaSem(f.de)+'</b>, quando o Itaú ficaria negativo: Pix do <b>'+NOME[f.prox]+'</b> para o Itaú de ~R$ '+brl(cent(f.zera+f.reforco))+
-        ' (cobre o Itaú até a próxima troca). Assim o Itaú nem entra no cheque especial agora.</li>';
-      let nLiv=0; for(let d=f.de; d<f.ate; d=somaDias(d,1)) if(!conta(f.o,d)) nLiv++;
-      const negDe=(()=>{ let d=f.de; while(d<f.ate&&!conta(f.o,d)) d=somaDias(d,1); return d; })();
-      let txt=(nLiv?'<b>'+NOME[f.o]+'</b> cobre o Itaú com o saldo livre de '+diaSem(f.de)+' a '+diaSem(somaDias(negDe,-1))+(negDe<f.ate?'; depois fica negativo de '+diaSem(negDe)+' a '+diaSem(somaDias(f.ate,-1))+' · '+difDias(f.ate,negDe)+' dia'+(difDias(f.ate,negDe)===1?"":"s"):''):
-        '<b>'+NOME[f.o]+'</b> negativo de '+diaSem(f.de)+' a '+diaSem(somaDias(f.ate,-1))+' · '+dias+' dia'+(dias===1?"":"s"))+
-        (dias>0&&inicioCiclo(f.o,f.de)!==inicioCiclo(f.o,somaDias(f.ate,-1))?' (o ciclo renova em '+diaMes(inicioCiclo(f.o,somaDias(f.ate,-1)))+' e zera a contagem)':'')+
-        (f.juros?' <span style="color:#C0392B">· '+f.juros+' com juros</span>':'');
-      const iofTxt=f.iof?' — inclui ~R$ '+brl(f.iof)+' de IOF':'';
-      if(f.salario) txt+='<br>Em <b>'+diaSem(sal)+'</b> o salário cai no BB'+(f.o==="bb"?' e zera o negativo (~R$ '+brl(f.zera)+iofTxt+').':': Pix do BB para o '+NOME[f.o]+' de ~R$ '+brl(f.zera)+' para zerar'+iofTxt+'.');
-      else{
-        const mud=f.decimo<f.ate?' (passou do 10º dia, '+diaSem(f.decimo)+': nenhum banco tinha dias livres antes)':f.decimo!==f.ate?' (10º dia '+diaSem(f.decimo)+', fim de semana/feriado → cobre antes)':' (10º dia)';
-        txt+='<br>Cobrir em <b>'+diaSem(f.ate)+'</b>'+mud+': '+
-          (f.o==="itau"
-            ? 'Pix do <b>'+NOME[f.prox]+'</b> para o Itaú de ~R$ '+brl(cent(f.zera+f.reforco))+' (zera ~R$ '+brl(f.zera)+iofTxt+(f.reforco?'; + R$ '+brl(f.reforco)+' para os gastos até a próxima troca':'')+')'
-            : f.prox==="itau"
-              ? 'Pix do <b>Itaú</b> para o '+NOME[f.o]+' de ~R$ '+brl(f.zera)+' (zera o '+NOME[f.o]+iofTxt+'; o Itaú volta ao negativo)'
-              : 'Pix do <b>'+NOME[f.prox]+'</b> para o '+NOME[f.o]+' de ~R$ '+brl(f.zera)+' (zera'+iofTxt+')'+(f.reforco?' e ~R$ '+brl(f.reforco)+' para o Itaú (gastos até a próxima troca)':''))+'.';
+    // transferências: data, de → para, valor do Pix, IOF, total
+    const tr=[];
+    fases.forEach(f=>{
+      if(f.inicio){ tr.push({d:f.de, de:f.prox, para:"itau", v:cent(f.zera+f.reforco), iof:0, obs:"Itaú não entra no cheque especial"}); return; }
+      let obs=f.juros?f.juros+" dia"+(f.juros===1?"":"s")+" de juros no "+NOME[f.o]:"";
+      if(f.salario){
+        tr.push({d:sal, de:"sal", para:f.o, v:cent(f.zera-f.iof), iof:f.iof, obs:("salário cai no BB"+(f.o==="bb"?" e zera o negativo":"; Pix do BB para zerar o "+NOME[f.o]))+(obs?" · "+obs:"")});
+        return;
       }
-      return '<li>'+txt+'</li>';
-    }).join("");
-    return '<section class="bancos est-cq">'+tit+
-      '<p class="sub" style="margin:0 0 8px">Salário no BB em <b>'+diaSem(sal)+'</b> (5º dia útil). Pela previsão, o Itaú fica negativo a partir de <b>'+diaSem(ini0)+
-      '</b> e chega a <b style="color:#C0392B">R$ '+brl(fundo.s)+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia; caindo em fim de semana ou feriado, no dia útil anterior. IOF estimado no período: <b>R$ '+brl(iofTotal)+'</b> (já somado nos Pix).</p>'+
-      '<ol class="est-fases">'+linhas+'</ol>'+
+      const reg=f.decimo===f.ate?"10º dia":f.decimo<f.ate?"passa do 10º dia":"10º dia "+diaMes(f.decimo)+(difDias(f.decimo,f.ate)<=3?" (fim de semana/feriado)":"");
+      obs=reg+(obs?" · "+obs:"");
+      if(f.o==="itau") tr.push({d:f.ate, de:f.prox, para:"itau", v:cent(f.zera-f.iof+f.reforco), iof:f.iof, obs:obs+(f.reforco?" · inclui R$ "+brl(f.reforco)+" para gastos":"")});
+      else {
+        tr.push({d:f.ate, de:f.prox, para:f.o, v:cent(f.zera-f.iof), iof:f.iof, obs:obs+(f.prox==="itau"?" · Itaú volta ao negativo":"")});
+        if(f.reforco) tr.push({d:f.ate, de:f.prox, para:"itau", v:f.reforco, iof:0, obs:"gastos do Itaú até a próxima troca"});
+      }
+    });
+    const jurosTot=fases.reduce((t,f)=>t+(f.juros||0),0);
+    const prox=tr.find(t=>t.de!=="sal"&&t.d>=hj);
+    const nomeDe=t=>t.de==="sal"?"Salário":NOME[t.de];
+    const card='<section class="bancos est-card clic-card" data-abrir-est="1" role="button" tabindex="0" title="Ver a estratégia completa">'+
+      '<div class="est-l"><span class="bc-n">10 dias sem juros</span>'+
+        (prox?'<b>'+diaSem(prox.d)+' · '+nomeDe(prox)+' → '+NOME[prox.para]+' · R$ '+brl(cent(prox.v+prox.iof))+'</b><span class="kpi-sub">próximo Pix</span>'
+             :'<b>Salário em '+diaSem(sal)+'</b>')+'</div>'+
+      '<div class="est-l"><span class="kpi-sub">até o salário ('+diaSem(sal)+')</span><b>'+tr.filter(t=>t.de!=="sal").length+' Pix · IOF R$ '+brl(iofTotal)+'</b>'+
+        '<span class="kpi-sub" style="color:'+(jurosTot?'#C0392B':'#1E8A5F')+'">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' com juros':'sem juros')+'</span></div>'+
+      '<span class="est-ver">Ver estratégia ›</span></section>';
+    const lin=tr.map(t=>'<tr'+(t.d<hj?' class="est-passou"':'')+'><td>'+diaSem(t.d)+'</td><td>'+nomeDe(t)+' → '+NOME[t.para]+'</td>'+
+      '<td class="n">'+brl(t.v)+'</td><td class="n">'+(t.iof?brl(t.iof):'—')+'</td><td class="n"><b>'+brl(cent(t.v+t.iof))+'</b></td><td class="o">'+esc(t.obs)+'</td></tr>').join("");
+    const sv=tr.reduce((a,t)=>a+t.v,0), si=tr.reduce((a,t)=>a+t.iof,0);
+    const detalhe='<h3 class="modal-tit">10 dias sem juros — estratégia até o salário</h3>'+
+      '<p class="modal-corpo" style="margin:0 0 10px">Salário no BB em <b>'+diaSem(sal)+'</b>. '+
+        (dono?'Hoje o '+NOME[dono]+' está negativo em R$ '+brl(dev[dono])+' ('+usa(usado0,dono,hj)+' de '+DIAS_CHEQUE+' dias). ':'')+
+        'A dívida total chega a <b style="color:#C0392B">R$ '+brl(Math.abs(fundo.s))+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia; em fim de semana ou feriado, no dia útil anterior.</p>'+
+      '<div class="est-tab"><table><thead><tr><th>Data</th><th>Pix</th><th class="n">Valor</th><th class="n">IOF</th><th class="n">Total</th><th>Obs.</th></tr></thead><tbody>'+lin+
+      '</tbody><tfoot><tr><td colspan="2">IOF no período</td><td></td><td class="n"><b>'+brl(si)+'</b></td><td></td><td></td></tr></tfoot></table></div>'+
       (bb&&bb.v>0?'<label class="bc-aj" style="margin-top:10px">Saldo do BB (R$ '+brl(bb.v)+') pode ser usado até <input class="campo" type="date" data-livre-ate="bb" value="'+esc(livreAte)+'" style="width:auto"> (vazio = não usar)</label>':'')+
-      '<p class="sub" style="margin:4px 0 0;font-size:12px">Valores estimados com o saldo de hoje, os agendamentos do banco e as contas em aberto da previsão deste mês (sem data: fim do mês). Contas do mês que vem antes do salário e receitas não entram. IOF: 0,0082% ao dia + 0,38% sobre o valor usado; juros dos dias além dos 10 não estão somados. Confira se o limite de cada banco cobre o valor; os dias já usados no Santander dependem do saldo digitado.</p>'+
-    '</section>';
+      '<p class="sub" style="margin:8px 0 0;font-size:12px">Estimativa com o saldo de hoje, agendamentos e contas em aberto da previsão deste mês. IOF: 0,0082% ao dia + 0,38% sobre o valor usado (já no Total). Juros dos dias além do limite não estão somados. Confira o limite de cada banco.</p>'+
+      '<div class="modal-acoes"><button class="bt" data-modal="ok">Fechar</button></div>';
+    return {card:card, detalhe:detalhe};
   }
 
   // faixa do topo da Visão geral (mês atual): saldo hoje + a receber − a pagar = sobra prevista
@@ -2490,7 +2542,9 @@
     const fr=new FileReader();
     fr.onload=()=>{
       const buf=fr.result;
-      if(/\.xls[xm]?$/.test(nome)){ lerPlanilhaOuExtrato(buf,origem,arq.name); return; }
+      // Excel pelo conteúdo, não só pela extensão (o BB baixa como "Extrato conta corrente.excel")
+      const u8=new Uint8Array(buf.slice(0,4)), zip=u8[0]===0x50&&u8[1]===0x4B, ole=u8[0]===0xD0&&u8[1]===0xCF&&u8[2]===0x11&&u8[3]===0xE0;
+      if(/\.(xls[xm]?|excel)$/.test(nome)||zip||ole){ lerPlanilhaOuExtrato(buf,origem,arq.name); return; }
       let texto;
       try{ texto=new TextDecoder("utf-8",{fatal:true}).decode(buf); }
       catch(e){ texto=new TextDecoder("iso-8859-1").decode(buf); }
@@ -6050,6 +6104,16 @@
       ".<br><br>Saem do histórico. Para recuperar, será preciso importar o extrato de novo.","Apagar")
       .then(ok=>{ if(!ok) return; const ids=new Set(ls.map(l=>l.id));
         dados.lancamentos=dados.lancamentos.filter(l=>!ids.has(l.id)); salvar(); render(); avisar(ls.length+" lançamentos apagados."); });
+  });
+  // card "10 dias sem juros": a estratégia completa abre numa janela
+  function abrirEstrategia(){ modal(detalheEstrategia()); }
+  document.addEventListener("click",e=>{ if(e.target.closest("[data-abrir-est]")){ e.stopPropagation(); abrirEstrategia(); } },true);
+  document.addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.closest&&e.target.closest("[data-abrir-est]")) abrirEstrategia(); });
+  document.addEventListener("change",e=>{
+    const la=e.target.closest&&e.target.closest("#modalCaixa [data-livre-ate]"); if(!la) return;
+    dados.livreAte=dados.livreAte||{}; if(la.value) dados.livreAte[la.dataset.livreAte]=la.value; else delete dados.livreAte[la.dataset.livreAte];
+    salvar(); render(); const cx=$("#modalCaixa"); if(cx) cx.innerHTML=detalheEstrategia();
+    avisar(la.value?"Saldo do BB livre até "+diaMes(la.value)+" — estratégia refeita.":"Saldo do BB fora da estratégia.");
   });
   $("#arqPdf").onchange=e=>{ if(e.target.files[0]) importarFaturaPDF(e.target.files[0]); e.target.value=""; };
   const abrirImport = o => { ui._origemImport=o; $("#arqCsv").click(); };
