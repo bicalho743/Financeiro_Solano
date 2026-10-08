@@ -547,6 +547,7 @@
   .bc-t .bc-n{font-weight:600;color:var(--tinta)}
   .bc-in{font-family:var(--serif);font-size:20px;max-width:150px;padding:2px 6px}
   .bc-cq{display:block;font-weight:600;margin-top:2px}
+  .bc-aj{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--cinza);margin-top:4px}.bc-aj input{width:56px;padding:2px 6px}
   .est-fases{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:14px;line-height:1.45}
   @media (max-width:860px){.bc-grid{grid-template-columns:1fr 1fr;gap:6px 18px}.bc-t{border-left:none;padding-left:0}.bancos{padding:12px 16px}}
   .cheque-uso{margin:10px 0 0;padding:9px 14px;background:#FBF3E6;border-left:3px solid #E08E0B;font-size:13.5px;border-radius:2px}
@@ -1431,6 +1432,8 @@
     const saldoEm = d => d===hj&&s ? s.v : o==="itau" ? saldoItauEm(d) : (()=>{ let k=null; for(const x of ks){ if(x<=d) k=x; else break; } return k?+sd[k]:null; })();
     let usados=0, ultimo=null;
     for(let d=c.ini; d<=hj; d=somaDias(d,1)){ const v=saldoEm(d); if(v!=null&&v<0){ usados++; ultimo=d; } }
+    // dias usados informados à mão (Santander: o app só conhece o saldo digitado)
+    const man=(dados.chequeUsados||{})[o+"|"+c.ini]; if(man!=null&&man!=="") usados=Math.max(usados,+man);
     const neg=!!(s&&s.v<0), resta=DIAS_CHEQUE-usados;
     // negativo hoje: o último dia sem juros, se continuar negativo
     const vence = neg&&resta>=0 ? somaDias(hj,resta) : null;
@@ -1457,7 +1460,9 @@
     return '<section class="bancos"><div class="tit-secao" style="margin:0 0 6px"><h3>Saldos nos bancos</h3></div><div class="bc-grid">'+
       linha("Itaú",it,"pelos lançamentos, até "+diaMes(it.data)+tagCheque("itau",it),{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
       linha("BB",bb,(bb?"extrato de "+diaMes(bb.data):"importe o extrato do BB")+tagCheque("bb",bb),{conta:"bb",mes:ui.mes,alvo:"#conf",dica:"Ver a conta do BB"})+
-      linha("Santander",st,(st?"digitado em "+diaMes(st.data):"digite o saldo quando usar")+tagCheque("santander",st),null,
+      linha("Santander",st,(st?"digitado em "+diaMes(st.data):"digite o saldo quando usar")+tagCheque("santander",st)+
+        '<label class="bc-aj">dias já usados neste ciclo <input class="campo" data-cq-usados="santander" type="number" min="0" max="10" value="'+
+        esc(String((dados.chequeUsados||{})["santander|"+cicloCheque("santander").ini]??""))+'" placeholder="0"></label>',null,
         '<input class="campo bc-in" data-saldo-santander="1" value="'+(st?brl(st.v):"")+'" placeholder="0,00" inputmode="decimal" aria-label="Saldo do Santander" style="color:'+(st?cor(st.v):"inherit")+'">')+
       '<div class="bc-l bc-t"><span class="bc-n">Total nas contas</span><b style="color:'+cor(tot)+'">R$ '+brl(tot)+'</b>'+
         '<span class="kpi-sub">'+(neg<0?'<span style="color:#9A5B07">cheque especial em uso: R$ '+brl(-neg)+'</span> · já no “A pagar”':'sem cheque especial em uso')+'</span></div>'+
@@ -1799,6 +1804,14 @@
       }
     };
     corpo.onchange=e=>{
+      const cu=e.target.closest("[data-cq-usados]");
+      if(cu){
+        const o=cu.dataset.cqUsados, k=o+"|"+cicloCheque(o).ini, n=String(cu.value).trim();
+        dados.chequeUsados=dados.chequeUsados||{};
+        if(n==="") delete dados.chequeUsados[k]; else dados.chequeUsados[k]=Math.max(0,Math.min(DIAS_CHEQUE,Math.round(+n)||0));
+        salvar(); render(); avisar("Santander: "+(dados.chequeUsados[k]||0)+" de "+DIAS_CHEQUE+" dias usados no ciclo — a estratégia foi refeita.");
+        return;
+      }
       const sn=e.target.closest("[data-saldo-santander]");
       if(sn){
         const txt=String(sn.value||"").trim(), sd=(dados.saldosDia=dados.saldosDia||{}), m=(sd.santander=sd.santander||{});
@@ -1834,6 +1847,7 @@
     dados.metas       = d.metas||[];
     dados.conferencia = d.conferencia||{};
     dados.saldosDia   = d.saldosDia||{};
+    dados.chequeUsados= d.chequeUsados||{};
     dados.invest      = d.invest||null;
     dados.versao      = d.versao||0;
   }
