@@ -1417,14 +1417,16 @@
   const somaDias=(iso,n)=>{ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
   const difDias=(a,b)=>Math.round((new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5);
   function saldoItauEm(D){ const ym=D.slice(0,7); return cent(saldoInicio("itau",ym).v+movConta("itau",ym+"-01",somaDias(D,1))); }
-  // início do ciclo atual e data da próxima renovação
+  // início do ciclo atual e data da próxima renovação. O ciclo sempre começa em dia útil:
+  // se o dia de renovação cai em fim de semana/feriado, o ciclo novo começa no próximo dia útil (o anterior vai até a véspera)
+  function renovaEm(o,a,m){ if(m<1){m+=12;a--;} if(m>12){m-=12;a++;}
+    let d=a+"-"+String(m).padStart(2,"0")+"-"+String(RENOVA_CHEQUE[o]).padStart(2,"0"); while(!diaUtil(d)) d=somaDias(d,1); return d; }
+  function inicioCiclo(o,iso){ const [a,m]=iso.split("-").map(Number);
+    for(let k=1;k>=-2;k--){ const r=renovaEm(o,a,m+k); if(r<=iso) return r; } return renovaEm(o,a,m-2); }
   function cicloCheque(o){
-    const hj=hojeISO(), dia=String(RENOVA_CHEQUE[o]).padStart(2,"0");
-    let [a,m]=hj.split("-").map(Number);
-    let ini=hj.slice(0,8)+dia;
-    if(ini>hj){ m--; if(!m){m=12;a--;} ini=a+"-"+String(m).padStart(2,"0")+"-"+dia; }
-    let [a2,m2]=ini.split("-").map(Number); m2++; if(m2>12){m2=1;a2++;}
-    return {ini:ini, renova:a2+"-"+String(m2).padStart(2,"0")+"-"+dia};
+    const ini=inicioCiclo(o,hojeISO()), [a,m]=ini.split("-").map(Number);
+    let renova=renovaEm(o,a,m+1); if(renova<=ini) renova=renovaEm(o,a,m+2);
+    return {ini:ini, renova:renova};
   }
   function usoCheque(o,s){
     const hj=hojeISO(), c=cicloCheque(o), sd=(dados.saldosDia||{})[o]||{}, ks=Object.keys(sd).sort();
@@ -1486,8 +1488,6 @@
   const SEMANA=["dom","seg","ter","qua","qui","sex","sáb"];
   const diaSem = iso => SEMANA[new Date(iso+"T12:00:00").getDay()]+" "+diaMes(iso);
   function quintoDiaUtil(ym){ let d=ym+"-01", n=0; while(true){ if(diaUtil(d)&&++n===5) return d; d=somaDias(d,1); } }
-  const inicioCiclo = (o,iso) => { const dia=RENOVA_CHEQUE[o]; let [a,m]=iso.split("-").map(Number);
-    if(+iso.slice(8)<dia){ m--; if(!m){m=12;a--;} } return a+"-"+String(m).padStart(2,"0")+"-"+String(dia).padStart(2,"0"); };
   // Itaú dia a dia até o salário: saldo de hoje + agendamentos + contas a pagar da previsão (com data)
   function projecaoItau(ate){
     const hj=hojeISO(), mov={}, add=(d,v)=>{ if(d<=hj) d=somaDias(hj,1); if(d<ate) mov[d]=(mov[d]||0)+v; };
@@ -1517,21 +1517,24 @@
     if(pj.hoje>=0&&!negs.length) return '<section class="bancos est-cq">'+tit+'<p class="sub" style="margin:0">Pela previsão, o Itaú não fica negativo até o salário ('+diaSem(sal)+'). Nada a fazer.</p></section>';
     const NOME={itau:"Itaú",bb:"BB",santander:"Santander"};
     const ini0=pj.hoje<0?hj:negs[0].d;
-    const proxRenova=(o,d)=>{ const r=inicioCiclo(o,d); const [a,m]=r.split("-").map(Number); return (m===12?a+1:a)+"-"+String(m===12?1:m+1).padStart(2,"0")+"-"+r.slice(8); };
+    const proxRenova=(o,d)=>{ const r=inicioCiclo(o,d), [a,m]=r.split("-").map(Number); let n=renovaEm(o,a,m+1); if(n<=r) n=renovaEm(o,a,m+2); return n; };
     // dias já usados no ciclo atual de cada banco
     const usado0={};
     ["itau","bb","santander"].forEach(o=>{ const s=o==="itau"?saldoContaApp(mesAtual()):saldoBanco(o); usado0[o+"|"+inicioCiclo(o,hj)]=usoCheque(o,s).usados; });
     const usa=(u,o,d)=>u[o+"|"+inicioCiclo(o,d)]||0;
     // 10º dia de quem fica negativo a partir de "ini" (o ciclo pode renovar no caminho); cobre no 10º dia ou no dia útil anterior
+    // saldo positivo que pode ser usado até uma data (ex.: BB R$ 7.664,50 livre até 12/10): nesses dias o banco cobre o Itaú sem ficar negativo
+    const bbS=saldoBanco("bb"), livreAte=(dados.livreAte||{}).bb||"", livre=bbS&&bbS.v>0&&livreAte>=hj?{o:"bb",v:bbS.v,ate:livreAte}:null;
+    const conta=(o,d)=>!(livre&&o===livre.o&&d<=livre.ate&&falta(d)<=livre.v);
     function prazo(u,o,ini){
       const c={}; let d=ini;
-      for(let i=0;i<70;i++,d=somaDias(d,1)){ const k=inicioCiclo(o,d); if(c[k]==null) c[k]=usa(u,o,d); if(++c[k]>=DIAS_CHEQUE) break; }
+      for(let i=0;i<70;i++,d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=inicioCiclo(o,d); if(c[k]==null) c[k]=usa(u,o,d); if(++c[k]>=DIAS_CHEQUE) break; }
       let cb=d; while(!diaUtil(cb)&&cb>ini) cb=somaDias(cb,-1);
       return {decimo:d, cobre:cb};
     }
     // marca os dias negativos de [de, ate) e conta os que passam dos 10 (com juros)
     function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0;
-      for(let d=de; d<ate; d=somaDias(d,1)){ const k=o+"|"+inicioCiclo(o,d); v[k]=(v[k]||0)+1; if(v[k]>DIAS_CHEQUE) juros++; }
+      for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=o+"|"+inicioCiclo(o,d); v[k]=(v[k]||0)+1; if(v[k]>DIAS_CHEQUE) juros++; }
       return {u:v, juros:juros}; }
     const BANCOS=["itau","bb","santander"];
     // procura a sequência de bancos com menos dias de juros (e menos trocas) até o salário
@@ -1564,40 +1567,55 @@
     ["bb","santander"].forEach(x=>busca(x,ini0,usado0,[{o:"itau",de:ini0,ate:ini0,decimo:ini0,prox:x,juros:0,inicio:true}],0));
     // valores de cada Pix: a dívida total é o negativo do Itaú sem as transferências (elas só mudam a dívida de banco)
     const maxFalta=(de,ate)=>{ let m=0; for(let d=de; d<ate; d=somaDias(d,1)) m=Math.max(m,falta(d)); return cent(m); };
+    // IOF do cheque especial (pessoa física): 0,0082% ao dia sobre o saldo devedor + 0,38% adicional sobre o valor usado.
+    // O banco debita depois; por isso a cobertura já leva o IOF do período, para a conta não voltar ao negativo.
+    const IOF_DIA=0.000082, IOF_ADIC=0.0038;
+    function iofFase(f,carga){
+      let soma=0, max=0;
+      for(let d=f.de; d<f.ate; d=somaDias(d,1)){ if(!conta(f.o,d)) continue; const v=f.o==="itau"?falta(d):carga; soma+=v; max=Math.max(max,v); }
+      return cent(max*IOF_ADIC+soma*IOF_DIA);
+    }
     const fases=melhor?melhor.fases:[]; let divida=0;
-    fases.forEach((f,i)=>{ if(f.salario) return;
+    fases.forEach((f,i)=>{
+      f.iof=f.inicio?0:iofFase(f,divida);
+      if(f.salario){ f.zera=cent((f.o==="itau"?falta(somaDias(sal,-1)):divida)+f.iof); return; }
       const ateNx=fases[i+1]?fases[i+1].ate:sal, precisa=maxFalta(f.ate,ateNx), o=f.o, nx=f.prox;
-      if(o==="itau"){ f.zera=falta(f.ate); f.reforco=cent(Math.max(0,precisa-f.zera)); divida=precisa; }
-      else if(nx==="itau"){ f.zera=divida; f.reforco=0; divida=0; }
-      else { f.zera=divida; f.reforco=cent(Math.max(0,precisa-divida)); divida=Math.max(divida,precisa); }
+      if(o==="itau"){ f.zera=cent(falta(f.ate)+f.iof); f.reforco=cent(Math.max(0,precisa-falta(f.ate))); divida=cent(precisa+f.iof); }
+      else if(nx==="itau"){ f.zera=cent(divida+f.iof); f.reforco=0; divida=0; }
+      else { f.zera=cent(divida+f.iof); f.reforco=cent(Math.max(0,precisa-divida)); divida=cent(Math.max(divida,precisa)+f.iof); }
     });
+    const iofTotal=cent(fases.reduce((t,f)=>t+(f.iof||0),0));
     const fundo=negs.length?negs.reduce((m,x)=>x.s<m.s?x:m,negs[0]):{d:hj,s:pj.hoje};
     const bb=saldoBanco("bb");
     const linhas=fases.map((f,i)=>{
       const dias=difDias(f.ate,f.de);
       if(f.inicio) return '<li>Em <b>'+diaSem(f.de)+'</b>, quando o Itaú ficaria negativo: Pix do <b>'+NOME[f.prox]+'</b> para o Itaú de ~R$ '+brl(cent(f.zera+f.reforco))+
         ' (cobre o Itaú até a próxima troca). Assim o Itaú nem entra no cheque especial agora.</li>';
-      let txt='<b>'+NOME[f.o]+'</b> negativo de '+diaSem(f.de)+' a '+diaSem(somaDias(f.ate,-1))+' · '+dias+' dia'+(dias===1?"":"s")+
+      let nLiv=0; for(let d=f.de; d<f.ate; d=somaDias(d,1)) if(!conta(f.o,d)) nLiv++;
+      const negDe=(()=>{ let d=f.de; while(d<f.ate&&!conta(f.o,d)) d=somaDias(d,1); return d; })();
+      let txt=(nLiv?'<b>'+NOME[f.o]+'</b> cobre o Itaú com o saldo livre de '+diaSem(f.de)+' a '+diaSem(somaDias(negDe,-1))+(negDe<f.ate?'; depois fica negativo de '+diaSem(negDe)+' a '+diaSem(somaDias(f.ate,-1))+' · '+difDias(f.ate,negDe)+' dia'+(difDias(f.ate,negDe)===1?"":"s"):''):
+        '<b>'+NOME[f.o]+'</b> negativo de '+diaSem(f.de)+' a '+diaSem(somaDias(f.ate,-1))+' · '+dias+' dia'+(dias===1?"":"s"))+
         (dias>0&&inicioCiclo(f.o,f.de)!==inicioCiclo(f.o,somaDias(f.ate,-1))?' (o ciclo renova em '+diaMes(inicioCiclo(f.o,somaDias(f.ate,-1)))+' e zera a contagem)':'')+
         (f.juros?' <span style="color:#C0392B">· '+f.juros+' com juros</span>':'');
-      if(f.salario) txt+='<br>Em <b>'+diaSem(sal)+'</b> o salário cai no BB'+(f.o==="bb"?' e zera o negativo.':': Pix do BB para o '+NOME[f.o]+' para zerar.');
+      const iofTxt=f.iof?' — inclui ~R$ '+brl(f.iof)+' de IOF':'';
+      if(f.salario) txt+='<br>Em <b>'+diaSem(sal)+'</b> o salário cai no BB'+(f.o==="bb"?' e zera o negativo (~R$ '+brl(f.zera)+iofTxt+').':': Pix do BB para o '+NOME[f.o]+' de ~R$ '+brl(f.zera)+' para zerar'+iofTxt+'.');
       else{
         const mud=f.decimo<f.ate?' (passou do 10º dia, '+diaSem(f.decimo)+': nenhum banco tinha dias livres antes)':f.decimo!==f.ate?' (10º dia '+diaSem(f.decimo)+', fim de semana/feriado → cobre antes)':' (10º dia)';
         txt+='<br>Cobrir em <b>'+diaSem(f.ate)+'</b>'+mud+': '+
           (f.o==="itau"
-            ? 'Pix do <b>'+NOME[f.prox]+'</b> para o Itaú de ~R$ '+brl(cent(f.zera+f.reforco))+' (zera ~R$ '+brl(f.zera)+(f.reforco?' + R$ '+brl(f.reforco)+' para os gastos até a próxima troca':'')+')'
+            ? 'Pix do <b>'+NOME[f.prox]+'</b> para o Itaú de ~R$ '+brl(cent(f.zera+f.reforco))+' (zera ~R$ '+brl(f.zera)+iofTxt+(f.reforco?'; + R$ '+brl(f.reforco)+' para os gastos até a próxima troca':'')+')'
             : f.prox==="itau"
-              ? 'Pix do <b>Itaú</b> para o '+NOME[f.o]+' de ~R$ '+brl(f.zera)+' (zera o '+NOME[f.o]+'; o Itaú volta ao negativo)'
-              : 'Pix do <b>'+NOME[f.prox]+'</b> para o '+NOME[f.o]+' de ~R$ '+brl(f.zera)+' (zera)'+(f.reforco?' e ~R$ '+brl(f.reforco)+' para o Itaú (gastos até a próxima troca)':''))+'.';
+              ? 'Pix do <b>Itaú</b> para o '+NOME[f.o]+' de ~R$ '+brl(f.zera)+' (zera o '+NOME[f.o]+iofTxt+'; o Itaú volta ao negativo)'
+              : 'Pix do <b>'+NOME[f.prox]+'</b> para o '+NOME[f.o]+' de ~R$ '+brl(f.zera)+' (zera'+iofTxt+')'+(f.reforco?' e ~R$ '+brl(f.reforco)+' para o Itaú (gastos até a próxima troca)':''))+'.';
       }
       return '<li>'+txt+'</li>';
     }).join("");
     return '<section class="bancos est-cq">'+tit+
       '<p class="sub" style="margin:0 0 8px">Salário no BB em <b>'+diaSem(sal)+'</b> (5º dia útil). Pela previsão, o Itaú fica negativo a partir de <b>'+diaSem(ini0)+
-      '</b> e chega a <b style="color:#C0392B">R$ '+brl(fundo.s)+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia; caindo em fim de semana ou feriado, no dia útil anterior.</p>'+
+      '</b> e chega a <b style="color:#C0392B">R$ '+brl(fundo.s)+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia; caindo em fim de semana ou feriado, no dia útil anterior. IOF estimado no período: <b>R$ '+brl(iofTotal)+'</b> (já somado nos Pix).</p>'+
       '<ol class="est-fases">'+linhas+'</ol>'+
-      (bb&&bb.v>0?'<p class="sub" style="margin:8px 0 0">O BB tem R$ '+brl(bb.v)+' em conta ('+diaMes(bb.data)+'). Se esse dinheiro estiver livre, um Pix do BB para o Itaú evita o cheque especial.</p>':'')+
-      '<p class="sub" style="margin:4px 0 0;font-size:12px">Valores estimados com o saldo de hoje, os agendamentos do banco e as contas em aberto da previsão deste mês (sem data: fim do mês). Contas do mês que vem antes do salário e receitas não entram. Confira se o limite de cada banco cobre o valor; os dias já usados no Santander dependem do saldo digitado.</p>'+
+      (bb&&bb.v>0?'<label class="bc-aj" style="margin-top:10px">Saldo do BB (R$ '+brl(bb.v)+') pode ser usado até <input class="campo" type="date" data-livre-ate="bb" value="'+esc(livreAte)+'" style="width:auto"> (vazio = não usar)</label>':'')+
+      '<p class="sub" style="margin:4px 0 0;font-size:12px">Valores estimados com o saldo de hoje, os agendamentos do banco e as contas em aberto da previsão deste mês (sem data: fim do mês). Contas do mês que vem antes do salário e receitas não entram. IOF: 0,0082% ao dia + 0,38% sobre o valor usado; juros dos dias além dos 10 não estão somados. Confira se o limite de cada banco cobre o valor; os dias já usados no Santander dependem do saldo digitado.</p>'+
     '</section>';
   }
 
@@ -1804,6 +1822,9 @@
       }
     };
     corpo.onchange=e=>{
+      const la=e.target.closest("[data-livre-ate]");
+      if(la){ dados.livreAte=dados.livreAte||{}; if(la.value) dados.livreAte[la.dataset.livreAte]=la.value; else delete dados.livreAte[la.dataset.livreAte];
+        salvar(); render(); avisar(la.value?"Saldo do BB livre até "+diaMes(la.value)+" — a estratégia foi refeita.":"Saldo do BB fora da estratégia."); return; }
       const cu=e.target.closest("[data-cq-usados]");
       if(cu){
         const o=cu.dataset.cqUsados, k=o+"|"+cicloCheque(o).ini, n=String(cu.value).trim();
@@ -1848,6 +1869,7 @@
     dados.conferencia = d.conferencia||{};
     dados.saldosDia   = d.saldosDia||{};
     dados.chequeUsados= d.chequeUsados||{};
+    dados.livreAte    = d.livreAte||{};
     dados.invest      = d.invest||null;
     dados.versao      = d.versao||0;
   }
