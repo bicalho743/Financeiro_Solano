@@ -555,6 +555,8 @@
   .est-tab th,.est-tab td{padding:6px 8px;border-bottom:1px solid var(--linha);text-align:left;white-space:nowrap}
   .est-tab .n{text-align:right;font-variant-numeric:tabular-nums}.est-tab .o{white-space:normal;color:var(--cinza);font-size:12px;min-width:160px}
   .est-tab tfoot td{border-bottom:none}.est-passou{opacity:.45}
+  .est-tab input.est-v{width:96px;text-align:right;padding:3px 6px;font-variant-numeric:tabular-nums}.est-tab input.est-v.ed{background:#FFF6D6}
+  .est-dias{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--cinza);margin-top:10px}.est-dias input{width:52px;padding:2px 6px}
   #modalCaixa:has(.est-tab){max-width:860px;width:calc(100vw - 32px)}
   @media (max-width:860px){.est-card{flex-wrap:wrap;gap:8px 18px;padding:12px 16px}.est-card .est-ver{margin-left:0}}
   @media (max-width:860px){.bc-grid{grid-template-columns:1fr 1fr;gap:6px 18px}.bc-t{border-left:none;padding-left:0}.bancos{padding:12px 16px}}
@@ -1527,7 +1529,7 @@
   function estrategiaCheque(){
     const hj=hojeISO(), sal=quintoDiaUtil(proxMes(mesAtual()));
     const pj=projecaoItau(sal);
-    const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.livreAte,
+    const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.livreAte,dados.estValor,
       ["itau","bb","santander"].map(o=>usoCheque(o,o==="itau"?saldoContaApp(mesAtual()):saldoBanco(o)).usados)]);
     if(cacheEst.k!==kc) cacheEst={k:kc,r:montaEstrategia(hj,sal,pj)};
     return cacheEst.r.card;
@@ -1618,10 +1620,27 @@
       return cent(max*IOF_ADIC+soma*IOF_DIA);
     }
     const fases=melhor?melhor.fases:[]; let divida=dono?dev[dono]:0;
+    // valor do Pix digitado na janela da estratégia (substitui o calculado); o IOF é recalculado sobre ele
+    const ov=dados.estValor||{}, chaveTr=f=>f.salario?sal+"|sal|"+f.o:f.ate+"|"+f.prox+"|"+(f.o==="itau"||f.inicio?"itau":f.o);
+    const diasNeg=f=>{ let n=0; for(let d=f.desde||f.de; d<f.ate; d=somaDias(d,1)) if(conta(f.o,d)) n++; return n; };
+    const iofSobre=(v,n)=>cent(v*IOF_ADIC+v*IOF_DIA*n);
     fases.forEach((f,i)=>{
+      f.chave=chaveTr(f); const V=ov[f.chave]!=null&&ov[f.chave]!==""?+ov[f.chave]:null; f.editado=V!=null;
       f.iof=f.inicio?0:iofFase(f,divida);
-      if(f.salario){ f.zera=cent((f.o==="itau"?falta(somaDias(sal,-1)):divida)+f.iof); return; }
+      if(f.salario){
+        if(V!=null){ f.iof=iofSobre(V,diasNeg(f)); f.zera=cent(V+f.iof); }
+        else f.zera=cent((f.o==="itau"?falta(somaDias(sal,-1)):divida)+f.iof);
+        return;
+      }
       const ateNx=fases[i+1]?fases[i+1].ate:sal, precisa=maxFalta(f.ate,ateNx), o=f.o, nx=f.prox;
+      if(V!=null){
+        // principal digitado: o que o Pix leva (sem o IOF); o IOF é sobre esse valor pelos dias que a conta ficou negativa
+        if(!f.inicio) f.iof=iofSobre(V,diasNeg(f));
+        if(o==="itau"){ f.zera=cent(Math.min(V,falta(f.ate))+f.iof); f.reforco=cent(Math.max(0,V-falta(f.ate))); }
+        else { f.zera=cent(V+f.iof); f.reforco=nx==="itau"?0:cent(Math.max(0,precisa-V)); }
+        divida=nx==="itau"?0:cent(V+f.iof+(o!=="itau"?f.reforco:0));
+        return;
+      }
       if(o==="itau"){ f.zera=cent(falta(f.ate)+f.iof); f.reforco=cent(Math.max(0,precisa-falta(f.ate))); divida=cent(precisa+f.iof); }
       else if(nx==="itau"){ f.zera=cent(divida+f.iof); f.reforco=0; divida=0; }
       else { f.zera=cent(divida+f.iof); f.reforco=cent(Math.max(0,precisa-divida)); divida=cent(Math.max(divida,precisa)+f.iof); }
@@ -1632,17 +1651,17 @@
     // transferências: data, de → para, valor do Pix, IOF, total
     const tr=[];
     fases.forEach(f=>{
-      if(f.inicio){ tr.push({d:f.de, de:f.prox, para:"itau", v:cent(f.zera+f.reforco), iof:0, obs:"Itaú não entra no cheque especial"}); return; }
+      if(f.inicio){ tr.push({d:f.de, de:f.prox, para:"itau", v:cent(f.zera+f.reforco), iof:0, obs:"Itaú não entra no cheque especial", k:f.chave, ed:f.editado}); return; }
       let obs=f.juros?f.juros+" dia"+(f.juros===1?"":"s")+" de juros no "+NOME[f.o]:"";
       if(f.salario){
-        tr.push({d:sal, de:"sal", para:f.o, v:cent(f.zera-f.iof), iof:f.iof, obs:("salário cai no BB"+(f.o==="bb"?" e zera o negativo":"; Pix do BB para zerar o "+NOME[f.o]))+(obs?" · "+obs:"")});
+        tr.push({d:sal, de:"sal", para:f.o, v:cent(f.zera-f.iof), iof:f.iof, k:f.chave, ed:f.editado, obs:("salário cai no BB"+(f.o==="bb"?" e zera o negativo":"; Pix do BB para zerar o "+NOME[f.o]))+(obs?" · "+obs:"")});
         return;
       }
       const reg=f.decimo===f.ate?"10º dia":f.decimo<f.ate?"passa do 10º dia":"10º dia "+diaMes(f.decimo)+(difDias(f.decimo,f.ate)<=3?" (fim de semana/feriado)":"");
       obs=reg+(obs?" · "+obs:"");
-      if(f.o==="itau") tr.push({d:f.ate, de:f.prox, para:"itau", v:cent(f.zera-f.iof+f.reforco), iof:f.iof, obs:obs+(f.reforco?" · inclui R$ "+brl(f.reforco)+" para gastos":"")});
+      if(f.o==="itau") tr.push({d:f.ate, de:f.prox, para:"itau", v:cent(f.zera-f.iof+f.reforco), iof:f.iof, k:f.chave, ed:f.editado, obs:obs+(f.reforco?" · inclui R$ "+brl(f.reforco)+" para gastos":"")});
       else {
-        tr.push({d:f.ate, de:f.prox, para:f.o, v:cent(f.zera-f.iof), iof:f.iof, obs:obs+(f.prox==="itau"?" · Itaú volta ao negativo":"")});
+        tr.push({d:f.ate, de:f.prox, para:f.o, v:cent(f.zera-f.iof), iof:f.iof, k:f.chave, ed:f.editado, obs:obs+(f.prox==="itau"?" · Itaú volta ao negativo":"")});
         if(f.reforco) tr.push({d:f.ate, de:f.prox, para:"itau", v:f.reforco, iof:0, obs:"gastos do Itaú até a próxima troca"});
       }
     });
@@ -1657,7 +1676,7 @@
         '<span class="kpi-sub" style="color:'+(jurosTot?'#C0392B':'#1E8A5F')+'">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' com juros':'sem juros')+'</span></div>'+
       '<span class="est-ver">Ver estratégia ›</span></section>';
     const lin=tr.map(t=>'<tr'+(t.d<hj?' class="est-passou"':'')+'><td>'+diaSem(t.d)+'</td><td>'+nomeDe(t)+' → '+NOME[t.para]+'</td>'+
-      '<td class="n">'+brl(t.v)+'</td><td class="n">'+(t.iof?brl(t.iof):'—')+'</td><td class="n"><b>'+brl(cent(t.v+t.iof))+'</b></td><td class="o">'+esc(t.obs)+'</td></tr>').join("");
+      '<td class="n">'+(t.k?'<input class="campo est-v'+(t.ed?' ed':'')+'" data-est-v="'+esc(t.k)+'" value="'+brl(t.v)+'" inputmode="decimal" title="Digite o valor do Pix; vazio volta ao calculado">':brl(t.v))+'</td><td class="n">'+(t.iof?brl(t.iof):'—')+'</td><td class="n"><b>'+brl(cent(t.v+t.iof))+'</b></td><td class="o">'+esc(t.obs)+'</td></tr>').join("");
     const sv=tr.reduce((a,t)=>a+t.v,0), si=tr.reduce((a,t)=>a+t.iof,0);
     const detalhe='<h3 class="modal-tit">10 dias sem juros — estratégia até o salário</h3>'+
       '<p class="modal-corpo" style="margin:0 0 10px">Salário no BB em <b>'+diaSem(sal)+'</b>. '+
@@ -1665,8 +1684,11 @@
         'A dívida total chega a <b style="color:#C0392B">R$ '+brl(Math.abs(fundo.s))+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia; em fim de semana ou feriado, no dia útil anterior.</p>'+
       '<div class="est-tab"><table><thead><tr><th>Data</th><th>Pix</th><th class="n">Valor</th><th class="n">IOF</th><th class="n">Total</th><th>Obs.</th></tr></thead><tbody>'+lin+
       '</tbody><tfoot><tr><td colspan="2">IOF no período</td><td></td><td class="n"><b>'+brl(si)+'</b></td><td></td><td></td></tr></tfoot></table></div>'+
+      '<div class="est-dias">Dias de cheque já usados no ciclo atual: '+
+        ["itau","bb"].map(o=>'<span>'+NOME[o]+' <b>'+usa(usado0,o,hj)+'</b> (renova '+diaMes(cicloCheque(o).renova)+')</span>').join("")+
+        '<label>Santander <input class="campo" type="number" min="0" max="10" data-cq-usados="santander" value="'+esc(String((dados.chequeUsados||{})["santander|"+cicloCheque("santander").ini]??""))+'" placeholder="'+usa(usado0,"santander",hj)+'"> (renova '+diaMes(cicloCheque("santander").renova)+')</label></div>'+
       (bb&&bb.v>0?'<label class="bc-aj" style="margin-top:10px">Saldo do BB (R$ '+brl(bb.v)+') pode ser usado até <input class="campo" type="date" data-livre-ate="bb" value="'+esc(livreAte)+'" style="width:auto"> (vazio = não usar)</label>':'')+
-      '<p class="sub" style="margin:8px 0 0;font-size:12px">Estimativa com o saldo de hoje, agendamentos e contas em aberto da previsão deste mês. IOF: 0,0082% ao dia + 0,38% sobre o valor usado (já no Total). Juros dos dias além do limite não estão somados. Confira o limite de cada banco.</p>'+
+      '<p class="sub" style="margin:8px 0 0;font-size:12px">O valor do Pix pode ser digitado (fundo amarelo = digitado; apague para voltar ao calculado). Estimativa com o saldo de hoje, agendamentos e contas em aberto da previsão deste mês. IOF: 0,0082% ao dia + 0,38% sobre o valor usado (já no Total). Juros dos dias além do limite não estão somados. Confira o limite de cada banco.</p>'+
       '<div class="modal-acoes"><button class="bt" data-modal="ok">Fechar</button></div>';
     return {card:card, detalhe:detalhe};
   }
@@ -1922,6 +1944,7 @@
     dados.saldosDia   = d.saldosDia||{};
     dados.chequeUsados= d.chequeUsados||{};
     dados.livreAte    = d.livreAte||{};
+    dados.estValor    = d.estValor||{};
     dados.invest      = d.invest||null;
     dados.versao      = d.versao||0;
   }
@@ -6110,6 +6133,16 @@
   document.addEventListener("click",e=>{ if(e.target.closest("[data-abrir-est]")){ e.stopPropagation(); abrirEstrategia(); } },true);
   document.addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.closest&&e.target.closest("[data-abrir-est]")) abrirEstrategia(); });
   document.addEventListener("change",e=>{
+    const ev=e.target.closest&&e.target.closest("#modalCaixa [data-est-v]");
+    const cq=e.target.closest&&e.target.closest("#modalCaixa [data-cq-usados]");
+    if(ev||cq){
+      if(ev){ dados.estValor=dados.estValor||{}; const t=String(ev.value).trim(), k=ev.dataset.estV;
+        if(t==="") delete dados.estValor[k]; else dados.estValor[k]=cent(Math.abs(numero(t))); }
+      else { const o=cq.dataset.cqUsados, k=o+"|"+cicloCheque(o).ini, n=String(cq.value).trim(); dados.chequeUsados=dados.chequeUsados||{};
+        if(n==="") delete dados.chequeUsados[k]; else dados.chequeUsados[k]=Math.max(0,Math.min(DIAS_CHEQUE,Math.round(+n)||0)); }
+      salvar(); render(); const cx=$("#modalCaixa"); if(cx) cx.innerHTML=detalheEstrategia();
+      avisar(ev?"Valor do Pix atualizado — IOF recalculado.":"Dias do Santander atualizados — estratégia refeita."); return;
+    }
     const la=e.target.closest&&e.target.closest("#modalCaixa [data-livre-ate]"); if(!la) return;
     dados.livreAte=dados.livreAte||{}; if(la.value) dados.livreAte[la.dataset.livreAte]=la.value; else delete dados.livreAte[la.dataset.livreAte];
     salvar(); render(); const cx=$("#modalCaixa"); if(cx) cx.innerHTML=detalheEstrategia();
