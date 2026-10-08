@@ -795,6 +795,15 @@
   .conta-tab.banco[data-conta=bb].ativa{background:#0038A8}
   .conta-tab.banco[data-conta=cartao].ativa{background:#5B4FCF}
   .barra-periodo{background:transparent}
+  .conta-tabs{flex-wrap:nowrap}
+  .cartao-tab{display:inline-flex;align-items:center;gap:7px}
+  .mini-cartao{position:relative;display:inline-block;width:30px;height:20px;border-radius:3px;box-shadow:0 1px 2px rgba(0,0,0,.25);flex:none;overflow:hidden}
+  .mini-cartao i{position:absolute;left:4px;top:6px;width:7px;height:5px;border-radius:1px;background:linear-gradient(135deg,#F5D88A,#C9A44C)}
+  .mini-cartao b{position:absolute;right:3px;bottom:1px;font:600 6px/1 var(--sans);letter-spacing:.02em;color:rgba(255,255,255,.85)}
+  .mc-infinite{background:linear-gradient(135deg,#1E3A8A 0%,#2563EB 55%,#38BDF8 100%)}
+  .mc-altus{background:linear-gradient(135deg,#111827 0%,#374151 60%,#6B7280 100%)}
+  .conta-tab.banco[data-cartao=bb].ativa{background:#1F2937}
+  .conta-tab.banco[data-cartao=itau].ativa{background:#1E40AF}
   .corpo{max-width:1280px}
   .rot,.tit-secao h3,.bc-n{letter-spacing:.08em;font-weight:600;color:#6B7280}
   .tit-secao h3{font-size:12px}
@@ -894,7 +903,7 @@
         </div>
       </div>
       <div id="barraUsuario"></div>
-      <input type="file" id="arqCsv" accept=".csv,.txt,.ofx,.xlsx,.xls,.xlsm,.excel,.pdf" hidden>
+      <input type="file" id="arqCsv" accept=".csv,.txt,.ofx,.xlsx,.xls,.xlsm,.excel,.pdf" multiple hidden>
       <input type="file" id="arqPdf" accept=".pdf,application/pdf" hidden>
       <input type="file" id="arqJson" accept=".json,application/json" hidden>
     </div>
@@ -908,10 +917,11 @@
     <button class="conta-tab" data-conta="dividas">Dívidas e parcelas</button>
     <button class="conta-tab" data-conta="metas">Metas e caixinhas</button>
     <button class="conta-tab" data-conta="invest">Investimentos</button>
-    <span class="conta-sep">Conferir com o extrato:</span>
+    <span class="conta-sep">Conferir:</span>
     <button class="conta-tab banco" data-conta="itau">Itaú</button>
     <button class="conta-tab banco" data-conta="bb">BB</button>
-    <button class="conta-tab banco" data-conta="cartao">Cartão Itaú</button>
+    <button class="conta-tab banco cartao-tab" data-conta="cartao" data-cartao="itau" title="Cartão Azul Itaú Infinite (final 5548)"><span class="mini-cartao mc-infinite" aria-hidden="true"><i></i><b>5548</b></span>Infinite</button>
+    <button class="conta-tab banco cartao-tab" data-conta="cartao" data-cartao="bb" title="Cartão BB Altus (final 5698)"><span class="mini-cartao mc-altus" aria-hidden="true"><i></i><b>5698</b></span>Altus</button>
   </nav>
   <div class="barra-periodo" id="abas"></div>
   <div class="corpo" id="corpo"></div>
@@ -2558,28 +2568,30 @@
     return v||null;
   }
 
-  function lerArquivo(arq){
-    const origem=ui._origemImport||"auto"; ui._origemImport=null;
+  async function lerArquivo(arq,origemFixa){
+    const origem=origemFixa||ui._origemImport||"auto"; ui._origemImport=null;
     const nome=arq.name.toLowerCase();
-    if(nome.endsWith(".pdf")){ importarFaturaPDF(arq); return; }
-    const fr=new FileReader();
-    fr.onload=()=>{
-      const buf=fr.result;
-      // Excel pelo conteúdo, não só pela extensão (o BB baixa como "Extrato conta corrente.excel")
-      const u8=new Uint8Array(buf.slice(0,4)), zip=u8[0]===0x50&&u8[1]===0x4B, ole=u8[0]===0xD0&&u8[1]===0xCF&&u8[2]===0x11&&u8[3]===0xE0;
-      if(/\.(xls[xm]?|excel)$/.test(nome)||zip||ole){ lerPlanilhaOuExtrato(buf,origem,arq.name); return; }
-      let texto;
-      try{ texto=new TextDecoder("utf-8",{fatal:true}).decode(buf); }
-      catch(e){ texto=new TextDecoder("iso-8859-1").decode(buf); }
-      if(origem==="planilha"){ avisar("A planilha de orçamento precisa ser o arquivo .xlsx.",true); return; }
-      const r = /<OFX>|OFXHEADER/i.test(texto) ? lerOFX(texto) : linhasParaItens(lerCSV(texto));
-      resolverOrigem(origem,texto).then(o=>{ if(o) concluirImport(r,o,texto); });
-    };
-    fr.onerror=()=>avisar("Não consegui abrir esse arquivo.",true);
-    fr.readAsArrayBuffer(arq);
+    if(nome.endsWith(".pdf")){ await importarFaturaPDF(arq); return; }
+    let buf; try{ buf=await arq.arrayBuffer(); }catch(e){ avisar("Não consegui abrir esse arquivo.",true); return; }
+    // Excel pelo conteúdo, não só pela extensão (o BB baixa como "Extrato conta corrente.excel")
+    const u8=new Uint8Array(buf.slice(0,4)), zip=u8[0]===0x50&&u8[1]===0x4B, ole=u8[0]===0xD0&&u8[1]===0xCF&&u8[2]===0x11&&u8[3]===0xE0;
+    if(/\.(xls[xm]?|excel)$/.test(nome)||zip||ole){ await lerPlanilhaOuExtrato(buf,origem,arq.name); return; }
+    let texto;
+    try{ texto=new TextDecoder("utf-8",{fatal:true}).decode(buf); }
+    catch(e){ texto=new TextDecoder("iso-8859-1").decode(buf); }
+    if(origem==="planilha"){ avisar("A planilha de orçamento precisa ser o arquivo .xlsx.",true); return; }
+    const r = /<OFX>|OFXHEADER/i.test(texto) ? lerOFX(texto) : linhasParaItens(lerCSV(texto));
+    const o=await resolverOrigem(origem,texto); if(o) concluirImport(r,o,texto);
+  }
+  // vários arquivos de uma vez (ex.: as faturas do ano): um depois do outro; no fim, a conciliação das faturas Excel
+  async function lerArquivos(lista){
+    const fs=[...lista]; ui._origemImport=null; conciliacaoLote=fs.length>1?{faturas:[]}:null;
+    for(const f of fs){ await lerArquivo(f,"auto"); }
+    if(conciliacaoLote&&conciliacaoLote.faturas.length) mostrarConciliacao(conciliacaoLote);
+    conciliacaoLote=null;
   }
 
-  function lerPlanilhaOuExtrato(buf,origem,nomeArq){
+  async function lerPlanilhaOuExtrato(buf,origem,nomeArq){
     let wb;
     try{ wb = XLSX.read(buf,{type:"array"}); }
     catch(e){ avisar("Não consegui abrir a planilha.",true); return; }
@@ -2594,7 +2606,8 @@
     if(origem==="planilha"){ avisar("Não encontrei a aba LANÇAMENTOS nessa planilha.",true); return; }
     const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
     const txt=textoLinhas(linhas);
-    resolverOrigem(origem,txt).then(o=>{ if(o) concluirImport(linhasParaItens(linhas),o,txt); });
+    if(ehFaturaItauXlsx(linhas)){ importarFaturaItauXlsx(linhas,nomeArq); return; }
+    const o=await resolverOrigem(origem,txt); if(o) concluirImport(linhasParaItens(linhas),o,txt);
   }
 
   /* ---- planilha "Orçamento Solano": aba LANÇAMENTOS (histórico) e MÊS CORRENTE (previsto) ---- */
@@ -2938,6 +2951,147 @@
     return linhasParaItens(linhas);
   }
 
+  /* Grava as compras de uma fatura (PDF ou Excel) na origem "cartao", conciliando com o que já existe:
+     o que já veio de fatura (mesma data, valor e começo da descrição) não duplica; o que foi digitado ou veio da planilha
+     é conferido pelo valor e pela data e passa a usar a descrição do banco. */
+  function conciliarCartao(lancamentos, famFatura, opts){
+    opts=opts||{};
+    const norm = s => String(s).toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g,"");
+    const parecido = (a,b)=>{ a=norm(a); b=norm(b); const n=Math.min(8,a.length,b.length); return n>0 && a.slice(0,n)===b.slice(0,n); };
+    const livres = new Map();
+    dados.lancamentos.forEach(l=>{
+      if(l.origem!=="cartao") return;
+      const k = l.data+"|"+Number(l.valor).toFixed(2);
+      if(!livres.has(k)) livres.set(k,[]);
+      livres.get(k).push(l);
+    });
+    const idsUsados = new Set(dados.lancamentos.map(l=>l.id));
+    let novos=0, repetidos=0, prontos=0, conferidos=0;
+    const mesesTocados = new Set();
+    // lançamentos do cartão que vieram da planilha ou foram digitados (descrição própria, data aproximada):
+    // a fatura confirma pelo valor e data (até 4 dias), mantém a categoria e passa a usar a descrição do banco
+    const familia = t => /\bbb\b|altus|ourocard|banco do brasil|4691|5698/i.test(t) ? "bb" : /infinite|ita[uú]|5548/i.test(t) ? "itau" : "";
+    const digitados = dados.lancamentos.filter(x=>!x.confFatura && !x.ignorado &&
+      (x.origem==="cartao" || (x.origem==="manual" && famFatura && familia(x.doc||"")===famFatura)) &&
+      (!famFatura || !familia(x.doc||"") || familia(x.doc||"")===famFatura));
+    const dDias = (a,b) => Math.abs(new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5;
+
+    lancamentos.forEach(l=>{
+      const k = l.data+"|"+l.valor.toFixed(2);
+      const cand = livres.get(k)||[];
+      const i = cand.findIndex(x=>parecido(x.hist,l.hist));
+      if(i>=0){ const x=cand.splice(i,1)[0]; x.confFatura=true; repetidos++; return; }
+      // digitado/planilha: mesmo valor até 4 dias; senão o mais próximo até 35 dias (parcelas lançadas no dia 1º);
+      // senão diferença de centavos (até R$ 0,15) até 35 dias (parcela arredondada na planilha)
+      // na busca larga, o lançamento do app tem que estar dentro do período da fatura (± 5 dias)
+      const noPer=(x,dias)=>dias<=4||!opts.de||(x.data>=opts.de&&x.data<=opts.ate);
+      const perto=(tol,dias)=>{ let b=-1,bd=1e9; digitados.forEach((x,ix)=>{ const dd=dDias(x.data,l.data); if(Math.abs(x.valor-l.valor)<tol&&dd<=dias&&dd<bd&&noPer(x,dias)){b=ix;bd=dd;} }); return b; };
+      let j = perto(0.005,4); if(j<0&&opts.largo) j=perto(0.005,35); if(j<0&&opts.largo) j=perto(0.155,35);
+      if(j>=0){
+        const x = digitados.splice(j,1)[0];
+        if(x.hist!==l.hist && !x.obs) x.obs = x.hist;
+        if(Math.abs(x.valor-l.valor)>=0.005){ x.obs=(x.obs?x.obs+" · ":"")+"valor da planilha "+brl(x.valor); x.valor=l.valor; }
+        x.hist = l.hist; x.data = l.data; x.doc = l.doc; x.origem = "cartao"; x.confFatura = true;
+        if(x.categoria==="Sem categoria"){ const c=classificar(l.hist,l.valor); x.categoria=c.categoria; }
+        conferidos++; mesesTocados.add(l.data.slice(0,7)); return;
+      }
+      const base = l.data+"|cartao|"+l.valor.toFixed(2)+"|"+l.hist.slice(0,42);
+      let id = base, n = 2;
+      while(idsUsados.has(id)) id = base+"#"+(n++);
+      // valor positivo vindo do cartão = estorno/crédito de compra
+      let c = classificar(l.hist, l.valor);
+      if(l.valor > 0 && c.categoria==="Sem categoria") c = {categoria:"Reembolso e estorno"};
+      if(c.categoria!=="Sem categoria") prontos++;
+      dados.lancamentos.push({id, data:l.data, hist:l.hist, valor:l.valor,
+        doc:l.doc, categoria:c.categoria, vinculo:"PF", obs:"", origem:"cartao", confFatura:true});
+      idsUsados.add(id); novos++;
+      mesesTocados.add(l.data.slice(0,7));
+    });
+
+    return {novos:novos, repetidos:repetidos, prontos:prontos, conferidos:conferidos, meses:[...mesesTocados], restantes:digitados};
+  }
+
+  /* ================= fatura do cartão Itaú em Excel (app/site: "Fatura Paga - Outubro/2026") =================
+     Colunas: Data (da compra) | Lançamento | Parcelamento ("Parcela 6 de 21") | Valor | ... | Número do cartão.
+     Parcela: o dia da compra no mês que cai no período desta fatura (parcelas antecipadas entram nela). */
+  let conciliacaoLote=null;
+  function ehFaturaItauXlsx(l){
+    const t=(l||[]).slice(0,30).map(r=>(r||[]).map(c=>celTexto(c)).join("|")).join("\n");
+    return /Fatura (Paga|Atual|Aberta|Fechada|em aberto)|Lan[çc]amentos/i.test(t) && /\|Data\|Lan[çc]amento\|Parcelamento\|Valor/i.test(t);
+  }
+  const FINAL_CARTAO = {itau:"5548", bb:"5698"};
+  function importarFaturaItauXlsx(l,nomeArq){
+    const T=r=>(r||[]).map(c=>celTexto(c));
+    const h=l.findIndex(r=>{ const t=T(r).map(x=>x.toLowerCase()); return t.includes("data")&&t.some(x=>/^lan[çc]amento$/.test(x))&&t.includes("valor"); });
+    const c=T(l[h]).map(x=>x.toLowerCase());
+    const iD=c.indexOf("data"), iH=c.findIndex(x=>/^lan[çc]amento$/.test(x)), iP=c.findIndex(x=>/parcelamento/.test(x)), iV=c.indexOf("valor");
+    // cabeçalho: Cartão | Valor | Vencimento
+    let venc=null, nomeCartao="", total=null, titulo="";
+    for(let i=0;i<h;i++){ const r=T(l[i]);
+      if(/Fatura/i.test(r.join(" "))&&!titulo) titulo=r.find(x=>/Fatura/i.test(x))||"";
+      const iv=r.findIndex(x=>/^vencimento$/i.test(x));
+      if(iv>=0&&l[i+1]){ venc=celData(l[i+1][iv]); const ic=r.findIndex(x=>/^cart[ãa]o$/i.test(x)), ival=r.findIndex(x=>/^valor$/i.test(x));
+        if(ic>=0) nomeCartao=celTexto(l[i+1][ic]); if(ival>=0) total=celNum(l[i+1][ival]); }
+    }
+    const mFinal=nomeCartao.match(/final\s*(\d{4})/i), fin=mFinal?mFinal[1]:FINAL_CARTAO.itau;
+    const doc="Infinite final "+fin;
+    const itens=[]; let maxD="";
+    for(let i=h+1;i<l.length;i++){ const r=l[i]; const iso=celData(r[iD]); if(!iso) continue; const d=celTexto(r[iH]); if(!d) continue;
+      if(/^(pagamento|cr[ée]dito de pagamento|controle de saldo)/i.test(d)) continue;
+      const v=celNum(r[iV]); if(!v) continue; if(iso>maxD) maxD=iso;
+      itens.push({iso:iso, d:d.replace(/\s{2,}/g," ").trim(), p:iP>=0?celTexto(r[iP]):"", v:v}); }
+    if(!itens.length){ avisar("Não encontrei compras nessa fatura.",true); return; }
+    if(!venc) venc=somaDias(maxD,7);
+    const fech=somaDias(venc,-7);
+    const somaMeses=(iso,k)=>{ let [a,m,d]=iso.split("-").map(Number); m+=k; a+=Math.floor((m-1)/12); m=(((m-1)%12)+12)%12+1;
+      const ult=new Date(a,m,0).getDate(); return a+"-"+String(m).padStart(2,"0")+"-"+String(Math.min(d,ult)).padStart(2,"0"); };
+    // parcela: o dia da compra, no mês que cai dentro do período desta fatura (do fechamento anterior a este)
+    const fechAnt=somaMeses(fech,-1);
+    const lancs=itens.map(x=>{ const pm=x.p.match(/(\d+)\s*de\s*(\d+)/i); let data=x.iso, hist=x.d;
+      if(pm){ const k=+pm[1], n=+pm[2]; for(let g=0; data<=fechAnt&&g<40; g++) data=somaMeses(x.iso,g+1); hist+=" PARC "+String(k).padStart(2,"0")+"/"+String(n).padStart(2,"0"); }
+      if(data>fech) data=fech;
+      return {data:data, hist:hist, valor:-Math.round(x.v*100)/100, doc:doc}; });
+    const rc=conciliarCartao(lancs,"itau",{largo:true, de:somaDias(fechAnt,-5), ate:somaDias(fech,5)});
+    // resumo da fatura por cartão
+    dados.faturasCartao=dados.faturasCartao||{};
+    const fa=dados.faturasCartao.itau;
+    if(!fa||(fa.vencimento||"")<=venc) dados.faturasCartao.itau={final:fin, vencimento:venc, fechamento:fech, total:total!=null?total:-lancs.reduce((s,x)=>s+x.valor,0), paga:/paga/i.test(titulo)};
+    dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+    if(rc.meses.length){ ui.mes=rc.meses.sort().pop(); ui.view="mes"; }
+    ui.conta="cartao"; ui.cartao="itau";
+    salvar(); render();
+    const resumo={titulo:titulo||nomeArq, venc:venc, itens:lancs.length, total:-lancs.reduce((s,x)=>s+x.valor,0), novos:rc.novos, conferidos:rc.conferidos, repetidos:rc.repetidos, fech:fech};
+    if(conciliacaoLote) conciliacaoLote.faturas.push(resumo);
+    else mostrarConciliacao({faturas:[resumo]});
+  }
+  // janela com o resultado da conciliação das faturas e o que ficou no app sem par na fatura
+  function mostrarConciliacao(lote){
+    const fs=lote.faturas.slice().sort((a,b)=>a.venc<b.venc?-1:1);
+    const de=somaDias(fs[0].fech,-40), ate=fs[fs.length-1].fech;
+    const fam=l=>famCartao(l);
+    const sobraT=dados.lancamentos.filter(l=>l.origem==="cartao"&&!l.confFatura&&!l.ignorado&&fam(l)==="itau"&&l.data>=de&&l.data<=ate);
+    // faturas que faltaram no meio da sequência (ex.: abril): o que cai no período delas não é "sem par"
+    const ms=fs.map(f=>f.venc.slice(0,7)), faltam=[];
+    for(let m=ms[0]; m<ms[ms.length-1]; m=proxMes(m)) if(!ms.includes(m)) faltam.push(m);
+    const janelas=faltam.map(m=>{ const fe=somaDias(m+"-05",-7), [a,mm]=fe.split("-").map(Number); const ant=(mm===1?(a-1)+"-12":a+"-"+String(mm-1).padStart(2,"0"))+fe.slice(7); return [ant,fe]; });
+    const naFalta=l=>janelas.some(([x,y])=>l.data>x&&l.data<=y);
+    const pend=sobraT.filter(naFalta), sobra=sobraT.filter(l=>!naFalta(l));
+    const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+    const lin=fs.map(f=>'<tr><td>'+esc(f.titulo.replace(/Fatura Paga - /i,""))+'</td><td>'+diaMes(f.venc)+'</td><td class="n">'+f.itens+'</td><td class="n">'+brl(f.total)+'</td>'+
+      '<td class="n">'+(f.conferidos+f.repetidos)+'</td><td class="n">'+f.novos+'</td></tr>').join("");
+    const t=k=>fs.reduce((a,f)=>a+f[k],0);
+    const linS=sobra.slice(0,80).map(l=>'<tr data-sobra="'+esc(l.id)+'"><td>'+diaMes(l.data)+'</td><td>'+esc(l.hist)+'</td><td class="n">'+brl(-l.valor)+'</td></tr>').join("");
+    modal('<h3 class="modal-tit">Conciliação das faturas do Azul Infinite</h3>'+
+      '<div class="est-tab"><table><thead><tr><th>Fatura</th><th>Venc.</th><th class="n">Itens</th><th class="n">Total</th><th class="n">Já no app</th><th class="n">Lançados agora</th></tr></thead><tbody>'+lin+
+      '</tbody><tfoot><tr><td colspan="2"><b>Total</b></td><td class="n">'+t("itens")+'</td><td class="n">'+brl(t("total"))+'</td><td class="n">'+(t("conferidos")+t("repetidos"))+'</td><td class="n">'+t("novos")+'</td></tr></tfoot></table></div>'+
+      (faltam.length?'<p class="modal-corpo" style="margin:14px 0 0;color:#9A5B07"><b>Faltou a fatura de '+faltam.map(m=>MESES[+m.slice(5)-1]+'/'+m.slice(0,4)).join(", ")+'</b>: '+pend.length+' lançamento'+(pend.length===1?'':'s')+' do app nesse período (R$ '+brl(-pend.reduce((a,l)=>a+l.valor,0))+') ficam como estão até você importar essa fatura.</p>':'')+
+      (sobra.length?'<p class="modal-corpo" style="margin:14px 0 6px"><b>'+sobra.length+' lançamento'+(sobra.length===1?'':'s')+' do Infinite no app sem par nas faturas</b> (R$ '+brl(-sobra.reduce((a,l)=>a+l.valor,0))+') — provavelmente duplicados ou digitados com valor diferente. Confira antes de riscar:</p>'+
+        '<div class="est-tab" style="max-height:260px;overflow:auto"><table><tbody>'+linS+'</tbody></table></div>'
+        :'<p class="modal-corpo" style="margin:14px 0 0">Tudo o que estava no app para o Infinite nesse período bateu com as faturas.</p>')+
+      '<div class="modal-acoes">'+(sobra.length?'<button class="bt vazado" data-modal="riscar">Riscar os sem par</button>':'')+'<button class="bt" data-modal="ok">Fechar</button></div>'
+    ).then(v=>{ if(v==="riscar"){ sobra.forEach(l=>{ l.ignorado=true; l.riscadoFatura=true; }); salvar(); render(); avisar(sobra.length+" lançamentos riscados (o ↺ traz de volta)."); } });
+  }
+
   /* ================= importação PDF da fatura do cartão — sem API ================= */
   async function importarFaturaPDF(arq){
     avisar("Lendo o PDF…");
@@ -3109,57 +3263,9 @@
           proxFechamento: mProx ? dataBR(mProx[1]) : ""};
     }
 
-    // Evitar duplicar: a mesma compra pode vir escrita um pouco diferente na fatura
-    // em aberto e na fechada ("DUROKE CASA DE CARNE BELO" × "...BELO HORIZONT").
-    // Compara data + valor + começo da descrição; compras iguais no mesmo dia contam
-    // uma a uma (duas de R$ 29,90 no mesmo dia são duas compras).
-    const norm = s => String(s).toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g,"");
-    const parecido = (a,b)=>{ a=norm(a); b=norm(b); const n=Math.min(8,a.length,b.length); return n>0 && a.slice(0,n)===b.slice(0,n); };
-    const livres = new Map();
-    dados.lancamentos.forEach(l=>{
-      if(l.origem!=="cartao") return;
-      const k = l.data+"|"+Number(l.valor).toFixed(2);
-      if(!livres.has(k)) livres.set(k,[]);
-      livres.get(k).push(l);
-    });
-    const idsUsados = new Set(dados.lancamentos.map(l=>l.id));
-    let novos=0, repetidos=0, prontos=0, conferidos=0;
-    const mesesTocados = new Set();
-    // lançamentos do cartão que vieram da planilha ou foram digitados (descrição própria, data aproximada):
-    // a fatura confirma pelo valor e data (até 4 dias), mantém a categoria e passa a usar a descrição do banco
-    const familia = t => /infinite|ita[uú]/i.test(t) ? "itau" : /\bbb\b|altus|ourocard|banco do brasil/i.test(t) ? "bb" : "";
     const famFatura = /ourocard|bb\.com\.br|altus/i.test(textoTotal) ? "bb" : /ita[uú]/i.test(textoTotal) ? "itau" : "";
-    const digitados = dados.lancamentos.filter(x=>!x.confFatura && !x.ignorado &&
-      (x.origem==="cartao" || (x.origem==="manual" && famFatura && familia(x.doc||"")===famFatura)) &&
-      (!famFatura || !familia(x.doc||"") || familia(x.doc||"")===famFatura));
-    const dDias = (a,b) => Math.abs(new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5;
-
-    lancamentos.forEach(l=>{
-      const k = l.data+"|"+l.valor.toFixed(2);
-      const cand = livres.get(k)||[];
-      const i = cand.findIndex(x=>parecido(x.hist,l.hist));
-      if(i>=0){ const x=cand.splice(i,1)[0]; x.confFatura=true; repetidos++; return; }
-      const j = digitados.findIndex(x=>Math.abs(x.valor-l.valor)<0.005 && dDias(x.data,l.data)<=4);
-      if(j>=0){
-        const x = digitados.splice(j,1)[0];
-        if(x.hist!==l.hist && !x.obs) x.obs = x.hist;
-        x.hist = l.hist; x.data = l.data; x.doc = l.doc; x.origem = "cartao"; x.confFatura = true;
-        if(x.categoria==="Sem categoria"){ const c=classificar(l.hist,l.valor); x.categoria=c.categoria; }
-        conferidos++; mesesTocados.add(l.data.slice(0,7)); return;
-      }
-      const base = l.data+"|cartao|"+l.valor.toFixed(2)+"|"+l.hist.slice(0,42);
-      let id = base, n = 2;
-      while(idsUsados.has(id)) id = base+"#"+(n++);
-      // valor positivo vindo do cartão = estorno/crédito de compra
-      let c = classificar(l.hist, l.valor);
-      if(l.valor > 0 && c.categoria==="Sem categoria") c = {categoria:"Reembolso e estorno"};
-      if(c.categoria!=="Sem categoria") prontos++;
-      dados.lancamentos.push({id, data:l.data, hist:l.hist, valor:l.valor,
-        doc:l.doc, categoria:c.categoria, vinculo:"PF", obs:"", origem:"cartao", confFatura:true});
-      idsUsados.add(id); novos++;
-      mesesTocados.add(l.data.slice(0,7));
-    });
-
+    const rc = conciliarCartao(lancamentos, famFatura);
+    const novos=rc.novos, repetidos=rc.repetidos, prontos=rc.prontos, conferidos=rc.conferidos, mesesTocados=new Set(rc.meses);
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
     if(mesesTocados.size){ ui.mes=[...mesesTocados].sort().pop(); ui.view="mes"; }
     salvar(); render();
@@ -3205,10 +3311,14 @@
   }
   // "cpf" = todos os lançamentos (visão de gasto real); itau/bb/cartao = conferência com o extrato/fatura
   const visaoNatureza = () => ui.conta==="cpf";
+  // de qual cartão é a compra: BB Altus (finais 4691/5698, "cartão bb") ou Azul Itaú Infinite (o resto)
+  const famCartao = l => /\bbb\b|altus|ourocard|banco do brasil|4691|5698/i.test(String(l.doc||"")) ? "bb" : "itau";
+  const NOMES_CARTAO = {itau:"Azul Infinite", bb:"BB Altus"};
   const NOMES_ORIGEM = {itau:"Itaú", bb:"BB", cartao:"Cartão Itaú", manual:"Dinheiro / outro"};
   const TAG_ORIGEM = {itau:"ITAÚ", bb:"BB", manual:"OUTRO"};
   function lancDaConta(){
-    if(ui.conta==="itau"||ui.conta==="bb"||ui.conta==="cartao") return dados.lancamentos.filter(l=>l.origem===ui.conta);
+    if(ui.conta==="cartao") return dados.lancamentos.filter(l=>l.origem==="cartao"&&famCartao(l)===(ui.cartao||"itau"));
+    if(ui.conta==="itau"||ui.conta==="bb") return dados.lancamentos.filter(l=>l.origem===ui.conta);
     return dados.lancamentos;
   }
   const nomeOrigem = l => NOMES_ORIGEM[l.origem]||"Outro";
@@ -3568,7 +3678,7 @@
   /* ================= navegação ================= */
   const cap = t => t.charAt(0).toUpperCase()+t.slice(1);
   function marcarConta(){
-    document.querySelectorAll("#contaTabs .conta-tab").forEach(b=>b.classList.toggle("ativa",b.dataset.conta===ui.conta));
+    document.querySelectorAll("#contaTabs .conta-tab").forEach(b=>b.classList.toggle("ativa",b.dataset.conta===ui.conta&&(!b.dataset.cartao||b.dataset.cartao===(ui.cartao||"itau"))));
   }
   function mesPadrao(meses){
     const ok=meses.filter(m=>m<=mesAtual()), l=ok.length?ok:meses;
@@ -5572,7 +5682,9 @@
       nota=partes.join(" ");
 
     } else nota = ui.conta==="cartao"
-      ? "Como na fatura: compras e créditos do cartão, na data da compra."
+      ? (()=>{ const k=ui.cartao||"itau", f=(dados.faturasCartao||{})[k]||(k==="bb"&&dados.faturaFechada&&/5698|4691/.test(dados.faturaFechada.cartao||"")?{vencimento:dados.faturaFechada.vencimento,total:dados.faturaFechada.total}:null);
+          return NOMES_CARTAO[k]+" — compras e créditos na data da compra (parcela k: data da compra + k−1 meses)."+
+            (f&&f.total!=null?" Última fatura: R$ "+brl(f.total)+(f.vencimento?", vencimento "+diaMes(f.vencimento):"")+(f.paga?" (paga)":"")+".":""); })()
       : "Como no banco: a fatura do cartão aparece como um débito único e as compras do cartão não entram.";
 
     const avisos=[];
@@ -6073,7 +6185,7 @@
   document.getElementById("contaTabs").addEventListener("click",e=>{
     const bt=e.target.closest(".conta-tab"); if(!bt) return;
     if(ui.conta==="dash"||bt.dataset.conta==="dash") ui.mes=null; // dashboard abre em "todos os meses"; contas abrem no mês atual
-    ui.conta=bt.dataset.conta; ui.view="mes";
+    ui.conta=bt.dataset.conta; ui.view="mes"; if(bt.dataset.cartao) ui.cartao=bt.dataset.cartao;
     ui.busca=""; ui.cat=""; ui.tipo=""; ui.vinculo=""; ui.origem=""; ui.fat=""; ui.errada=""; ui.soMov="";
     render();
   });
@@ -6151,7 +6263,7 @@
   $("#arqPdf").onchange=e=>{ if(e.target.files[0]) importarFaturaPDF(e.target.files[0]); e.target.value=""; };
   const abrirImport = o => { ui._origemImport=o; $("#arqCsv").click(); };
   $("#btImportarMenu").onclick=()=>abrirImport("auto");
-  $("#arqCsv").onchange=e=>{ if(e.target.files[0]) lerArquivo(e.target.files[0]); e.target.value=""; };
+  $("#arqCsv").onchange=e=>{ const fs=e.target.files; if(fs&&fs.length) (fs.length>1?lerArquivos(fs):lerArquivo(fs[0])); e.target.value=""; };
   $("#btBackup").onclick=exportarBackup;
   /* Backups diários na nuvem: tabela livro_caixa_backup, preenchida todo dia pelo Supabase (supabase/backup-diario.sql).
      Guarda os últimos 30 dias e o dia 1º de cada mês. Aqui dá para baixar ou voltar o app para um dia. */
