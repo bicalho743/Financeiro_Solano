@@ -2968,7 +2968,7 @@
     });
     const idsUsados = new Set(dados.lancamentos.map(l=>l.id));
     let novos=0, repetidos=0, prontos=0, conferidos=0;
-    const mesesTocados = new Set();
+    const mesesTocados = new Set(), usadosF = new Set();
     // lançamentos do cartão que vieram da planilha ou foram digitados (descrição própria, data aproximada):
     // a fatura confirma pelo valor e data (até 4 dias), mantém a categoria e passa a usar a descrição do banco
     const familia = t => /\bbb\b|altus|ourocard|banco do brasil|4691|5698/i.test(t) ? "bb" : /infinite|ita[uú]|5548/i.test(t) ? "itau" : "";
@@ -2980,13 +2980,19 @@
     lancamentos.forEach(l=>{
       const k = l.data+"|"+l.valor.toFixed(2);
       const cand = livres.get(k)||[];
-      const i = cand.findIndex(x=>parecido(x.hist,l.hist));
-      if(i>=0){ const x=cand.splice(i,1)[0]; x.confFatura=true; if(opts.fatura) x.fatura=opts.fatura; repetidos++; return; }
+      let i = cand.findIndex(x=>!usadosF.has(x)&&parecido(x.hist,l.hist)&&(!opts.fatura||!x.fatura||x.fatura===opts.fatura));
+      // reimportação: a mesma compra já gravada nesta fatura com outra data (regra de data mudou) — atualiza a data
+      if(i<0&&opts.fatura){ const ja=dados.lancamentos.find(x=>x.origem==="cartao"&&x.fatura===opts.fatura&&!usadosF.has(x)&&Math.abs(x.valor-l.valor)<0.005&&parecido(x.hist,l.hist));
+        if(ja){ usadosF.add(ja); ja.data=l.data; ja.confFatura=true; const jx=digitados.indexOf(ja); if(jx>=0) digitados.splice(jx,1); repetidos++; return; } }
+      if(i>=0){ const x=cand.splice(i,1)[0]; usadosF.add(x); x.confFatura=true; if(opts.fatura) x.fatura=opts.fatura;
+        // já usado por esta fatura: não pode ser "conferido" de novo por outra compra de mesmo valor
+        const jx=digitados.indexOf(x); if(jx>=0) digitados.splice(jx,1);
+        repetidos++; return; }
       // digitado/planilha: mesmo valor até 4 dias; senão o mais próximo até 35 dias (parcelas lançadas no dia 1º);
       // senão diferença de centavos (até R$ 0,15) até 35 dias (parcela arredondada na planilha)
       // na busca larga, o lançamento do app tem que estar dentro do período da fatura (± 5 dias)
       const noPer=(x,dias)=>dias<=4||!opts.de||(x.data>=opts.de&&x.data<=opts.ate);
-      const perto=(tol,dias)=>{ let b=-1,bd=1e9; digitados.forEach((x,ix)=>{ const dd=dDias(x.data,l.data); if(Math.abs(x.valor-l.valor)<tol&&dd<=dias&&dd<bd&&noPer(x,dias)){b=ix;bd=dd;} }); return b; };
+      const perto=(tol,dias)=>{ let b=-1,bd=1e9; digitados.forEach((x,ix)=>{ if(x.confFatura) return; const dd=dDias(x.data,l.data); if(Math.abs(x.valor-l.valor)<tol&&dd<=dias&&dd<bd&&noPer(x,dias)){b=ix;bd=dd;} }); return b; };
       let j = perto(0.005,4); if(j<0&&opts.largo) j=perto(0.005,35); if(j<0&&opts.largo) j=perto(0.155,35);
       if(j>=0){
         const x = digitados.splice(j,1)[0];
@@ -2994,7 +3000,7 @@
         if(Math.abs(x.valor-l.valor)>=0.005){ x.obs=(x.obs?x.obs+" · ":"")+"valor da planilha "+brl(x.valor); x.valor=l.valor; }
         x.hist = l.hist; x.data = l.data; x.doc = l.doc; x.origem = "cartao"; x.confFatura = true; if(opts.fatura) x.fatura=opts.fatura;
         if(x.categoria==="Sem categoria"){ const c=classificar(l.hist,l.valor); x.categoria=c.categoria; }
-        conferidos++; mesesTocados.add(l.data.slice(0,7)); return;
+        usadosF.add(x); conferidos++; mesesTocados.add(l.data.slice(0,7)); return;
       }
       const base = l.data+"|cartao|"+l.valor.toFixed(2)+"|"+l.hist.slice(0,42);
       let id = base, n = 2;
@@ -3005,7 +3011,7 @@
       if(c.categoria!=="Sem categoria") prontos++;
       dados.lancamentos.push({id, data:l.data, hist:l.hist, valor:l.valor,
         doc:l.doc, categoria:c.categoria, vinculo:"PF", obs:"", origem:"cartao", confFatura:true, ...(opts.fatura?{fatura:opts.fatura}:{})});
-      idsUsados.add(id); novos++;
+      idsUsados.add(id); novos++; usadosF.add(dados.lancamentos[dados.lancamentos.length-1]);
       mesesTocados.add(l.data.slice(0,7));
     });
 
@@ -3047,7 +3053,7 @@
     const somaMeses=(iso,k)=>{ let [a,m,d]=iso.split("-").map(Number); m+=k; a+=Math.floor((m-1)/12); m=(((m-1)%12)+12)%12+1;
       const ult=new Date(a,m,0).getDate(); return a+"-"+String(m).padStart(2,"0")+"-"+String(Math.min(d,ult)).padStart(2,"0"); };
     // parcela: o dia da compra, no mês que cai dentro do período desta fatura (do fechamento anterior a este)
-    const fechAnt=somaMeses(fech,-1);
+    const fechAnt=somaDias(somaMeses(venc,-1),-7);
     const lancs=itens.map(x=>{ const pm=x.p.match(/(\d+)\s*de\s*(\d+)/i); let data=x.iso, hist=x.d;
       if(pm){ const k=+pm[1], n=+pm[2]; for(let g=0; data<=fechAnt&&g<40; g++) data=somaMeses(x.iso,g+1); hist+=" PARC "+String(k).padStart(2,"0")+"/"+String(n).padStart(2,"0"); }
       if(data>fech) data=fech;
