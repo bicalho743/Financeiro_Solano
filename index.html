@@ -866,18 +866,7 @@
       <p>Solano Bicalho · Família</p>
     </div>
     <div class="acoes">
-      <div class="menu-wrap">
-        <button class="bt" id="btImportarMenu" aria-haspopup="true" aria-expanded="false">Importar ▾</button>
-        <div class="menu" id="menuImportar" hidden>
-          <button id="btImpItau">Extrato do Itaú (conta)</button>
-          <button id="btImpBB">Extrato do BB (conta)</button>
-          <button id="btImpCartao">Fatura do cartão (Itaú ou BB)</button>
-          <button id="btImpFin">Demonstrativo do financiamento (PDF)</button>
-          <button id="btImpB3">Investimentos B3 (movimentação ou posição)</button>
-          <hr>
-          <button id="btImpPlanilha">Planilha de orçamento (.xlsx)</button>
-        </div>
-      </div>
+      <button class="bt" id="btImportarMenu" title="Extrato do Itaú ou BB, fatura do cartão, financiamento, B3 ou planilha de orçamento — o app reconhece o arquivo">Importar</button>
       <button class="bt vazado" id="btLancar">+ Lançamento</button>
       <div class="menu-wrap">
         <button class="bt vazado bt-icone" id="btMais" aria-haspopup="true" aria-expanded="false" aria-label="Mais opções">⋯</button>
@@ -2064,21 +2053,25 @@
       if(l.doc&&!l.manual) porDoc.set(l.data+"|"+l.doc+"|"+String(l.hist).slice(0,42),l);
     });
     const ids=new Set(dados.lancamentos.map(l=>l.id));
-    let novos=0,repetidos=0,prontos=0,corrigidos=0; const meses=new Set();
+    let novos=0,repetidos=0,prontos=0,corrigidos=0,voltaram=0; const meses=new Set();
+    // riscado por um extrato anterior (o banco tinha mudado a data/valor) e este extrato traz de novo: volta a contar.
+    // Ignorado à mão (sem riscadoExtrato) continua ignorado.
+    const volta=l=>{ if(origem!=="cartao"&&l.ignorado&&l.riscadoExtrato){ l.ignorado=false; delete l.riscadoExtrato; voltaram++; meses.add(l.data.slice(0,7)); } };
     itens.forEach(it=>{
       const hist=celTexto(it.hist), iso=it.iso, doc=celTexto(it.doc);
       const valor=Math.round(it.valor*100)/100;
       if(!iso||!hist||!valor) return;
       const k=fp(iso,valor,hist);
       const ja=(livres.get(k)||[]).filter(l=>!usados.has(l)).sort((a,b)=>(a.ignorado?1:0)-(b.ignorado?1:0));
-      if(ja.length){ const l=ja[0]; usados.add(l); if(it.tipo) l.tipo=it.tipo; if(origem!=="cartao"&&!it.categoria) l.confExtrato=true; repetidos++; return; }
+      if(ja.length){ const l=ja[0]; usados.add(l); if(!it.categoria) volta(l); if(it.tipo) l.tipo=it.tipo; if(origem!=="cartao"&&!it.categoria) l.confExtrato=true; repetidos++; return; }
       // mesma data e valor, e a descrição foi editada no app ("PAY Reale 26/09 - BAR") ou digitada à mão/na planilha
       // ("ester de lima" para "PAY CASA 05/09"): é o mesmo lançamento, não duplica
       if(origem!=="cartao"){
         const nh=nTot(hist);
-        const par=(porDV.get(iso+"|"+valor.toFixed(2))||[]).find(l=>!usados.has(l)&&
-          (nTot(l.hist).startsWith(nh)||nh.startsWith(nTot(l.hist))||!pareceBanco(l.hist)));
-        if(par){ usados.add(par); if(!it.categoria) par.confExtrato=true; repetidos++; return; }
+        const par=(porDV.get(iso+"|"+valor.toFixed(2))||[]).filter(l=>!usados.has(l)&&
+          (nTot(l.hist).startsWith(nh)||nh.startsWith(nTot(l.hist))||!pareceBanco(l.hist)))
+          .sort((a,b)=>(a.ignorado?1:0)-(b.ignorado?1:0))[0];
+        if(par){ usados.add(par); if(!it.categoria) volta(par); if(!it.categoria) par.confExtrato=true; repetidos++; return; }
       }
       // mesmo documento com valor diferente: o banco corrigiu, atualiza sem perder categoria/observação
       if(doc && origem!=="cartao"){
@@ -2095,7 +2088,7 @@
       dados.lancamentos.push(nl); usados.add(nl);
       ids.add(id); novos++; meses.add(iso.slice(0,7));
     });
-    return {novos:novos,repetidos:repetidos,prontos:prontos,corrigidos:corrigidos,meses:[...meses],tocados:usados};
+    return {novos:novos,repetidos:repetidos,prontos:prontos,corrigidos:corrigidos,voltaram:voltaram,meses:[...meses],tocados:usados};
   }
   /* O extrato novo manda: no período que ele cobre (dia seguinte ao SALDO ANTERIOR até o último lançamento),
      o que veio de um extrato anterior e não está mais nele foi mudado pelo banco (outra data ou valor,
@@ -2120,6 +2113,7 @@
     return r.novos+" lançamento"+(r.novos===1?"":"s")+" importado"+(r.novos===1?"":"s")+
       (r.novos?" · "+r.prontos+" já classificado"+(r.prontos===1?"":"s"):"")+
       (r.corrigidos?" · "+r.corrigidos+" valor"+(r.corrigidos===1?"":"es")+" corrigido"+(r.corrigidos===1?"":"s"):"")+
+      (r.voltaram?" · "+r.voltaram+" riscado"+(r.voltaram===1?"":"s")+" antes "+(r.voltaram===1?"voltou":"voltaram")+" (o extrato traz de novo)":"")+
       (r.repetidos?" · "+r.repetidos+" já estava"+(r.repetidos===1?"":"m")+" aqui":"");
   }
 
@@ -2287,8 +2281,40 @@
     // mês em que o extrato começa no meio: o SALDO ANTERIOR não é o saldo do dia 1º — não sobrescreve
   }
 
+  /* Importar (um botão só): de que tipo é o arquivo? PDF, B3 e planilha de orçamento já se reconhecem antes daqui.
+     Aqui decide entre extrato do Itaú, extrato do BB e fatura do cartão (Excel, CSV ou OFX).
+     Extrato tem linhas de saldo/agência; fatura tem cartão/vencimento no cabeçalho. Na dúvida, pergunta. */
+  function tipoDoArquivo(txt){
+    const norm=x=>String(x||"").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+    const t=norm(txt), ls=String(txt||"").split("\n"), i0=ls.findIndex(l=>/\d{2}\/\d{2}\/\d{2,4}/.test(l));
+    // cabeçalho = linhas antes do 1º lançamento (no meio do extrato aparecem "FATURA ..." e "PAGTO CARTAO")
+    const cab=norm(ls.slice(0,i0<0?15:Math.min(i0,15)).join("\n"));
+    if(/<CCSTMTRS>|<CCACCTFROM>|CREDITCARDMSGSRSV1/.test(t)) return "cartao";
+    const banco=bancoDoArquivo(txt);
+    const extrato=/<BANKACCTFROM>|SALDO DO DIA|SALDO TOTAL DISPON|SALDO ANTERIOR|\bAGENCIA\b|CONTA CORRENTE/.test(t);
+    const fatura=/FATURA|CARTAO|FINAL \d{4}|VENCIMENTO|LIMITE DE CREDITO/.test(cab);
+    if(extrato && !fatura) return banco;
+    if(fatura && !extrato) return "cartao";
+    return extrato ? null : banco;
+  }
+  async function resolverOrigem(origem,txt){
+    if(origem!=="auto") return origem;
+    const o=tipoDoArquivo(txt);
+    if(o) return o;
+    const v=await modal('<h3 class="modal-tit">De onde é este arquivo?</h3>'+
+      '<p class="modal-corpo">Não consegui reconhecer sozinho. Escolha:</p>'+
+      '<div class="modal-acoes" style="flex-wrap:wrap">'+
+        '<button class="bt" data-modal="itau">Extrato Itaú</button>'+
+        '<button class="bt" data-modal="bb">Extrato BB</button>'+
+        '<button class="bt" data-modal="cartao">Fatura do cartão</button>'+
+        '<button class="bt vazado" data-modal="cancelar">Cancelar</button>'+
+      '</div>');
+    if(!v) avisar("Importação cancelada.",true);
+    return v||null;
+  }
+
   function lerArquivo(arq){
-    const origem=ui._origemImport||"itau"; ui._origemImport=null;
+    const origem=ui._origemImport||"auto"; ui._origemImport=null;
     const nome=arq.name.toLowerCase();
     if(nome.endsWith(".pdf")){ importarFaturaPDF(arq); return; }
     const fr=new FileReader();
@@ -2300,7 +2326,7 @@
       catch(e){ texto=new TextDecoder("iso-8859-1").decode(buf); }
       if(origem==="planilha"){ avisar("A planilha de orçamento precisa ser o arquivo .xlsx.",true); return; }
       const r = /<OFX>|OFXHEADER/i.test(texto) ? lerOFX(texto) : linhasParaItens(lerCSV(texto));
-      concluirImport(r,origem,texto);
+      resolverOrigem(origem,texto).then(o=>{ if(o) concluirImport(r,o,texto); });
     };
     fr.onerror=()=>avisar("Não consegui abrir esse arquivo.",true);
     fr.readAsArrayBuffer(arq);
@@ -2320,7 +2346,8 @@
     if(aba && (origem==="planilha" || wb.SheetNames.some(n=>/M[ÊE]S CORRENTE/i.test(n)))){ importarPlanilhaOrcamento(wb,aba); return; }
     if(origem==="planilha"){ avisar("Não encontrei a aba LANÇAMENTOS nessa planilha.",true); return; }
     const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
-    concluirImport(linhasParaItens(linhas),origem,textoLinhas(linhas));
+    const txt=textoLinhas(linhas);
+    resolverOrigem(origem,txt).then(o=>{ if(o) concluirImport(linhasParaItens(linhas),o,txt); });
   }
 
   /* ---- planilha "Orçamento Solano": aba LANÇAMENTOS (histórico) e MÊS CORRENTE (previsto) ---- */
@@ -3855,7 +3882,7 @@
         '<p class="sub" style="margin:8px 0 10px">'+esc(f.sistema||"")+' · juros '+pt(f.taxaAno)+' a.a. (efetiva '+pt(f.taxaEfet)+') + TR'+
           (f.valorOrig?' · contratado R$ '+brl(f.valorOrig)+(f.dataOrig?' em '+f.dataOrig.split("-").reverse().join("/"):''):'')+
           (f.contrato?' · contrato final '+esc(String(f.contrato).slice(-4)):'')+' · demonstrativo de '+(f.emitido?f.emitido.split("-").reverse().join("/"):"—")+
-          '. Para atualizar, baixe o demonstrativo novo no app do banco e use <b>Importar › Demonstrativo do financiamento (PDF)</b>.</p>'+
+          '. Para atualizar, baixe o demonstrativo novo no app do banco e use <b>Importar</b>.</p>'+
         '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Parcela</th><th>Vencimento</th><th>Amortização</th><th>Juros</th><th>Seguros + taxa</th><th>Total</th><th>Saldo devedor</th><th>Situação</th></tr></thead><tbody>'+
         fut.slice(0,12).map(k=>{ const x=P[k]; return '<tr><td>'+x.n+'</td><td>'+x.venc.split("-").reverse().join("/")+'</td><td>'+brl(x.amort)+'</td><td>'+brl(x.juros)+'</td><td>'+brl(cent(x.seguros+x.taxa))+'</td><td><b>'+brl(x.total)+'</b></td><td>'+brl(x.saldo)+'</td><td>'+esc(x.sit)+'</td></tr>'; }).join("")+
         '</tbody></table></div>';
@@ -5834,7 +5861,7 @@
   // menus do cabeçalho
   function fecharMenus(){ document.querySelectorAll(".menu").forEach(m=>m.hidden=true);
     document.querySelectorAll("[aria-haspopup]").forEach(b=>b.setAttribute("aria-expanded","false")); }
-  [["btImportarMenu","menuImportar"],["btMais","menuMais"]].forEach(([b,m])=>{
+  [["btMais","menuMais"]].forEach(([b,m])=>{
     document.getElementById(b).onclick=e=>{
       e.stopPropagation();
       const menu=document.getElementById(m), abrir=menu.hidden;
@@ -5856,12 +5883,7 @@
   });
   $("#arqPdf").onchange=e=>{ if(e.target.files[0]) importarFaturaPDF(e.target.files[0]); e.target.value=""; };
   const abrirImport = o => { ui._origemImport=o; $("#arqCsv").click(); };
-  $("#btImpItau").onclick=()=>abrirImport("itau");
-  $("#btImpBB").onclick=()=>abrirImport("bb");
-  $("#btImpCartao").onclick=()=>abrirImport("cartao");
-  $("#btImpFin").onclick=()=>abrirImport("cartao");
-  $("#btImpB3").onclick=()=>abrirImport("b3");
-  $("#btImpPlanilha").onclick=()=>abrirImport("planilha");
+  $("#btImportarMenu").onclick=()=>abrirImport("auto");
   $("#arqCsv").onchange=e=>{ if(e.target.files[0]) lerArquivo(e.target.files[0]); e.target.value=""; };
   $("#btBackup").onclick=exportarBackup;
   /* Backups diários na nuvem: tabela livro_caixa_backup, preenchida todo dia pelo Supabase (supabase/backup-diario.sql).
