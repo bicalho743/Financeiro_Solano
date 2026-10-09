@@ -1531,7 +1531,9 @@
         if(d) add(d,+x.aPagar);
       });
     });
-    dados.lancamentos.forEach(l=>{ if(l.origem==="itau"&&!l.ignorado&&l.data>hj&&!exts.has(chaveExt(l.hist,l.valor))) add(l.data,l.valor); });
+    // fatura de cartão que vence no mês seguinte fica fora: é paga com o salário, não com o cheque especial
+    const fimMes=fimDoMes(mesAtual());
+    dados.lancamentos.forEach(l=>{ if(l.origem==="itau"&&!l.ignorado&&l.data>hj&&!exts.has(chaveExt(l.hist,l.valor))&&!(l.data>fimMes&&l.categoria===CAT_FATURA)) add(l.data,l.valor); });
     let s=saldoContaApp(mesAtual()).v; const serie=[];
     for(let d=somaDias(hj,1); d<ate; d=somaDias(d,1)){ s=cent(s+(mov[d]||0)); serie.push({d:d,s:s}); }
     return {hoje:saldoContaApp(mesAtual()).v, serie:serie};
