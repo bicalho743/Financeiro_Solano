@@ -1579,9 +1579,15 @@
     // custos: juros do cheque (% ao mês; BB 7,98% pelo extrato, os outros no teto de 8%) e IOF adicional de 0,38% a cada vez que a dívida
     // entra num banco. O IOF diário (0,0082%) é o mesmo em qualquer banco, então não muda a escolha.
     const TAXA_CHEQUE={itau:0.08, bb:0.0798, santander:0.08}, IOF_ADIC_TROCA=0.0038;
-    function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0, custoJ=0;
-      // regra: cobrir NO 10º dia — o banco pode ficar negativo no máximo 9 dias do ciclo; do 10º em diante conta como juros
-      for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=o+"|"+inicioCiclo(o,d); v[k]=(v[k]||0)+1; if(v[k]>=DIAS_CHEQUE){ juros++; custoJ+=falta(d)*TAXA_CHEQUE[o]/30; } }
+    // regra: cobrir NO 10º dia — o banco pode ficar negativo no máximo 9 dias do ciclo. Se passar, o banco cobra juros
+    // do PERÍODO INTEIRO do ciclo (todos os dias negativos), não só dos dias a mais.
+    function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0, custoJ=0; const cic={};
+      for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue;
+        const k=o+"|"+inicioCiclo(o,d), antes=v[k]||0; v[k]=antes+1;
+        const c=cic[k]||(cic[k]={soma:0, ant:antes, cobrado:antes>=DIAS_CHEQUE}); const dia=falta(d)*TAXA_CHEQUE[o]/30; c.soma+=dia;
+        if(c.cobrado){ juros++; custoJ+=dia; }
+        else if(v[k]>=DIAS_CHEQUE){ c.cobrado=true; juros+=v[k]; custoJ+=c.soma+c.ant*dia; }   // dias anteriores do ciclo estimados pelo valor de hoje
+      }
       return {u:v, juros:juros, custoJ:custoJ}; }
     const BANCOS=["itau","bb","santander"];
     // procura a sequência de bancos com o MENOR CUSTO até o salário: juros dos dias além do 10º + 0,38% de IOF a cada troca
@@ -1699,13 +1705,13 @@
         'A dívida total chega a <b style="color:#C0392B">R$ '+brl(Math.abs(fundo.s))+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia; em fim de semana ou feriado, no dia útil anterior.</p>'+
       '<div class="est-tab"><table><thead><tr><th>Data</th><th>Pix</th><th class="n">Valor</th><th class="n">IOF</th><th class="n">Total</th><th>Obs.</th></tr></thead><tbody>'+lin+
       '</tbody><tfoot><tr><td colspan="2">IOF no período</td><td></td><td class="n"><b>'+brl(si)+'</b></td><td></td><td></td></tr>'+
-        '<tr><td colspan="2">Juros (dias além do 10º)</td><td></td><td class="n"><b>'+brl(jurosR$)+'</b></td><td></td><td class="o">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' · 7,98% a 8% ao mês':'—')+'</td></tr>'+
+        '<tr><td colspan="2">Juros (se passar dos 10 dias)</td><td></td><td class="n"><b>'+brl(jurosR$)+'</b></td><td></td><td class="o">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' cobrados (passou dos 10 dias: juros do período inteiro) · 7,98% a 8% ao mês':'—')+'</td></tr>'+
         '<tr><td colspan="2"><b>Custo total estimado</b></td><td></td><td class="n"><b>'+brl(cent(si+jurosR$))+'</b></td><td></td><td class="o">plano escolhido pelo menor custo (IOF + juros)</td></tr></tfoot></table></div>'+
       '<div class="est-dias">Dias de cheque já usados no ciclo atual: '+
         ["itau","bb"].map(o=>'<span>'+NOME[o]+' <b>'+usa(usado0,o,hj)+'</b> (renova '+diaMes(cicloCheque(o).renova)+')</span>').join("")+
         '<label>Santander <input class="campo" type="number" min="0" max="10" data-cq-usados="santander" value="'+esc(String((dados.chequeUsados||{})["santander|"+cicloCheque("santander").ini]??""))+'" placeholder="'+usa(usado0,"santander",hj)+'"> (renova '+diaMes(cicloCheque("santander").renova)+')</label></div>'+
       (bb&&bb.v>0?'<label class="bc-aj" style="margin-top:10px">Saldo do BB (R$ '+brl(bb.v)+') pode ser usado até <input class="campo" type="date" data-livre-ate="bb" value="'+esc(livreAte)+'" style="width:auto"> (vazio = não usar)</label>':'')+
-      '<p class="sub" style="margin:8px 0 0;font-size:12px">O valor do Pix pode ser digitado (fundo amarelo = digitado; apague para voltar ao calculado). Estimativa com o saldo de hoje, agendamentos e contas em aberto da previsão deste mês. IOF: 0,0082% ao dia + 0,38% sobre o valor usado (já no Total). Cada troca de banco gera de novo o IOF adicional de 0,38%, por isso o plano evita trocas que custam mais do que os juros que poupam. Confira o limite de cada banco.</p>'+
+      '<p class="sub" style="margin:8px 0 0;font-size:12px">O valor do Pix pode ser digitado (fundo amarelo = digitado; apague para voltar ao calculado). Estimativa com o saldo de hoje, agendamentos e contas em aberto da previsão deste mês. IOF: 0,0082% ao dia + 0,38% sobre o valor usado (já no Total). Cada troca de banco gera de novo o IOF adicional de 0,38%; passar dos 10 dias faz o banco cobrar juros do período inteiro. O plano é o de menor custo somando os dois. Confira o limite de cada banco.</p>'+
       '<div class="modal-acoes"><button class="bt" data-modal="ok">Fechar</button></div>';
     return {card:card, detalhe:detalhe};
   }
