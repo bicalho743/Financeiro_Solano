@@ -1584,9 +1584,10 @@
     function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0, custoJ=0; const cic={};
       for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue;
         const k=o+"|"+inicioCiclo(o,d), antes=v[k]||0; v[k]=antes+1;
-        const c=cic[k]||(cic[k]={soma:0, ant:antes, cobrado:antes>=DIAS_CHEQUE}); const dia=falta(d)*TAXA_CHEQUE[o]/30; c.soma+=dia;
+        // v[k+"!"] marca o ciclo que já passou do limite neste plano (não cobra duas vezes)
+        const c=cic[k]||(cic[k]={soma:0, ant:antes, cobrado:!!v[k+"!"]}); const dia=falta(d)*TAXA_CHEQUE[o]/30; c.soma+=dia;
         if(c.cobrado){ juros++; custoJ+=dia; }
-        else if(v[k]>=DIAS_CHEQUE){ c.cobrado=true; juros+=v[k]; custoJ+=c.soma+c.ant*dia; }   // dias anteriores do ciclo estimados pelo valor de hoje
+        else if(v[k]>=DIAS_CHEQUE){ c.cobrado=true; v[k+"!"]=1; juros+=v[k]; custoJ+=c.soma+c.ant*dia; }   // dias anteriores do ciclo estimados pelo valor de hoje
       }
       return {u:v, juros:juros, custoJ:custoJ}; }
     const BANCOS=["itau","bb","santander"];
