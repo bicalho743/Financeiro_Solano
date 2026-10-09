@@ -1542,13 +1542,15 @@
   function estrategiaCheque(){
     const hj=hojeISO(), sal=quintoDiaUtil(proxMes(mesAtual()));
     const pj=projecaoItau(sal);
-    const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.livreAte,dados.estValor,
+    const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.livreAte,dados.estValor,dados.pixFimSemana,
       ["itau","bb","santander"].map(o=>usoCheque(o,o==="itau"?saldoContaApp(mesAtual()):saldoBanco(o)).usados)]);
     if(cacheEst.k!==kc) cacheEst={k:kc,r:montaEstrategia(hj,sal,pj)};
     return cacheEst.r.card;
   }
   function detalheEstrategia(){ estrategiaCheque(); return cacheEst.r.detalhe; }
   function montaEstrategia(hj,sal,pj){
+    // Pix só em dia útil (padrão) ou em qualquer dia, se marcado na janela
+    const pixOk = d => !!dados.pixFimSemana || diaUtil(d);
     // dívida que já está em outro banco (ex.: Pix do BB para o Itaú usando o limite do BB): faz parte do total a carregar até o salário
     const dev={bb:0,santander:0}; ["bb","santander"].forEach(o=>{ const x=saldoBanco(o); if(x&&x.v<0) dev[o]=-x.v; });
     const devOut=cent(dev.bb+dev.santander);
@@ -1574,7 +1576,7 @@
     function prazo(u,o,ini){
       const c={}; let d=ini;
       for(let i=0;i<70;i++,d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=inicioCiclo(o,d); if(c[k]==null) c[k]=usa(u,o,d); if(++c[k]>=DIAS_CHEQUE) break; }
-      let cb=d; while(!diaUtil(cb)&&cb>ini) cb=somaDias(cb,-1);
+      let cb=d; while(!pixOk(cb)&&cb>ini) cb=somaDias(cb,-1);
       return {decimo:d, cobre:cb};
     }
     // marca os dias negativos de [de, ate) e conta os que passam dos 10 (com juros)
@@ -1606,7 +1608,7 @@
         // até quando vale a pena esperar para trocar: o 10º dia deste banco ou o 1º dia útil de renovação de outro banco
         let L=p.decimo; BANCOS.forEach(x=>{ if(x!==o){ const r=proxRenova(x,de); if(r>L) L=r; } });
         for(let c=somaDias(de,1); c<sal&&c<=L; c=somaDias(c,1)){
-          if(!diaUtil(c)) continue;
+          if(!pixOk(c)) continue;
           const m=marca(u,o,de,c);
           if(m.custoJ>best.custo) break;
           BANCOS.forEach(x=>{
@@ -1628,7 +1630,7 @@
     else {
       // começa no Itaú, ou já no 1º dia passa a dívida para outro banco
       melhor=resolve("itau",ini0,uIni);
-      if(diaUtil(ini0)) ["bb","santander"].forEach(x=>{ const r=resolve(x,ini0,uIni);
+      if(pixOk(ini0)) ["bb","santander"].forEach(x=>{ const r=resolve(x,ini0,uIni);
         const cand={juros:r.juros, custo:r.custo, fases:[{o:"itau",de:ini0,ate:ini0,decimo:ini0,prox:x,juros:0,custoJ:0,inicio:true}].concat(r.fases)};
         if(melhorQue(cand,melhor)) melhor=cand; });
     }
@@ -1708,11 +1710,12 @@
     const detalhe='<h3 class="modal-tit">10 dias sem juros — estratégia até o salário</h3>'+
       '<p class="modal-corpo" style="margin:0 0 10px">Salário no BB em <b>'+diaSem(sal)+'</b>. '+
         (dono?'Hoje o '+NOME[dono]+' está negativo em R$ '+brl(dev[dono])+' ('+usa(usado0,dono,hj)+' de '+DIAS_CHEQUE+' dias). ':'')+
-        'A dívida total chega a <b style="color:#C0392B">R$ '+brl(Math.abs(fundo.s))+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia; em fim de semana ou feriado, no dia útil anterior.</p>'+
+        'A dívida total chega a <b style="color:#C0392B">R$ '+brl(Math.abs(fundo.s))+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia'+(dados.pixFimSemana?' (Pix também em fim de semana e feriado)':'; em fim de semana ou feriado, no dia útil anterior')+'.</p>'+
       '<div class="est-tab"><table><thead><tr><th>Data</th><th>Pix</th><th class="n">Valor</th><th class="n">IOF</th><th class="n">Total</th><th>Obs.</th></tr></thead><tbody>'+lin+
       '</tbody><tfoot><tr><td colspan="2">IOF no período</td><td></td><td class="n"><b>'+brl(si)+'</b></td><td></td><td></td></tr>'+
         '<tr><td colspan="2">Juros (se passar dos 10 dias)</td><td></td><td class="n"><b>'+brl(jurosR$)+'</b></td><td></td><td class="o">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' cobrados (passou dos 10 dias: juros do período inteiro) · 7,98% a 8% ao mês':'—')+'</td></tr>'+
         '<tr><td colspan="2"><b>Custo total estimado</b></td><td></td><td class="n"><b>'+brl(cent(si+jurosR$))+'</b></td><td></td><td class="o">plano escolhido pelo menor custo (IOF + juros)</td></tr></tfoot></table></div>'+
+      '<label class="bc-aj" style="margin-top:10px"><input type="checkbox" data-pix-fds="1"'+(dados.pixFimSemana?' checked':'')+'> Fazer Pix também em fim de semana e feriado</label>'+
       '<div class="est-dias">Dias de cheque já usados no ciclo atual: '+
         ["itau","bb"].map(o=>'<span>'+NOME[o]+' <b>'+usa(usado0,o,hj)+'</b> (renova '+diaMes(cicloCheque(o).renova)+')</span>').join("")+
         '<label>Santander <input class="campo" type="number" min="0" max="10" data-cq-usados="santander" value="'+esc(String((dados.chequeUsados||{})["santander|"+cicloCheque("santander").ini]??""))+'" placeholder="'+usa(usado0,"santander",hj)+'"> (renova '+diaMes(cicloCheque("santander").renova)+')</label></div>'+
@@ -1974,6 +1977,7 @@
     dados.chequeUsados= d.chequeUsados||{};
     dados.livreAte    = d.livreAte||{};
     dados.estValor    = d.estValor||{};
+    dados.pixFimSemana= !!d.pixFimSemana;
     dados.invest      = d.invest||null;
     dados.versao      = d.versao||0;
   }
@@ -6345,6 +6349,9 @@
   document.addEventListener("click",e=>{ if(e.target.closest("[data-abrir-est]")){ e.stopPropagation(); abrirEstrategia(); } },true);
   document.addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.closest&&e.target.closest("[data-abrir-est]")) abrirEstrategia(); });
   document.addEventListener("change",e=>{
+    const pf=e.target.closest&&e.target.closest("#modalCaixa [data-pix-fds]");
+    if(pf){ dados.pixFimSemana=pf.checked; salvar(); render(); const cx=$("#modalCaixa"); if(cx) cx.innerHTML=detalheEstrategia();
+      avisar(pf.checked?"Pix em fim de semana liberado — estratégia refeita.":"Pix só em dia útil — estratégia refeita."); return; }
     const ev=e.target.closest&&e.target.closest("#modalCaixa [data-est-v]");
     const cq=e.target.closest&&e.target.closest("#modalCaixa [data-cq-usados]");
     if(ev||cq){
