@@ -1672,7 +1672,7 @@
         tr.push({d:sal, de:"sal", para:f.o, v:cent(f.zera-f.iof), iof:f.iof, k:f.chave, ed:f.editado, obs:("salário cai no BB"+(f.o==="bb"?" e zera o negativo":"; Pix do BB para zerar o "+NOME[f.o]))+(obs?" · "+obs:"")});
         return;
       }
-      const reg=f.decimo===f.ate?"10º dia":f.decimo<f.ate?"passa do 10º dia":"10º dia "+diaMes(f.decimo)+(difDias(f.decimo,f.ate)<=3?" (fim de semana/feriado)":"");
+      const reg=f.decimo===f.ate?"10º dia":f.decimo<f.ate?"passa do 10º dia":"10º dia "+diaMes(f.decimo)+((()=>{ for(let d=somaDias(f.ate,1); d<=f.decimo; d=somaDias(d,1)) if(diaUtil(d)) return false; return true; })()?" (fim de semana/feriado)":" — troca antes: sai mais barato");
       obs=reg+(obs?" · "+obs:"");
       if(f.o==="itau") tr.push({d:f.ate, de:f.prox, para:"itau", v:cent(f.zera-f.iof+f.reforco), iof:f.iof, k:f.chave, ed:f.editado, obs:obs+(f.reforco?" · inclui R$ "+brl(f.reforco)+" para gastos":"")});
       else {
