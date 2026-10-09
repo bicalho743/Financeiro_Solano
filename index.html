@@ -1697,7 +1697,7 @@
       '<div class="est-l"><span class="bc-n">10 dias sem juros</span>'+
         (prox?'<b>'+diaSem(prox.d)+' · '+nomeDe(prox)+' → '+NOME[prox.para]+' · R$ '+brl(cent(prox.v+prox.iof))+'</b><span class="kpi-sub">próximo Pix'+(entra?' · '+NOME[entra.para]+' entra no cheque em '+diaMes(entra.d)+' (R$ '+brl(entra.v)+')':'')+'</span>'
              :'<b>Salário em '+diaSem(sal)+'</b>')+'</div>'+
-      '<div class="est-l"><span class="kpi-sub">até o salário ('+diaSem(sal)+')</span><b>'+tr.filter(t=>t.de!=="sal").length+' Pix · IOF R$ '+brl(iofTotal)+'</b>'+
+      '<div class="est-l"><span class="kpi-sub">até o salário ('+diaSem(sal)+')</span><b>'+tr.filter(t=>t.de!=="sal"&&t.de!=="entra").length+' Pix · IOF R$ '+brl(iofTotal)+'</b>'+
         '<span class="kpi-sub" style="color:'+(jurosTot?'#C0392B':'#1E8A5F')+'">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' com juros (~R$ '+brl(jurosR$)+')':'sem juros')+' · custo ~R$ '+brl(cent(iofTotal+jurosR$))+'</span></div>'+
       '<span class="est-ver">Ver estratégia ›</span></section>';
     const lin=tr.map(t=>'<tr'+(t.d<hj?' class="est-passou"':'')+'><td>'+diaSem(t.d)+'</td><td>'+(t.de==="entra"?'<b>'+NOME[t.para]+' entra no cheque especial</b>':nomeDe(t)+' → '+NOME[t.para])+'</td>'+
