@@ -1576,31 +1576,35 @@
       return {decimo:d, cobre:cb};
     }
     // marca os dias negativos de [de, ate) e conta os que passam dos 10 (com juros)
-    function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0;
+    // custos: juros do cheque (% ao mês; BB 7,98% pelo extrato, os outros no teto de 8%) e IOF adicional de 0,38% a cada vez que a dívida
+    // entra num banco. O IOF diário (0,0082%) é o mesmo em qualquer banco, então não muda a escolha.
+    const TAXA_CHEQUE={itau:0.08, bb:0.0798, santander:0.08}, IOF_ADIC_TROCA=0.0038;
+    function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0, custoJ=0;
       // regra: cobrir NO 10º dia — o banco pode ficar negativo no máximo 9 dias do ciclo; do 10º em diante conta como juros
-      for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=o+"|"+inicioCiclo(o,d); v[k]=(v[k]||0)+1; if(v[k]>=DIAS_CHEQUE) juros++; }
-      return {u:v, juros:juros}; }
+      for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=o+"|"+inicioCiclo(o,d); v[k]=(v[k]||0)+1; if(v[k]>=DIAS_CHEQUE){ juros++; custoJ+=falta(d)*TAXA_CHEQUE[o]/30; } }
+      return {u:v, juros:juros, custoJ:custoJ}; }
     const BANCOS=["itau","bb","santander"];
-    // procura a sequência de bancos com menos dias de juros (e menos trocas) até o salário.
-    // Troca só em dia útil; a cada estado (banco, dia, dias usados) guarda o melhor resultado.
-    const memo=new Map(), melhorQue=(a,b)=>!b||a.juros<b.juros||(a.juros===b.juros&&a.fases.length<b.fases.length);
+    // procura a sequência de bancos com o MENOR CUSTO até o salário: juros dos dias além do 10º + 0,38% de IOF a cada troca
+    // (uma troca a mais só compensa se evitar ~1,5 dia de juros). Troca só em dia útil; memoriza cada estado (banco, dia, dias usados).
+    const memo=new Map(), melhorQue=(a,b)=>!b||a.custo<b.custo-0.005||(Math.abs(a.custo-b.custo)<=0.005&&a.fases.length<b.fases.length);
     function resolve(o,de,u){
       // só importam os dias usados nos ciclos que ainda estão valendo a partir de "de"
       const k=o+"|"+de+"|"+BANCOS.map(x=>{ const c0=inicioCiclo(x,de); return Object.keys(u).filter(y=>y.startsWith(x+"|")&&y.slice(x.length+1)>=c0&&u[y]).sort().map(y=>y.slice(x.length+1)+"="+u[y]).join(";"); }).join("/");
       if(memo.has(k)) return memo.get(k);
       const p=prazo(u,o,de), mFim=marca(u,o,de,sal);
-      let best={juros:mFim.juros, fases:[{o:o,de:de,ate:sal,salario:true,juros:mFim.juros,decimo:p.decimo}]};
+      let best={juros:mFim.juros, custo:mFim.custoJ, fases:[{o:o,de:de,ate:sal,salario:true,juros:mFim.juros,custoJ:mFim.custoJ,decimo:p.decimo}]};
       if(mFim.juros>0){
         // até quando vale a pena esperar para trocar: o 10º dia deste banco ou o 1º dia útil de renovação de outro banco
         let L=p.decimo; BANCOS.forEach(x=>{ if(x!==o){ const r=proxRenova(x,de); if(r>L) L=r; } });
         for(let c=somaDias(de,1); c<sal&&c<=L; c=somaDias(c,1)){
           if(!diaUtil(c)) continue;
           const m=marca(u,o,de,c);
-          if(m.juros>best.juros) break;
+          if(m.custoJ>best.custo) break;
           BANCOS.forEach(x=>{
             if(x===o) return;
             const px=prazo(m.u,x,c); if(px.cobre<=c&&px.decimo<sal) return;
-            const r=resolve(x,c,m.u), cand={juros:m.juros+r.juros, fases:[{o:o,de:de,ate:c,decimo:p.decimo,prox:x,juros:m.juros}].concat(r.fases)};
+            const troca=falta(c)*IOF_ADIC_TROCA;
+            const r=resolve(x,c,m.u), cand={juros:m.juros+r.juros, custo:m.custoJ+troca+r.custo, fases:[{o:o,de:de,ate:c,decimo:p.decimo,prox:x,juros:m.juros,custoJ:m.custoJ}].concat(r.fases)};
             if(melhorQue(cand,best)) best=cand;
           });
         }
@@ -1616,8 +1620,8 @@
       // começa no Itaú, ou já no 1º dia passa a dívida para outro banco
       melhor=resolve("itau",ini0,uIni);
       if(diaUtil(ini0)) ["bb","santander"].forEach(x=>{ const r=resolve(x,ini0,uIni);
-        const cand={juros:r.juros, fases:[{o:"itau",de:ini0,ate:ini0,decimo:ini0,prox:x,juros:0,inicio:true}].concat(r.fases)};
-        if(cand.juros<melhor.juros) melhor=cand; });
+        const cand={juros:r.juros, custo:r.custo, fases:[{o:"itau",de:ini0,ate:ini0,decimo:ini0,prox:x,juros:0,custoJ:0,inicio:true}].concat(r.fases)};
+        if(melhorQue(cand,melhor)) melhor=cand; });
     }
     if(melhor&&dono) melhor.fases[0].desde=desde(dono);
     // valores de cada Pix: a dívida total é o negativo do Itaú sem as transferências (elas só mudam a dívida de banco)
@@ -1676,7 +1680,7 @@
         if(f.reforco) tr.push({d:f.ate, de:f.prox, para:"itau", v:f.reforco, iof:0, obs:"gastos do Itaú até a próxima troca"});
       }
     });
-    const jurosTot=fases.reduce((t,f)=>t+(f.juros||0),0);
+    const jurosTot=fases.reduce((t,f)=>t+(f.juros||0),0), jurosR$=cent(fases.reduce((t,f)=>t+(f.custoJ||0),0));
     const prox=tr.find(t=>t.de!=="sal"&&t.d>=hj);
     const nomeDe=t=>t.de==="sal"?"Salário":NOME[t.de];
     const card='<section class="bancos est-card clic-card" data-abrir-est="1" role="button" tabindex="0" title="Ver a estratégia completa">'+
@@ -1684,7 +1688,7 @@
         (prox?'<b>'+diaSem(prox.d)+' · '+nomeDe(prox)+' → '+NOME[prox.para]+' · R$ '+brl(cent(prox.v+prox.iof))+'</b><span class="kpi-sub">próximo Pix</span>'
              :'<b>Salário em '+diaSem(sal)+'</b>')+'</div>'+
       '<div class="est-l"><span class="kpi-sub">até o salário ('+diaSem(sal)+')</span><b>'+tr.filter(t=>t.de!=="sal").length+' Pix · IOF R$ '+brl(iofTotal)+'</b>'+
-        '<span class="kpi-sub" style="color:'+(jurosTot?'#C0392B':'#1E8A5F')+'">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' com juros':'sem juros')+'</span></div>'+
+        '<span class="kpi-sub" style="color:'+(jurosTot?'#C0392B':'#1E8A5F')+'">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' com juros (~R$ '+brl(jurosR$)+')':'sem juros')+' · custo ~R$ '+brl(cent(iofTotal+jurosR$))+'</span></div>'+
       '<span class="est-ver">Ver estratégia ›</span></section>';
     const lin=tr.map(t=>'<tr'+(t.d<hj?' class="est-passou"':'')+'><td>'+diaSem(t.d)+'</td><td>'+nomeDe(t)+' → '+NOME[t.para]+'</td>'+
       '<td class="n">'+(t.k?'<input class="campo est-v'+(t.ed?' ed':'')+'" data-est-v="'+esc(t.k)+'" value="'+brl(t.v)+'" inputmode="decimal" title="Digite o valor do Pix; vazio volta ao calculado">':brl(t.v))+'</td><td class="n">'+(t.iof?brl(t.iof):'—')+'</td><td class="n"><b>'+brl(cent(t.v+t.iof))+'</b></td><td class="o">'+esc(t.obs)+'</td></tr>').join("");
@@ -1694,12 +1698,14 @@
         (dono?'Hoje o '+NOME[dono]+' está negativo em R$ '+brl(dev[dono])+' ('+usa(usado0,dono,hj)+' de '+DIAS_CHEQUE+' dias). ':'')+
         'A dívida total chega a <b style="color:#C0392B">R$ '+brl(Math.abs(fundo.s))+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia; em fim de semana ou feriado, no dia útil anterior.</p>'+
       '<div class="est-tab"><table><thead><tr><th>Data</th><th>Pix</th><th class="n">Valor</th><th class="n">IOF</th><th class="n">Total</th><th>Obs.</th></tr></thead><tbody>'+lin+
-      '</tbody><tfoot><tr><td colspan="2">IOF no período</td><td></td><td class="n"><b>'+brl(si)+'</b></td><td></td><td></td></tr></tfoot></table></div>'+
+      '</tbody><tfoot><tr><td colspan="2">IOF no período</td><td></td><td class="n"><b>'+brl(si)+'</b></td><td></td><td></td></tr>'+
+        '<tr><td colspan="2">Juros (dias além do 10º)</td><td></td><td class="n"><b>'+brl(jurosR$)+'</b></td><td></td><td class="o">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' · 7,98% a 8% ao mês':'—')+'</td></tr>'+
+        '<tr><td colspan="2"><b>Custo total estimado</b></td><td></td><td class="n"><b>'+brl(cent(si+jurosR$))+'</b></td><td></td><td class="o">plano escolhido pelo menor custo (IOF + juros)</td></tr></tfoot></table></div>'+
       '<div class="est-dias">Dias de cheque já usados no ciclo atual: '+
         ["itau","bb"].map(o=>'<span>'+NOME[o]+' <b>'+usa(usado0,o,hj)+'</b> (renova '+diaMes(cicloCheque(o).renova)+')</span>').join("")+
         '<label>Santander <input class="campo" type="number" min="0" max="10" data-cq-usados="santander" value="'+esc(String((dados.chequeUsados||{})["santander|"+cicloCheque("santander").ini]??""))+'" placeholder="'+usa(usado0,"santander",hj)+'"> (renova '+diaMes(cicloCheque("santander").renova)+')</label></div>'+
       (bb&&bb.v>0?'<label class="bc-aj" style="margin-top:10px">Saldo do BB (R$ '+brl(bb.v)+') pode ser usado até <input class="campo" type="date" data-livre-ate="bb" value="'+esc(livreAte)+'" style="width:auto"> (vazio = não usar)</label>':'')+
-      '<p class="sub" style="margin:8px 0 0;font-size:12px">O valor do Pix pode ser digitado (fundo amarelo = digitado; apague para voltar ao calculado). Estimativa com o saldo de hoje, agendamentos e contas em aberto da previsão deste mês. IOF: 0,0082% ao dia + 0,38% sobre o valor usado (já no Total). Juros dos dias além do limite não estão somados. Confira o limite de cada banco.</p>'+
+      '<p class="sub" style="margin:8px 0 0;font-size:12px">O valor do Pix pode ser digitado (fundo amarelo = digitado; apague para voltar ao calculado). Estimativa com o saldo de hoje, agendamentos e contas em aberto da previsão deste mês. IOF: 0,0082% ao dia + 0,38% sobre o valor usado (já no Total). Cada troca de banco gera de novo o IOF adicional de 0,38%, por isso o plano evita trocas que custam mais do que os juros que poupam. Confira o limite de cada banco.</p>'+
       '<div class="modal-acoes"><button class="bt" data-modal="ok">Fechar</button></div>';
     return {card:card, detalhe:detalhe};
   }
