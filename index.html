@@ -1544,7 +1544,9 @@
     const pj=projecaoItau(sal);
     const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.livreAte,dados.estValor,dados.pixFimSemana,
       ["itau","bb","santander"].map(o=>usoCheque(o,o==="itau"?saldoContaApp(mesAtual()):saldoBanco(o)).usados)]);
-    if(cacheEst.k!==kc) cacheEst={k:kc,r:montaEstrategia(hj,sal,pj)};
+    if(cacheEst.k!==kc){ cacheEst={k:kc,r:montaEstrategia(hj,sal,pj)};
+      // o plano fica salvo para o resumo do WhatsApp avisar no dia de cada Pix
+      const pl=JSON.stringify(cacheEst.r.pix||[]); if(JSON.stringify(dados.planoPix||[])!==pl){ dados.planoPix=cacheEst.r.pix||[]; salvar(); } }
     return cacheEst.r.card;
   }
   function detalheEstrategia(){ estrategiaCheque(); return cacheEst.r.detalhe; }
@@ -1599,7 +1601,8 @@
     const BANCOS=["itau","bb","santander"];
     // procura a sequência de bancos com o MENOR CUSTO até o salário: juros dos dias além do 10º + 0,38% de IOF a cada troca
     // (uma troca a mais só compensa se evitar ~1,5 dia de juros). Troca só em dia útil; memoriza cada estado (banco, dia, dias usados).
-    const memo=new Map(), melhorQue=(a,b)=>!b||a.custo<b.custo-0.005||(Math.abs(a.custo-b.custo)<=0.005&&a.fases.length<b.fases.length);
+    // empate de custo: menos trocas; e, com o mesmo número de trocas, a troca mais tarde (aproveita os dias até o 10º)
+    const memo=new Map(), melhorQue=(a,b)=>!b||a.custo<b.custo-0.005||(Math.abs(a.custo-b.custo)<=0.005&&(a.fases.length<b.fases.length||(a.fases.length===b.fases.length&&a.fases[0].ate>b.fases[0].ate)));
     function resolve(o,de,u){
       // só importam os dias usados nos ciclos que ainda estão valendo a partir de "de"
       const k=o+"|"+de+"|"+BANCOS.map(x=>{ const c0=inicioCiclo(x,de); return Object.keys(u).filter(y=>y.startsWith(x+"|")&&y.slice(x.length+1)>=c0&&u[y]).sort().map(y=>y.slice(x.length+1)+"="+u[y]).join(";"); }).join("/");
@@ -1723,7 +1726,9 @@
       (bb&&bb.v>0?'<label class="bc-aj" style="margin-top:10px">Saldo do BB (R$ '+brl(bb.v)+') pode ser usado até <input class="campo" type="date" data-livre-ate="bb" value="'+esc(livreAte)+'" style="width:auto"> (vazio = não usar)</label>':'')+
       '<p class="sub" style="margin:8px 0 0;font-size:12px">O valor do Pix pode ser digitado (fundo amarelo = digitado; apague para voltar ao calculado). Estimativa com o saldo de hoje, agendamentos e contas em aberto da previsão deste mês. IOF: 0,0082% ao dia + 0,38% sobre o valor usado (já no Total). Cada troca de banco gera de novo o IOF adicional de 0,38%; passar dos 10 dias faz o banco cobrar juros do período inteiro. O plano é o de menor custo somando os dois. Confira o limite de cada banco.</p>'+
       '<div class="modal-acoes"><button class="bt" data-modal="ok">Fechar</button></div>';
-    return {card:card, detalhe:detalhe};
+    const pix=tr.map(t=>({data:t.d, de:t.de==="sal"?"Salário":t.de==="entra"?"":NOME[t.de], para:NOME[t.para], tipo:t.de==="entra"?"entra":t.de==="sal"?"salario":"pix",
+      valor:cent(t.v), iof:cent(t.iof), total:cent(t.v+t.iof), obs:t.obs}));
+    return {card:card, detalhe:detalhe, pix:pix};
   }
 
   // faixa do topo da Visão geral (mês atual): saldo hoje + a receber − a pagar = sobra prevista
