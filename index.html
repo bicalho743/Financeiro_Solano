@@ -2581,6 +2581,7 @@
     try{ texto=new TextDecoder("utf-8",{fatal:true}).decode(buf); }
     catch(e){ texto=new TextDecoder("iso-8859-1").decode(buf); }
     if(origem==="planilha"){ avisar("A planilha de orçamento precisa ser o arquivo .xlsx.",true); return; }
+    if(/SISBB/i.test(texto)&&/Extrato de conta corrente/i.test(texto)){ concluirImport(lerExtratoBBTexto(texto.split(/\r?\n/)),"bb",texto); return; }
     const r = /<OFX>|OFXHEADER/i.test(texto) ? lerOFX(texto) : linhasParaItens(lerCSV(texto));
     const o=await resolverOrigem(origem,texto); if(o) concluirImport(r,o,texto);
   }
@@ -3018,6 +3019,56 @@
     return {novos:novos, repetidos:repetidos, prontos:prontos, conferidos:conferidos, meses:[...mesesTocados], restantes:digitados};
   }
 
+  /* ================= extrato do BB em PDF ou TXT (SISBB — "Extrato de conta corrente") =================
+     Linha com data: DD/MM/AAAA [histórico] [documento] valor D|C [saldo D|C]. No PDF o histórico vem na linha de cima
+     e o detalhe na de baixo; no TXT o histórico vem na própria linha e o detalhe embaixo.
+     Entre duas linhas com data: se a de baixo não traz histórico, a última linha de texto é o histórico dela; o resto é detalhe da de cima. */
+  function lerExtratoBBTexto(linhasTxt){
+    const NUM=/(-?\d{1,3}(?:\.\d{3})*,\d{2})(?:\s*([DC])\b)?/g;
+    const tab=[["Data","Lançamento","Detalhes","N° documento","Valor","Saldo"]];
+    let modo="", buf=[], ult=null, futuro=false;
+    const fim=()=>{ if(ult&&buf.length) ult.det.push(...buf); buf=[]; };
+    const linhas=(linhasTxt||[]).map(l=>celTexto(String(l).replace(/[\u0000-\u001f]/g," ")));
+    const regs=[];
+    for(const l of linhas){
+      if(!modo){ if(/^Data\b.*Hist[óo]rico/i.test(l)) modo="main"; continue; }
+      if(/Lan[çc]amentos\s+futuros/i.test(l)){ fim(); ult=null; futuro=true; modo="fut"; continue; }
+      if(modo==="main"&&(/^(Saldo|LIMITE ESPECIAL|-{5,}|={5,})/i.test(l))&&!/^\d{2}\//.test(l)){ fim(); ult=null; modo="pausa"; continue; }
+      if(modo==="pausa") continue;
+      if(modo==="fut"&&/^(T\s*O\s*T\s*A\s*L\b|Linhas de Cr|Empr[ée]stimos|-{5,})/i.test(l)){ fim(); ult=null; modo="pausa"; continue; }
+      if(!l||/^Data\b/i.test(l)) continue;
+      const m=l.match(/^(\d{2}\/\d{2}\/\d{4})\s*(.*)$/);
+      if(!m){ buf.push(l); continue; }
+      // separa valores (com D/C) do texto
+      const resto=m[2]; NUM.lastIndex=0; const vals=[]; let x, corte=resto.length;
+      while((x=NUM.exec(resto))){ if(!vals.length) corte=x.index; vals.push({v:x[1],dc:x[2]||""}); }
+      let txt=resto.slice(0,corte).trim(), doc="";
+      const tk=txt.split(" "); if(tk.length&&/^\d[\d.]*$/.test(tk[tk.length-1])&&vals.length){ doc=tk.pop(); txt=tk.join(" "); }
+      txt=txt.replace(/^\d{3}-\s*/,"");   // "364- BB Consórcio" (lançamentos futuros do PDF)
+      let hist, det=[];
+      if(txt&&buf.length<2){ if(ult) ult.det.push(...buf); hist=txt; }
+      else { const h=buf.pop(); if(ult) ult.det.push(...buf); hist=h||txt; if(h&&txt) det.push(txt); }
+      buf=[];
+      const sinal=o=>o?(o.dc==="D"?"-":"")+o.v:"";
+      const ehSaldo=/^S\s*A\s*L\s*D\s*O\b/i.test(hist)&&!/anterior/i.test(hist);
+      const r={data:m[1], hist:hist, det:det, doc:doc, futuro:futuro,
+        valor: ehSaldo?"":sinal(vals[0]&&!vals[0].dc&&futuro?{v:vals[0].v,dc:"D"}:vals[0]),
+        saldo: ehSaldo?sinal(vals[0]):(vals[1]&&!futuro?sinal(vals[1]):"")};
+      regs.push(r); ult=r;
+    }
+    fim();
+    let marcouFut=false;
+    regs.forEach(r=>{ if(r.futuro&&!marcouFut){ tab.push(["lançamentos futuros"]); marcouFut=true; }
+      tab.push([r.data, r.hist, r.det.join(" ").trim(), r.doc, r.valor, r.saldo]); });
+    if(tab.length<2) return {erro:"Não encontrei lançamentos no extrato do BB."};
+    const r=linhasParaItens(tab);
+    // saldo de fim de dia: a coluna "Saldo" das linhas (o BB só preenche na última linha de cada dia)
+    if(r&&!r.erro){ const dd={}; (r.saldosDia||[]).forEach(x=>dd[x.iso]=x.valor);
+      regs.forEach(x=>{ if(!x.futuro&&x.saldo&&!/anterior/i.test(x.hist)){ const iso=celData(x.data); if(iso) dd[iso]=celNum(x.saldo); } });
+      r.saldosDia=Object.keys(dd).sort().map(k=>({iso:k,valor:dd[k]})); }
+    return r;
+  }
+
   /* ================= fatura do cartão Itaú em Excel (app/site: "Fatura Paga - Outubro/2026") =================
      Colunas: Data (da compra) | Lançamento | Parcelamento ("Parcela 6 de 21") | Valor | ... | Número do cartão.
      Parcela: o dia da compra no mês que cai no período desta fatura (parcelas antecipadas entram nela). */
@@ -3083,7 +3134,7 @@
     for(let m=ms[0]; m<ms[ms.length-1]; m=proxMes(m)) if(!ms.includes(m)) faltam.push(m);
     const janelas=faltam.map(m=>{ const fe=somaDias(m+"-05",-7), [a,mm]=fe.split("-").map(Number); const ant=(mm===1?(a-1)+"-12":a+"-"+String(mm-1).padStart(2,"0"))+fe.slice(7); return [ant,fe]; });
     const naFalta=l=>janelas.some(([x,y])=>l.data>x&&l.data<=y);
-    const pend=sobraT.filter(naFalta), sobra=sobraT.filter(l=>!naFalta(l));
+    const pend=sobraT.filter(naFalta), sobra=sobraT;
     const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
     const lin=fs.map(f=>'<tr><td>'+esc(f.titulo.replace(/Fatura Paga - /i,""))+'</td><td>'+diaMes(f.venc)+'</td><td class="n">'+f.itens+'</td><td class="n">'+brl(f.total)+'</td>'+
       '<td class="n">'+(f.conferidos+f.repetidos)+'</td><td class="n">'+f.novos+'</td></tr>').join("");
@@ -3092,12 +3143,15 @@
     modal('<h3 class="modal-tit">Conciliação das faturas do Azul Infinite</h3>'+
       '<div class="est-tab"><table><thead><tr><th>Fatura</th><th>Venc.</th><th class="n">Itens</th><th class="n">Total</th><th class="n">Já no app</th><th class="n">Lançados agora</th></tr></thead><tbody>'+lin+
       '</tbody><tfoot><tr><td colspan="2"><b>Total</b></td><td class="n">'+t("itens")+'</td><td class="n">'+brl(t("total"))+'</td><td class="n">'+(t("conferidos")+t("repetidos"))+'</td><td class="n">'+t("novos")+'</td></tr></tfoot></table></div>'+
-      (faltam.length?'<p class="modal-corpo" style="margin:14px 0 0;color:#9A5B07"><b>Faltou a fatura de '+faltam.map(m=>MESES[+m.slice(5)-1]+'/'+m.slice(0,4)).join(", ")+'</b>: '+pend.length+' lançamento'+(pend.length===1?'':'s')+' do app nesse período (R$ '+brl(-pend.reduce((a,l)=>a+l.valor,0))+') ficam como estão até você importar essa fatura.</p>':'')+
-      (sobra.length?'<p class="modal-corpo" style="margin:14px 0 6px"><b>'+sobra.length+' lançamento'+(sobra.length===1?'':'s')+' do Infinite no app sem par nas faturas</b> (R$ '+brl(-sobra.reduce((a,l)=>a+l.valor,0))+') — provavelmente duplicados ou digitados com valor diferente. Confira antes de riscar:</p>'+
+      (faltam.length?'<p class="modal-corpo" style="margin:14px 0 0;color:#9A5B07"><b>Sem fatura em '+faltam.map(m=>MESES[+m.slice(5)-1]+'/'+m.slice(0,4)).join(", ")+'</b> (pula parcela?): '+pend.length+' lançamento'+(pend.length===1?'':'s')+' do app nesse período (R$ '+brl(-pend.reduce((a,l)=>a+l.valor,0))+') estão na lista abaixo.</p>':'')+
+      (sobra.length?'<p class="modal-corpo" style="margin:14px 0 6px"><b>'+sobra.length+' lançamento'+(sobra.length===1?'':'s')+' do Infinite no app que não estão em nenhuma fatura</b> (R$ '+brl(-sobra.reduce((a,l)=>a+l.valor,0))+') — duplicados, digitados com valor diferente ou parcelas que o banco não cobrou:</p>'+
         '<div class="est-tab" style="max-height:260px;overflow:auto"><table><tbody>'+linS+'</tbody></table></div>'
         :'<p class="modal-corpo" style="margin:14px 0 0">Tudo o que estava no app para o Infinite nesse período bateu com as faturas.</p>')+
-      '<div class="modal-acoes">'+(sobra.length?'<button class="bt vazado" data-modal="riscar">Riscar os sem par</button>':'')+'<button class="bt" data-modal="ok">Fechar</button></div>'
-    ).then(v=>{ if(v==="riscar"){ sobra.forEach(l=>{ l.ignorado=true; l.riscadoFatura=true; }); salvar(); render(); avisar(sobra.length+" lançamentos riscados (o ↺ traz de volta)."); } });
+      '<div class="modal-acoes">'+(sobra.length?'<button class="bt vazado" data-modal="riscar">Riscar (dá para desfazer)</button><button class="bt vazado" data-modal="apagar" style="color:#C0392B">Apagar — deixar só a fatura real</button>':'')+'<button class="bt" data-modal="ok">Fechar</button></div>'
+    ).then(v=>{
+      if(v==="riscar"){ sobra.forEach(l=>{ l.ignorado=true; l.riscadoFatura=true; }); salvar(); render(); avisar(sobra.length+" lançamentos riscados (o ↺ traz de volta)."); }
+      if(v==="apagar"){ const ids=new Set(sobra.map(l=>l.id)); dados.lancamentos=dados.lancamentos.filter(l=>!ids.has(l.id)); salvar(); render(); avisar(ids.size+" lançamentos apagados: o Infinite agora tem só o que está nas faturas."); }
+    });
   }
 
   /* ================= importação PDF da fatura do cartão — sem API ================= */
@@ -3156,6 +3210,11 @@
     const textoTotal = paginas.map(it=>agruparLinhas(it).map(l=>l.txt).join("\n")).join("\n");
     // demonstrativo do financiamento imobiliário (Itaú: "Demonstrativo Descritivo de Crédito")
     if(/Demonstrativo Descritivo de Cr[ée]dito|Evolu[çc][ãa]o de Saldo Devedor/i.test(textoTotal)){ importarFinanciamento(textoTotal); return; }
+    // extrato do BB em PDF (SISBB / Autoatendimento BB)
+    if(/SISBB/i.test(textoTotal)&&/Hist[óo]rico/i.test(textoTotal)){
+      const ls=[]; paginas.forEach(it=>agruparLinhas(it).forEach(l=>ls.push(l.txt)));
+      concluirImport(lerExtratoBBTexto(ls),"bb",textoTotal); return;
+    }
     // extrato da conta corrente do Itaú em PDF (app do Itaú: "extrato conta / lançamentos")
     if(/extrato conta\s*\/\s*lan[çc]amentos/i.test(textoTotal) && /SALDO DO DIA/i.test(textoTotal)){
       concluirImport(lerExtratoItauPDF(paginas,agruparLinhas,textoTotal),"itau",textoTotal); return;
@@ -5700,7 +5759,10 @@
 
     } else nota = ui.conta==="cartao"
       ? (()=>{ const k=ui.cartao||"itau", fm=ui.mes&&ui.mes!=="tudo"?(dados.faturasCartao||{})[k+":"+ui.mes]:null;
-          if(fm) return NOMES_CARTAO[k]+" — fatura de "+rotuloMes(ui.mes)+": vencimento "+diaMes(fm.vencimento)+" · R$ "+brl(fm.total)+(fm.paga?" (paga)":fm.aberta?" (em aberto, parcial)":"")+
+          const compras=-dados.lancamentos.filter(l=>l.origem==="cartao"&&!l.ignorado&&l.fatura===ui.mes&&famCartao(l)===k).reduce((t,l)=>t+l.valor,0);
+          const dif=fm&&fm.total!=null?cent(fm.total-compras):0;
+          if(fm) return NOMES_CARTAO[k]+" — fatura de "+rotuloMes(ui.mes)+": vencimento "+diaMes(fm.vencimento)+" · "+(fm.paga?"você pagou":fm.aberta?"parcial":"total")+" R$ "+brl(fm.total)+
+            (Math.abs(dif)>=0.01?" · compras desta fatura R$ "+brl(compras)+" (diferença R$ "+brl(dif)+(dif>0?": saldo que ficou da fatura anterior":": pago antes do vencimento")+")":"")+
             ". Compras de "+diaMes(somaDias(fm.fechamento,-30))+" a "+diaMes(fm.fechamento)+"; parcela na data da compra dentro desse período.";
           const f=(dados.faturasCartao||{})[k]||(k==="bb"&&dados.faturaFechada&&/5698|4691/.test(dados.faturaFechada.cartao||"")?{vencimento:dados.faturaFechada.vencimento,total:dados.faturaFechada.total}:null);
           return NOMES_CARTAO[k]+" — os meses são os da fatura (vencimento)."+
