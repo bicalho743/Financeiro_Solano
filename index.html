@@ -1549,8 +1549,10 @@
   }
   function detalheEstrategia(){ estrategiaCheque(); return cacheEst.r.detalhe; }
   function montaEstrategia(hj,sal,pj){
-    // Pix só em dia útil (padrão) ou em qualquer dia, se marcado na janela
-    const pixOk = d => !!dados.pixFimSemana || diaUtil(d);
+    // Pix só em dia útil (fim de semana e feriado não têm compensação)
+    const pixOk = d => diaUtil(d);
+    // 10º dia no fim do ciclo, sem dia útil entre ele e a renovação: não há como cobrir, e o ciclo zera — vale como dia livre
+    const fimDeCiclo = (o,d) => { let n=somaDias(d,1); while(!diaUtil(n)) n=somaDias(n,1); return inicioCiclo(o,n)!==inicioCiclo(o,d); };
     // dívida que já está em outro banco (ex.: Pix do BB para o Itaú usando o limite do BB): faz parte do total a carregar até o salário
     const dev={bb:0,santander:0}; ["bb","santander"].forEach(o=>{ const x=saldoBanco(o); if(x&&x.v<0) dev[o]=-x.v; });
     const devOut=cent(dev.bb+dev.santander);
@@ -1575,7 +1577,7 @@
     const conta=(o,d)=>!(livre&&o===livre.o&&d<=livre.ate&&falta(d)<=livre.v);
     function prazo(u,o,ini){
       const c={}; let d=ini;
-      for(let i=0;i<70;i++,d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=inicioCiclo(o,d); if(c[k]==null) c[k]=usa(u,o,d); if(++c[k]>=DIAS_CHEQUE) break; }
+      for(let i=0;i<70;i++,d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=inicioCiclo(o,d); if(c[k]==null) c[k]=usa(u,o,d); if(++c[k]>=DIAS_CHEQUE&&!(c[k]===DIAS_CHEQUE&&fimDeCiclo(o,d))) break; }
       let cb=d; while(!pixOk(cb)&&cb>ini) cb=somaDias(cb,-1);
       return {decimo:d, cobre:cb};
     }
@@ -1591,7 +1593,7 @@
         // v[k+"!"] marca o ciclo que já passou do limite neste plano (não cobra duas vezes)
         const c=cic[k]||(cic[k]={soma:0, ant:antes, cobrado:!!v[k+"!"]}); const dia=falta(d)*TAXA_CHEQUE[o]/30; c.soma+=dia;
         if(c.cobrado){ juros++; custoJ+=dia; }
-        else if(v[k]>=DIAS_CHEQUE){ c.cobrado=true; v[k+"!"]=1; juros+=v[k]; custoJ+=c.soma+c.ant*dia; }   // dias anteriores do ciclo estimados pelo valor de hoje
+        else if(v[k]>=DIAS_CHEQUE&&!(v[k]===DIAS_CHEQUE&&fimDeCiclo(o,d))){ c.cobrado=true; v[k+"!"]=1; juros+=v[k]; custoJ+=c.soma+c.ant*dia; }   // dias anteriores do ciclo estimados pelo valor de hoje
       }
       return {u:v, juros:juros, custoJ:custoJ}; }
     const BANCOS=["itau","bb","santander"];
@@ -1710,12 +1712,11 @@
     const detalhe='<h3 class="modal-tit">10 dias sem juros — estratégia até o salário</h3>'+
       '<p class="modal-corpo" style="margin:0 0 10px">Salário no BB em <b>'+diaSem(sal)+'</b>. '+
         (dono?'Hoje o '+NOME[dono]+' está negativo em R$ '+brl(dev[dono])+' ('+usa(usado0,dono,hj)+' de '+DIAS_CHEQUE+' dias). ':'')+
-        'A dívida total chega a <b style="color:#C0392B">R$ '+brl(Math.abs(fundo.s))+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia'+(dados.pixFimSemana?' (Pix também em fim de semana e feriado)':'; em fim de semana ou feriado, no dia útil anterior')+'.</p>'+
+        'A dívida total chega a <b style="color:#C0392B">R$ '+brl(Math.abs(fundo.s))+'</b> em '+diaMes(fundo.d)+'. Regra: cobrir no 10º dia; em fim de semana ou feriado, no dia útil anterior (Pix só em dia útil). Se o 10º dia é o fim do ciclo, sem dia útil antes da renovação, ele conta como livre.</p>'+
       '<div class="est-tab"><table><thead><tr><th>Data</th><th>Pix</th><th class="n">Valor</th><th class="n">IOF</th><th class="n">Total</th><th>Obs.</th></tr></thead><tbody>'+lin+
       '</tbody><tfoot><tr><td colspan="2">IOF no período</td><td></td><td class="n"><b>'+brl(si)+'</b></td><td></td><td></td></tr>'+
         '<tr><td colspan="2">Juros (se passar dos 10 dias)</td><td></td><td class="n"><b>'+brl(jurosR$)+'</b></td><td></td><td class="o">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' cobrados (passou dos 10 dias: juros do período inteiro) · 7,98% a 8% ao mês':'—')+'</td></tr>'+
         '<tr><td colspan="2"><b>Custo total estimado</b></td><td></td><td class="n"><b>'+brl(cent(si+jurosR$))+'</b></td><td></td><td class="o">plano escolhido pelo menor custo (IOF + juros)</td></tr></tfoot></table></div>'+
-      '<label class="bc-aj" style="margin-top:10px"><input type="checkbox" data-pix-fds="1"'+(dados.pixFimSemana?' checked':'')+'> Fazer Pix também em fim de semana e feriado</label>'+
       '<div class="est-dias">Dias de cheque já usados no ciclo atual: '+
         ["itau","bb"].map(o=>'<span>'+NOME[o]+' <b>'+usa(usado0,o,hj)+'</b> (renova '+diaMes(cicloCheque(o).renova)+')</span>').join("")+
         '<label>Santander <input class="campo" type="number" min="0" max="10" data-cq-usados="santander" value="'+esc(String((dados.chequeUsados||{})["santander|"+cicloCheque("santander").ini]??""))+'" placeholder="'+usa(usado0,"santander",hj)+'"> (renova '+diaMes(cicloCheque("santander").renova)+')</label></div>'+
