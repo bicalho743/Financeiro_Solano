@@ -1151,7 +1151,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:16,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:17,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],viagens:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -1349,6 +1349,13 @@
       });
       dados.versao=16; dados._migrou=true;
       if(n) setTimeout(()=>avisar(n+" lançamento"+(n===1?"":"s")+" que o extrato não trouxe riscado"+(n===1?"":"s")+" — o saldo do app bate com o do banco."),1500);
+    }
+    if(dados.versao<17){
+      // salário do BB ("Proventos TED") que a regra do nome classificou como transferência entre contas
+      let n=0;
+      dados.lancamentos.forEach(l=>{ if(l.origem==="bb"&&ehSalario(l.hist,l.valor)&&l.categoria!=="Salário"&&!l.catManual){ l.categoria="Salário"; n++; } });
+      dados.versao=17; dados._migrou=true;
+      if(n) setTimeout(()=>avisar(n+" salário"+(n===1?"":"s")+" do BB reclassificado"+(n===1?"":"s")+" (estava como transferência entre contas)."),1800);
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -2234,12 +2241,16 @@
     });
     return mudou;
   }
+  const ehSalario = (hist,valor) => valor>0 && /^\s*PROVENTOS\b|\bREMUNERA[CÇ][AÃ]O\b|\bSAL[AÁ]RIO\b/i.test(String(hist||"")) && !/consignado/i.test(String(hist||""));
   function classificar(hist,valor){
     const u = hist.toUpperCase();
     if(ehQuitacaoConsignado(hist,valor)) return {categoria:"Pagamento de dívidas",vinculo:"PF"};
     if(ehEmprestimoRecebido(hist,valor)) return {categoria:"Empréstimo recebido",vinculo:"PF"};
     // juros e IOF do cheque especial, e a devolução dos juros ("dias sem juros"): mesma categoria, para se anularem
     if(ehEncargoCheque(hist)) return {categoria:"IOF e taxas",vinculo:"PF"};
+    // salário: o BB lança como "Proventos TED - 341 ... SOLANO BICALHO". O nome do titular faria cair em
+    // "Transferência entre minhas contas" (fora do Entrou), por isso vem antes das regras.
+    if(ehSalario(hist,valor)) return {categoria:"Salário",vinculo:"PF"};
     for(const r of dados.regras){
       if(u.includes(r.termo.toUpperCase())){
         if(ehPixEntrada(hist,valor) && GRUPO_DE[r.categoria]!=="Receitas" && !ENTRA_FORA.has(r.categoria))
