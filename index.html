@@ -1151,7 +1151,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:15,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:16,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],viagens:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -1336,6 +1336,19 @@
       });
       dados.versao=15; dados._migrou=true;
       if(n) setTimeout(()=>avisar(n+" lançamento"+(n===1?"":"s")+" duplicado"+(n===1?"":"s")+" de fim de semana riscado"+(n===1?"":"s")+"."),1200);
+    }
+    if(dados.versao<16){
+      // lançamentos sem confirmação do extrato no mês que o extrato já cobriu (ex.: Pix de 15/10 que não saiu): riscados
+      dados.extratoCob=dados.extratoCob||{}; let n=0;
+      ["itau","bb"].forEach(o=>{
+        const ult=dados.lancamentos.filter(l=>l.origem===o&&l.confExtrato&&l.data<=hojeISO()).reduce((m,l)=>l.data>m?l.data:m,"");
+        if(!ult) return;
+        const de=ult.slice(0,7)+"-01";
+        if(!dados.extratoCob[o]) dados.extratoCob[o]={de:de,ate:ult};
+        n+=riscarNaoConfirmados(o,de,ult,null);
+      });
+      dados.versao=16; dados._migrou=true;
+      if(n) setTimeout(()=>avisar(n+" lançamento"+(n===1?"":"s")+" que o extrato não trouxe riscado"+(n===1?"":"s")+" — o saldo do app bate com o do banco."),1500);
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -2079,6 +2092,7 @@
     dados.estValor    = d.estValor||{};
     dados.pixFimSemana= !!d.pixFimSemana;
     dados.invest      = d.invest||null;
+    dados.extratoCob  = d.extratoCob||{};
     dados.versao      = d.versao||0;
   }
   async function carregar(){
@@ -2500,6 +2514,23 @@
       if(l.data<de||l.data>ate) return;
       l.ignorado=true; l.riscadoExtrato=true; n++;
     });
+    dados.extratoCob=dados.extratoCob||{};
+    const cob=dados.extratoCob[origem];
+    dados.extratoCob[origem]={de:cob&&cob.ate&&cob.ate>=de&&cob.de<de?cob.de:de, ate:cob&&cob.ate>ate?cob.ate:ate};
+    return n+riscarNaoConfirmados(origem,de,ate,g.tocados);
+  }
+  /* Lançamento que não veio de extrato (planilha, cópia do app do banco) e caiu num período que o extrato cobre,
+     mas o extrato não trouxe: o banco não debitou. Fica riscado para o saldo do app bater com o do banco.
+     Não é apagado: se um extrato depois trouxer (Pix agendado que saiu mais tarde), ele volta sozinho.
+     Lançamento digitado no app (+ Lançamento) não é mexido. */
+  function riscarNaoConfirmados(origem,de,ate,tocados){
+    let n=0;
+    dados.lancamentos.forEach(l=>{
+      if(l.origem!==origem||l.ignorado||l.confExtrato||l.manual||(tocados&&tocados.has(l))) return;
+      if(l.data<de||l.data>ate) return;
+      l.ignorado=true; l.riscadoExtrato=true;
+      l.obs=(l.obs?l.obs+" · ":"")+"não veio no extrato até "+diaMes(ate)+" (volta se o banco lançar)"; n++;
+    });
     return n;
   }
   function textoImport(r){
@@ -2619,7 +2650,7 @@
     const nCheque=origem!=="cartao"?ligarChequeEspecial():0;
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
     let fut=nCheque?" · "+nCheque+" ligado"+(nCheque===1?"":"s")+" ao cheque especial do BB":"";
-    fut+=riscados?" · "+riscados+" lançamento"+(riscados===1?"":"s")+" de extrato anterior que o banco refez riscado"+(riscados===1?"":"s"):"";
+    fut+=riscados?" · "+riscados+" lançamento"+(riscados===1?"":"s")+" que não está"+(riscados===1?"":"o")+" no extrato riscado"+(riscados===1?"":"s"):"";
     if(origem!=="cartao"){
       const f=gravarFuturos(r.futuros,origem), b=baixarPrevistos(origem);
       if(f.novos||f.ligados) fut+=" · "+(f.novos+f.ligados)+" agendamento"+(f.novos+f.ligados===1?"":"s")+" na Previsão do mês";
@@ -2819,13 +2850,16 @@
     Object.keys(porOrigem).forEach(o=>{
       const g=gravarLinhas(porOrigem[o],o);
       ["novos","repetidos","prontos","corrigidos"].forEach(k=>tot[k]+=g[k]);
+      // linha da planilha num período que o extrato já cobriu e que o extrato não tem: o banco não debitou
+      const cob=(dados.extratoCob||{})[o];
+      if((o==="itau"||o==="bb")&&cob) tot.riscados=(tot.riscados||0)+riscarNaoConfirmados(o,cob.de,cob.ate,null);
     });
     const nPrev=lerOrcamentoPlanilha(wb), ano=anoPlanilha(wb);
     const nFluxo=lerFluxoAnual(wb,ano), abasPrev=lerPrevisoes(wb,ano), temDiv=lerDividas(wb);
     dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
     ui.conta="dash"; ui.mes=null; ui.view="mes";
     salvar(); render();
-    avisar("Planilha: "+textoImport(tot)+
+    avisar("Planilha: "+textoImport(tot)+(tot.riscados?" · "+tot.riscados+" fora do extrato riscado"+(tot.riscados===1?"":"s"):"")+
       (nFluxo?" · fluxo anual ("+nFluxo+" linhas)":nPrev?" · previsto de "+nPrev+" itens":"")+
       (abasPrev.length?" · previsão de "+abasPrev.join(", "):"")+(temDiv?" · dívidas e parcelas":""));
   }
