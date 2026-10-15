@@ -6249,7 +6249,14 @@
       ? cartao("Entrou",ent,"pos",baseGasto.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",mov:1,dica:"Ver as entradas"})+
         cartao("Gastou",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",mov:1,dica:"Ver os gastos"})+
         cartao(res<0?"Faltou":"Sobrou",res,res<0?"neg":"pos","entrou − gastou",res<0?"#C0392B":"#1E8A5F",{tipo:"",mov:1,dica:"Ver entradas e gastos"})
-      : cartao("Entradas",ent,"pos",baseGasto.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",dica:"Ver as entradas"})+
+      : ((ui.conta==="itau"||ui.conta==="bb")
+        // conta do banco: Entradas = só renda (salário, Pix de terceiros, rendimentos), como o Entrou da Visão geral.
+        // Transferência entre suas contas, cheque especial, resgate/aplicação, empréstimo e estorno ficam de fora (o saldo continua igual ao do banco).
+        ? (()=>{ const pos=baseReal.filter(l=>l.valor>0), renda=pos.filter(l=>ehReceita(l.categoria)&&l.categoria!=="Reembolso e estorno"&&l.categoria!==CAT_EMPREST);
+            const tR=soma(renda), fora=cent(soma(pos)-tR);
+            return cartao("Entradas",tR,"pos",renda.length+" lançamento"+(renda.length===1?"":"s")+(fora>=0.005?" · fora: R$ "+brl(fora)+" entre contas, aplicações e estornos":""),
+              "#1E8A5F",{tipo:"e",mov:1,dica:"Ver as entradas que contam como renda"}); })()
+        : cartao("Entradas",ent,"pos",baseGasto.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",dica:"Ver as entradas"}))+
         cartao("Saídas",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",dica:"Ver as saídas"})+
         (ui.conta==="cartao"
           ? cartao("Total do cartão",res,res<0?"neg":"pos","compras − créditos",res<0?"#C0392B":"#1E8A5F",{tipo:"",dica:"Ver as compras"})
