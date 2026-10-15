@@ -985,7 +985,25 @@
     return data ? data.valor : null;
   }
 
+  // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
+  // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
+  const BUILD = 19;
+  async function buildNaNuvem(){
+    try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
+    catch(e){ return 0; }
+  }
+  let recarregando=false;
+  function recarregarVersaoNova(){
+    if(recarregando) return; recarregando=true;
+    avisar("Há uma versão nova do app. Recarregando…");
+    setTimeout(()=>{ location.href=location.pathname+"?v="+Date.now()+location.hash; },900);
+  }
+  document.addEventListener("visibilitychange",async()=>{
+    if(document.visibilityState==="visible"&&sbUser&&(await buildNaNuvem())>BUILD) recarregarVersaoNova();
+  });
   async function sbSalvar(payload){
+    if((await buildNaNuvem())>BUILD){ recarregarVersaoNova(); throw new Error("versão antiga"); }
+    payload.build=BUILD;
     const { error } = await sb
       .from("livro_caixa")
       .upsert({
@@ -1187,6 +1205,47 @@
     "Telefone e internet":"Internet","Juros e IOF":"IOF e taxas","Lazer e entretenimento":"Passeios",
     "Vestuário e acessórios":"Vestuário","Rendimento":"Rendimentos","Transferência recebida":"Outras receitas",
     "Seguros":"Seguro auto","Estética e cuidados":"Tâmara – pessoal","Transferência família":"Tâmara – pessoal"};
+  // viagens do histórico (planilha Controle_Viagens) e a Ilha Grande de out/2026
+  function sementesViagens(){
+      const V=(id,nome,destino,ini,fim,tipo,hist,extra)=>Object.assign({id,nome,destino,ini,fim,pessoas:null,tipo,status:"realizada",orc:{},hist,prog:[],notas:""},extra||{});
+      return [
+        V("v-ig22","Ilha Grande 2022","Ilha Grande – RJ","2022-08-28","2022-09-03","nacional",
+          {"Hospedagem":1976,"Bar / restaurante":2090,"Combustível e pedágio":480,"Transporte local":294,"Passeios e ingressos":700},
+          {notas:"Transporte local = barca Angra/Abraão (144) + estacionamento (150)"}),
+        V("v-mdz23","Mendoza 2023","Mendoza – Argentina","","","internacional",{"Outros":12000},{ano:"2023",notas:"Só o total (sem detalhe por categoria)"}),
+        V("v-par24","Paris 2024","Paris – França","","","internacional",{"Outros":35000},{ano:"2024",notas:"Só o total (sem detalhe por categoria)"}),
+        V("v-ams25","Amsterdam + Bruxelas 2025","Amsterdam, Bruxelas, Lisboa","2025-10-16","2025-10-27","internacional",
+          {"Passagem":11560,"Hospedagem":9601.82,"Bar / restaurante":11015,"Transporte local":137.16,"Passeios e ingressos":1736,"Outros":1935.1},
+          {notas:"Bar / restaurante = despesas Wise na cidade · Passeios = Maratona de Amsterdam · Outros = dinheiro + Infinite"}),
+        V("v-nv26","Nova Viçosa 2025/26","Nova Viçosa – BA","2025-12-26","2026-01-04","nacional",
+          {"Aluguel de carro":4141,"Combustível e pedágio":869.95,"Bar / restaurante":1898.28,"Passeios e ingressos":280}),
+        V("v-slz26","São Luís do Maranhão 2026","São Luís – MA","2026-01-08","2026-01-27","nacional",
+          {"Passagem":7800,"Combustível e pedágio":736.1,"Bar / restaurante":5289.77,"Passeios e ingressos":1100,"Outros":8275.86},
+          {notas:"Outros = 'Diversos' da planilha"}),
+        V("v-bon26","Bonito 2026","Bonito – MS","2026-06-03","2026-06-09","nacional",
+          {"Passagem":2751,"Transporte local":212,"Aluguel de carro":1379,"Combustível e pedágio":547.96,"Hospedagem":4301.5,
+           "Passeios e ingressos":7729,"Taxas, seguros e câmbio":300,"Bar / restaurante":4560,"Compras e souvenirs":230},
+          {pessoas:4,notas:"Valores da planilha (já incluem as parcelas da Bonitour)"}),
+        V("v-ig26","Ilha Grande 2026","Ilha Grande – RJ","2026-10-10","2026-10-14","nacional",{})
+      ];
+  }
+  /* Lançamento ligado a uma viagem que sumiu (um app aberto com versão antiga salvou por cima e apagou a lista):
+     a viagem volta. Lista vazia com lançamentos ligados = foi apagada sem querer: volta o histórico inteiro. */
+  function garantirViagens(){
+    dados.viagens=dados.viagens||[];
+    const tem=new Set(dados.viagens.map(v=>v.id));
+    const ref=[...new Set(dados.lancamentos.filter(l=>l.viagem&&!tem.has(l.viagem)).map(l=>l.viagem))];
+    if(!ref.length) return;
+    const sem=sementesViagens(), todas=!dados.viagens.length;
+    sem.forEach(v=>{ if(!tem.has(v.id)&&(todas||ref.includes(v.id))){ dados.viagens.push(v); tem.add(v.id); } });
+    ref.filter(id=>!tem.has(id)).forEach(id=>{
+      const ls=dados.lancamentos.filter(l=>l.viagem===id), ds=ls.map(l=>l.data).sort();
+      const nome=((ls.find(l=>/^✈ /.test(l.obs||""))||{}).obs||"").replace(/^✈ /,"").split(" · ")[0]||"Viagem recuperada";
+      dados.viagens.push({id,nome,destino:"",ini:ds[0]||"",fim:ds[ds.length-1]||"",pessoas:null,tipo:"nacional",status:"realizada",orc:{},hist:{},prog:[],notas:"recuperada pelos lançamentos ligados"});
+    });
+    dados._migrou=true;
+    setTimeout(()=>avisar("Viagens recuperadas (a lista tinha sido apagada por um app aberto com versão antiga)."),2200);
+  }
   function migrar(){
     if((dados.versao||0)<2){
       // troca as regras-padrão do modelo antigo pelas desta planilha; as aprendidas continuam
@@ -1275,27 +1334,7 @@
     if(dados.versao<14){
       // aba Viagens: histórico da planilha Controle_Viagens + Ilha Grande (10 a 14/10/2026) com os gastos do extrato
       dados.viagens=dados.viagens||[];
-      const V=(id,nome,destino,ini,fim,tipo,hist,extra)=>Object.assign({id,nome,destino,ini,fim,pessoas:null,tipo,status:"realizada",orc:{},hist,prog:[],notas:""},extra||{});
-      const sementes=[
-        V("v-ig22","Ilha Grande 2022","Ilha Grande – RJ","2022-08-28","2022-09-03","nacional",
-          {"Hospedagem":1976,"Bar / restaurante":2090,"Combustível e pedágio":480,"Transporte local":294,"Passeios e ingressos":700},
-          {notas:"Transporte local = barca Angra/Abraão (144) + estacionamento (150)"}),
-        V("v-mdz23","Mendoza 2023","Mendoza – Argentina","","","internacional",{"Outros":12000},{ano:"2023",notas:"Só o total (sem detalhe por categoria)"}),
-        V("v-par24","Paris 2024","Paris – França","","","internacional",{"Outros":35000},{ano:"2024",notas:"Só o total (sem detalhe por categoria)"}),
-        V("v-ams25","Amsterdam + Bruxelas 2025","Amsterdam, Bruxelas, Lisboa","2025-10-16","2025-10-27","internacional",
-          {"Passagem":11560,"Hospedagem":9601.82,"Bar / restaurante":11015,"Transporte local":137.16,"Passeios e ingressos":1736,"Outros":1935.1},
-          {notas:"Bar / restaurante = despesas Wise na cidade · Passeios = Maratona de Amsterdam · Outros = dinheiro + Infinite"}),
-        V("v-nv26","Nova Viçosa 2025/26","Nova Viçosa – BA","2025-12-26","2026-01-04","nacional",
-          {"Aluguel de carro":4141,"Combustível e pedágio":869.95,"Bar / restaurante":1898.28,"Passeios e ingressos":280}),
-        V("v-slz26","São Luís do Maranhão 2026","São Luís – MA","2026-01-08","2026-01-27","nacional",
-          {"Passagem":7800,"Combustível e pedágio":736.1,"Bar / restaurante":5289.77,"Passeios e ingressos":1100,"Outros":8275.86},
-          {notas:"Outros = 'Diversos' da planilha"}),
-        V("v-bon26","Bonito 2026","Bonito – MS","2026-06-03","2026-06-09","nacional",
-          {"Passagem":2751,"Transporte local":212,"Aluguel de carro":1379,"Combustível e pedágio":547.96,"Hospedagem":4301.5,
-           "Passeios e ingressos":7729,"Taxas, seguros e câmbio":300,"Bar / restaurante":4560,"Compras e souvenirs":230},
-          {pessoas:4,notas:"Valores da planilha (já incluem as parcelas da Bonitour)"}),
-        V("v-ig26","Ilha Grande 2026","Ilha Grande – RJ","2026-10-10","2026-10-14","nacional",{})
-      ];
+      const sementes=sementesViagens();
       sementes.forEach(s=>{ if(!dados.viagens.some(x=>x.id===s.id)) dados.viagens.push(s); });
       const ig=dados.viagens.find(x=>x.id==="v-ig26");
       const BR="Bar / restaurante", MC="Mercado e lanches", CP="Combustível e pedágio", TL="Transporte local", FS="Farmácia e saúde";
@@ -1365,6 +1404,7 @@
       dados.versao=18; dados._migrou=true;
       if(n) setTimeout(()=>avisar(n+" BB Rende Fácil reclassificado"+(n===1?"":"s")+" como Aplicação e resgate."),2000);
     }
+    garantirViagens();
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
       l.vinculo="PF";
@@ -2127,6 +2167,7 @@
         if(raw) d = JSON.parse(raw);
       }
 
+      if(d && +d.build>BUILD){ recarregarVersaoNova(); return; }
       if(d){
         aplicarDados(d);
         migrar();
@@ -2157,7 +2198,7 @@
     clearTimeout(salvando);
     salvando = setTimeout(async()=>{
       try{ await salvarImediato(); }
-      catch(e){ avisar("Não consegui gravar. Salve um backup para não perder o trabalho.",true); }
+      catch(e){ if(!recarregando) avisar("Não consegui gravar. Salve um backup para não perder o trabalho.",true); }
     },350);
   }
 
