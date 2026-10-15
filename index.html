@@ -6229,7 +6229,7 @@
           const f=(dados.faturasCartao||{})[k]||(k==="bb"&&dados.faturaFechada&&/5698|4691/.test(dados.faturaFechada.cartao||"")?{vencimento:dados.faturaFechada.vencimento,total:dados.faturaFechada.total}:null);
           return NOMES_CARTAO[k]+" — os meses são os da fatura (vencimento)."+
             (f&&f.total!=null?" Última fatura: R$ "+brl(f.total)+(f.vencimento?", vencimento "+diaMes(f.vencimento):"")+(f.paga?" (paga)":"")+".":""); })()
-      : "Como no banco: a fatura do cartão aparece como um débito único e as compras do cartão não entram.";
+      : "Saldo como no banco. Entradas e Saídas contam só renda e gasto: transferências entre suas contas, cheque especial do BB, aplicações, estornos e o pagamento da fatura (as compras do cartão contam na data da compra) ficam de fora.";
 
     const avisos=[];
     if(natureza&&ui.mes!=="tudo"&&fatura&&!nCartao)
@@ -6257,7 +6257,14 @@
             return cartao("Entradas",tR,"pos",renda.length+" lançamento"+(renda.length===1?"":"s")+(fora>=0.005?" · fora: R$ "+brl(fora)+" entre contas, aplicações e estornos":""),
               "#1E8A5F",{tipo:"e",mov:1,dica:"Ver as entradas que contam como renda"}); })()
         : cartao("Entradas",ent,"pos",baseGasto.filter(l=>l.valor>0).length+" lançamentos","#1E8A5F",{tipo:"e",dica:"Ver as entradas"}))+
-        cartao("Saídas",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",dica:"Ver as saídas"})+
+        ((ui.conta==="itau"||ui.conta==="bb")
+          // conta do banco: Saídas = só gasto, como o Gastou. Pagamento de fatura (as compras do cartão já contam na data da compra),
+          // transferência entre suas contas, cheque especial do BB e aplicação ficam de fora; o saldo continua igual ao do banco.
+          ? (()=>{ const neg=baseReal.filter(l=>l.valor<0), gasto=neg.filter(l=>!CATS_FORA.has(l.categoria)&&l.categoria!==CAT_EMPREST);
+              const tG=-soma(gasto), fora=cent(-soma(neg)-tG);
+              return cartao("Saídas",tG,"",gasto.length+" lançamento"+(gasto.length===1?"":"s")+(fora>=0.005?" · fora: R$ "+brl(fora)+" fatura do cartão, entre contas e aplicações":""),
+                "#E08E0B",{tipo:"s",mov:1,dica:"Ver as saídas que contam como gasto"}); })()
+          : cartao("Saídas",Math.abs(sai),"",baseGasto.filter(l=>l.valor<0).length+" lançamentos","#E08E0B",{tipo:"s",dica:"Ver as saídas"}))+
         (ui.conta==="cartao"
           ? cartao("Total do cartão",res,res<0?"neg":"pos","compras − créditos",res<0?"#C0392B":"#1E8A5F",{tipo:"",dica:"Ver as compras"})
           : temFuturo
