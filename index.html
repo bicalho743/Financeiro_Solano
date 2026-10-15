@@ -637,6 +637,33 @@
   .pv-l input{width:140px;text-align:right;font-family:var(--serif);font-size:17px;background:#fff;border:1px solid var(--linha)!important}
   .pv-tot{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--tinta);margin-top:6px;padding-top:10px;font-size:13.5px}
   .pv-tot b{font-family:var(--serif);font-size:30px;font-weight:500;font-variant-numeric:tabular-nums}
+  /* ---- viagens ---- */
+  .vg-lista tr.vg-l{cursor:pointer}.vg-lista tr.vg-l td{padding:8px 6px}
+  .vg-lista tr.vg-l.on td{background:#EEF4FF!important;font-weight:600}
+  .vg-lista td.n,.vg-cat td.n,.vg-gastos td.n{text-align:right}
+  .vg-num{font-family:var(--serif);font-size:15.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .vg-int{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#1F6FB2;background:#E8F1FB;border-radius:999px;padding:1px 7px;margin-left:4px}
+  .vg-st{font-size:11px;font-weight:600;border-radius:999px;padding:2px 9px;background:#F3F4F6;color:#4B5563}
+  .vg-st.planejada{background:#FEF3C7;color:#92400E}.vg-st.andamento{background:#DBEAFE;color:#1E3A8A}.vg-st.realizada{background:#DCFCE7;color:#166534}
+  .vg-ficha{display:grid;grid-template-columns:2fr 2fr 1.2fr 1.2fr .7fr 1fr 1.1fr;gap:8px 12px;margin-bottom:6px}
+  .vg-ficha label{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--cinza);display:flex;flex-direction:column;gap:3px}
+  .vg-ficha .campo{border:1px solid var(--linha)!important;background:#fff;border-radius:6px;padding:6px 8px;font-size:14px;text-transform:none;letter-spacing:0;color:var(--tinta)}
+  .vg-ficha .vg-notas{grid-column:1/-1}
+  .vg-cat td{padding:4px 6px}.vg-cat tr.orc-t td{font-weight:600;border-top:1px solid var(--verde);padding-top:8px}
+  .vg-dica{display:block;font-size:11px;color:var(--cinza);font-weight:400}
+  .vg-barra{position:relative;height:7px;background:var(--linha-clara);border-radius:4px}
+  .vg-barra i{display:block;height:100%;background:#C2185B;border-radius:4px;opacity:.8}
+  .vg-barra s{position:absolute;top:-3px;width:2px;height:13px;background:#1F2937}
+  .vg-prog{min-width:980px}.vg-gastos td{padding:5px 6px}
+  .vg-anos{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-size:13px;color:var(--cinza)}
+  .vg-ano b{color:var(--tinta);font-weight:600}
+  .vg-cand{max-height:52vh;overflow:auto;border:1px solid var(--linha-clara);border-radius:8px;margin:10px 0}
+  .vg-cl{display:grid!important;grid-template-columns:22px 46px 1fr 86px 170px;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--linha-clara);
+         font-size:13px;text-transform:none!important;letter-spacing:0!important;color:var(--tinta)!important;margin:0!important}
+  .vg-cl small{display:block;font-size:10.5px;color:var(--cinza)}.vg-cl b{text-align:right;color:#B42318;font-weight:600}
+  .vg-cl select{font-size:12px;padding:3px}
+  .modal-caixa:has(.vg-cand){max-width:760px;width:94vw}
+  @media (max-width:700px){.vg-ficha{grid-template-columns:1fr 1fr}.vg-cl{grid-template-columns:22px 40px 1fr 70px}.vg-cl select{grid-column:2/-1}}
   /* ---- fluxo anual ---- */
   .fx-tab{border-collapse:separate;border-spacing:0;min-width:1560px;width:100%}
   .fx-caixa{overflow:auto;max-height:calc(100vh - 150px);min-height:320px;border:1px solid var(--linha);border-radius:4px;
@@ -916,6 +943,7 @@
     <button class="conta-tab" data-conta="fluxo">Fluxo anual</button>
     <button class="conta-tab" data-conta="dividas">Dívidas e parcelas</button>
     <button class="conta-tab" data-conta="metas">Metas e caixinhas</button>
+    <button class="conta-tab" data-conta="viagens">Viagens</button>
     <button class="conta-tab" data-conta="invest">Investimentos</button>
     <span class="conta-sep">Conferir:</span>
     <button class="conta-tab banco" data-conta="itau">Itaú</button>
@@ -1123,8 +1151,8 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:13,
-               orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],conferencia:{}};
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:14,
+               orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],viagens:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
   /* O que NÃO é gasto nem receita:
@@ -1243,6 +1271,57 @@
       // Pix do Itaú para o Santander (cobrir o cheque especial de lá): as compras do Santander não estão no app, então conta como gasto
       dados.lancamentos.forEach(l=>{ if(l.origem==="itau"&&l.data==="2026-10-05"&&Math.abs(l.valor+284)<0.005&&/SOLANO/i.test(l.hist)){ l.categoria="Santander – cheque especial"; l.catManual=true; } });
       dados.versao=13; dados._migrou=true;
+    }
+    if(dados.versao<14){
+      // aba Viagens: histórico da planilha Controle_Viagens + Ilha Grande (10 a 14/10/2026) com os gastos do extrato
+      dados.viagens=dados.viagens||[];
+      const V=(id,nome,destino,ini,fim,tipo,hist,extra)=>Object.assign({id,nome,destino,ini,fim,pessoas:null,tipo,status:"realizada",orc:{},hist,prog:[],notas:""},extra||{});
+      const sementes=[
+        V("v-ig22","Ilha Grande 2022","Ilha Grande – RJ","2022-08-28","2022-09-03","nacional",
+          {"Hospedagem":1976,"Bar / restaurante":2090,"Combustível e pedágio":480,"Transporte local":294,"Passeios e ingressos":700},
+          {notas:"Transporte local = barca Angra/Abraão (144) + estacionamento (150)"}),
+        V("v-mdz23","Mendoza 2023","Mendoza – Argentina","","","internacional",{"Outros":12000},{ano:"2023",notas:"Só o total (sem detalhe por categoria)"}),
+        V("v-par24","Paris 2024","Paris – França","","","internacional",{"Outros":35000},{ano:"2024",notas:"Só o total (sem detalhe por categoria)"}),
+        V("v-ams25","Amsterdam + Bruxelas 2025","Amsterdam, Bruxelas, Lisboa","2025-10-16","2025-10-27","internacional",
+          {"Passagem":11560,"Hospedagem":9601.82,"Bar / restaurante":11015,"Transporte local":137.16,"Passeios e ingressos":1736,"Outros":1935.1},
+          {notas:"Bar / restaurante = despesas Wise na cidade · Passeios = Maratona de Amsterdam · Outros = dinheiro + Infinite"}),
+        V("v-nv26","Nova Viçosa 2025/26","Nova Viçosa – BA","2025-12-26","2026-01-04","nacional",
+          {"Aluguel de carro":4141,"Combustível e pedágio":869.95,"Bar / restaurante":1898.28,"Passeios e ingressos":280}),
+        V("v-slz26","São Luís do Maranhão 2026","São Luís – MA","2026-01-08","2026-01-27","nacional",
+          {"Passagem":7800,"Combustível e pedágio":736.1,"Bar / restaurante":5289.77,"Passeios e ingressos":1100,"Outros":8275.86},
+          {notas:"Outros = 'Diversos' da planilha"}),
+        V("v-bon26","Bonito 2026","Bonito – MS","2026-06-03","2026-06-09","nacional",
+          {"Passagem":2751,"Transporte local":212,"Aluguel de carro":1379,"Combustível e pedágio":547.96,"Hospedagem":4301.5,
+           "Passeios e ingressos":7729,"Taxas, seguros e câmbio":300,"Bar / restaurante":4560,"Compras e souvenirs":230},
+          {pessoas:4,notas:"Valores da planilha (já incluem as parcelas da Bonitour)"}),
+        V("v-ig26","Ilha Grande 2026","Ilha Grande – RJ","2026-10-10","2026-10-14","nacional",{})
+      ];
+      sementes.forEach(s=>{ if(!dados.viagens.some(x=>x.id===s.id)) dados.viagens.push(s); });
+      const ig=dados.viagens.find(x=>x.id==="v-ig26");
+      const BR="Bar / restaurante", MC="Mercado e lanches", CP="Combustível e pedágio", TL="Transporte local", FS="Farmácia e saúde";
+      const mapa=[ // [histórico, valor, categoria, obs]
+        ["PAY POSTO 10/10",-361.12,CP],["PAY ECORO 10/10",-7.5,CP,"pedágio"],["PAY CASHP 10/10",-100,TL,"estacionamento? — conferir"],
+        ["PIX WHATS Jose Al10/10",-100,TL,"travessia de barco? — conferir"],["PAY YES P 10/10",-2315,"Hospedagem","pousada? — conferir"],
+        ["PAY RESTA 10/10",-75,BR],["PAY Resta 10/10",-84.7,BR],["PAY CASAR 10/10",-474.88,BR],["PAY VILA 10/10",-24,BR],
+        ["PAY LANCH 10/10",-20,MC],["PAY PADAR 10/10",-14,MC],["PAY ARMAZ 10/10",-14,MC],["PAY MERCE 10/10",-8.5,MC],["PAY DU MA 10/10",-9,MC],
+        ["PAY DROGA 10/10",-28.75,FS],["PAY DROGA 10/10",-42.15,FS],
+        ["PAY BEACH 11/10",-20,BR],["PAY FORNI 11/10",-104.5,BR],["PAY CASAR 11/10",-198.48,BR],["PAY BAR E 11/10",-75.5,BR],
+        ["PAY REFUG 11/10",-566.5,BR],["PAY REFUG 11/10",-64.9,BR],["PAY Claud 11/10",-33,BR],["PAY SANT 11/10",-30,BR],
+        ["PAY ARMAZ 11/10",-10,MC],["PAY ARMAZ 11/10",-47,MC],["PAY ARMAZ 11/10",-40,MC],["PAY D M D 11/10",-12,MC],
+        ["PAY ARMAZ 12/10",-96,MC],["PAY DU MA 12/10",-9,MC],["PAY REST 12/10",-42,BR],
+        ["PAY ARMAZ 13/10",-79,MC],["PAY Victo 13/10",-420,"Passeios e ingressos","passeio de barco? — conferir"],
+        ["RSCSS MP BARBAMBU1310",-100,BR],["RSCSS MP CABANAS 1310",-118,BR],["RSCSS MP CABANAS 1310",-35,BR],["RSCSS MP CABANAS 1310",-18,BR],
+        ["RSCCS COQUILLE GAS1310",-407,BR],
+        ["PAY TERRA 14/10",-32,BR],["PAY TERRA 14/10",-8,BR],["PAY O QUE 14/10",-155.09,BR],["PAY RODO 14/10",-202.82,CP,"posto na estrada? — conferir"],
+        ["RSCSS RODOSNACK SI1410",-10.5,MC],["RSCSS NOSSO PAO DE1410",-59.3,MC]
+      ];
+      let n=0;
+      mapa.forEach(([h,val,c,obs])=>{
+        const l=dados.lancamentos.find(x=>!x.viagem&&x.hist===h&&Math.abs(x.valor-val)<0.005&&x.data>="2026-10-10"&&x.data<="2026-10-16");
+        if(!l) return; vincularLanc(l,ig,c); if(obs) l.obs="✈ "+ig.nome+" · "+obs; n++;
+      });
+      dados.versao=14; dados._migrou=true;
+      if(n) setTimeout(()=>avisar("Aba Viagens criada: "+n+" lançamentos de 10 a 14/10 vinculados à Ilha Grande 2026."),900);
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -1978,6 +2057,7 @@
     dados.fluxo       = d.fluxo||null;
     dados.dividas     = d.dividas||null;
     dados.metas       = d.metas||[];
+    dados.viagens     = d.viagens||[];
     dados.conferencia = d.conferencia||{};
     dados.saldosDia   = d.saldosDia||{};
     dados.chequeUsados= d.chequeUsados||{};
@@ -5698,6 +5778,274 @@
     corpo.innerHTML='<div class="iv">'+html+'</div>';
   }
 
+  /* ================= viagens ================= */
+  // Cada viagem: dados, orçado por categoria, programação dia a dia e os gastos.
+  // Gastos = lançamentos vinculados (l.viagem = id, l.catViagem = categoria da viagem) + valores lançados à mão (hist),
+  // para viagens antigas ou gastos que não passaram pelos extratos. Lançamento vinculado conta no orçamento como "Férias / viagem".
+  const CAT_VIAGEM_ORC = "Férias / viagem";
+  const CATS_VIAGEM = ["Passagem","Hospedagem","Aluguel de carro","Combustível e pedágio","Transporte local",
+    "Bar / restaurante","Mercado e lanches","Passeios e ingressos","Compras e souvenirs","Farmácia e saúde","Taxas, seguros e câmbio","Outros"];
+  const DICA_CAT_VIAGEM = {
+    "Passagem":"aéreo, ônibus rodoviário, bagagem, marcação de assento",
+    "Hospedagem":"hotel, pousada, Airbnb, diárias",
+    "Aluguel de carro":"locadora, seguro do carro alugado",
+    "Combustível e pedágio":"posto, pedágio, tag de pedágio",
+    "Transporte local":"Uber/táxi, barca, lancha de travessia, transfer, estacionamento, metrô",
+    "Bar / restaurante":"almoço, jantar, bares, café da manhã fora",
+    "Mercado e lanches":"mercado, padaria, armazém, lanches, água",
+    "Passeios e ingressos":"passeios de barco, agência, parques, museus, provas/corridas",
+    "Compras e souvenirs":"lembranças, roupas, presentes",
+    "Farmácia e saúde":"farmácia, protetor solar, repelente",
+    "Taxas, seguros e câmbio":"taxa ambiental/turística, seguro viagem, IOF, câmbio, visto",
+    "Outros":"o que não se encaixa acima"
+  };
+  // sugestão de categoria pelo histórico do lançamento
+  const REGRAS_VIAGEM = [
+    [/AZUL LINHAS|LATAM|GOL LINHAS|DECOLAR|123 ?MILHAS|MAX ?MILHAS|SMILES|BUSER|CLICKBUS|GUICHE|RODOVIARIA|PASSAGE/i,"Passagem"],
+    [/HOTEL|POUSADA|AIRBNB|BOOKING|HOSTEL|RESORT|CHAL[EÉ]|HOSPED/i,"Hospedagem"],
+    [/LOCALIZA|MOVIDA|FOCO ALUG|RENT A CAR|HERTZ/i,"Aluguel de carro"],
+    [/POSTO|SHELL|IPIRANGA|PETROBRAS|BR MANIA|ALE COMB|ECORO|ECOVIA|CCR |ARTERIS|AUTOBAN|PEDAG|CONECTCAR|SEM PARAR|VELOE|COMBUST/i,"Combustível e pedágio"],
+    [/UBER|\b99\b|TAXI|BARCA|LANCHA|TRANSFER|ESTACION|ESTAPAR|PARKING|METRO/i,"Transporte local"],
+    [/DROGA|FARMA|PACHECO|ARAUJO|RAIA/i,"Farmácia e saúde"],
+    [/ARMAZ|MERCE|SUPER|MERCADO|PADAR|PAO DE|EMPORIO|HORTI|LANCH|SNACK|DU MA/i,"Mercado e lanches"],
+    [/PASSEIO|TOUR|TURISMO|INGRESSO|PARQUE|ESCUNA|MERGULHO|TRILHA|BONITOUR|MUSEU/i,"Passeios e ingressos"],
+    [/REST|BAR\b|BAR |GRILL|PIZZ|FORNI|CHURR|SUSHI|PASTEL|SORVET|ACAI|AÇAI|BEACH|CAFE|CAFÉ|COQUILLE|CABANAS|CASAR|REFUG|GASTRO|TERRA|O QUE/i,"Bar / restaurante"],
+    [/PRESENT|SOUVENIR|ARTESAN|LOJA/i,"Compras e souvenirs"],
+    [/SEGURO VIAGEM|ASSIST CARD|TAXA|IOF|WISE|CAMBIO|CÂMBIO/i,"Taxas, seguros e câmbio"]
+  ];
+  const sugereCatViagem = h => { const r=REGRAS_VIAGEM.find(x=>x[0].test(String(h||""))); return r?r[1]:"Outros"; };
+  // data real da compra: "PAY POSTO 10/10" e "RSCSS ... 1310" entram no extrato no dia útil seguinte
+  function dataReal(l){
+    const h=String(l.hist||""), a=+l.data.slice(0,4), ml=+l.data.slice(5,7);
+    let m=h.match(/(\d{2})\/(\d{2})\s*$/) || (/^RS?C+S*\s/i.test(h)&&h.match(/(\d{2})(\d{2})\s*$/));
+    if(!m||l.origem==="cartao") return l.data;
+    const d=+m[1], mm=+m[2]; if(!(d>=1&&d<=31&&mm>=1&&mm<=12)) return l.data;
+    const ano = mm>ml ? a-1 : a;
+    return ano+"-"+String(mm).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+  }
+  const diasViagem = v => v.ini&&v.fim ? Math.round((new Date(v.fim+"T12:00:00")-new Date(v.ini+"T12:00:00"))/864e5)+1 : null;
+  const lancsViagem = v => dados.lancamentos.filter(l=>l.viagem===v.id&&!l.ignorado);
+  function gastosViagem(v){
+    const app={}, fora={}; CATS_VIAGEM.forEach(c=>{ app[c]=0; fora[c]=+((v.hist||{})[c])||0; });
+    lancsViagem(v).forEach(l=>{ const c=CATS_VIAGEM.includes(l.catViagem)?l.catViagem:"Outros"; app[c]=cent(app[c]-l.valor); });
+    const tot={}; CATS_VIAGEM.forEach(c=>{ tot[c]=cent(app[c]+fora[c]); });
+    const total=cent(CATS_VIAGEM.reduce((s,c)=>s+tot[c],0)), orc=cent(CATS_VIAGEM.reduce((s,c)=>s+(+((v.orc||{})[c])||0),0));
+    const prog=cent((v.prog||[]).reduce((s,p)=>s+(+p.custo||0),0));
+    return {app,fora,tot,total,orc,prog};
+  }
+  const STATUS_VIAGEM = {planejada:"Planejada", andamento:"Em andamento", realizada:"Realizada"};
+  function vincularLanc(l,v,cat){
+    if(l.viagem!==v.id){ l.catAntes=l.categoria; }
+    l.viagem=v.id; l.catViagem=cat||sugereCatViagem(l.hist);
+    l.categoria=CAT_VIAGEM_ORC; l.catManual=true;
+    const tag="✈ "+v.nome; if(!l.obs) l.obs=tag;
+  }
+  function desvincularLanc(l){
+    const v=(dados.viagens||[]).find(x=>x.id===l.viagem);
+    if(l.catAntes&&CATEGORIAS.includes(l.catAntes)) l.categoria=l.catAntes;
+    if(v&&l.obs&&l.obs.startsWith("✈ "+v.nome)) l.obs="";
+    delete l.viagem; delete l.catViagem; delete l.catAntes;
+  }
+  function novaViagem(){
+    dados.viagens=dados.viagens||[];
+    const v={id:"v"+Date.now(), nome:"Nova viagem", destino:"", ini:"", fim:"", pessoas:null, tipo:"nacional", status:"planejada",
+             orc:{}, hist:{}, prog:[], notas:""};
+    dados.viagens.push(v); ui.viagem=v.id; salvar(); renderViagens();
+    const f=document.querySelector('[data-foco="vg:nome"]'); if(f){ f.focus(); f.select(); }
+  }
+  function buscarLancsViagem(v){
+    if(!v.ini||!v.fim){ avisar("Preencha o início e o fim da viagem.",true); return; }
+    const fimMais=somaDiasISO(v.fim,4);
+    const cand=dados.lancamentos.map((l,i)=>({l,i})).filter(({l})=>{
+      if(l.ignorado||l.viagem||l.valor>=0) return false;
+      if(CATS_FORA.has(l.categoria)||GRUPO_DE[l.categoria]==="Receitas"||GRUPO_DE[l.categoria]==="Financiamento e dívidas"||l.categoria==="Transferências Tâmara") return false;
+      if(l.data<v.ini||l.data>fimMais) return false;
+      const dr=dataReal(l); return dr>=v.ini&&dr<=v.fim;
+    }).sort((a,b)=>dataReal(a.l).localeCompare(dataReal(b.l)));
+    if(!cand.length){ avisar("Nenhum lançamento novo entre "+diaMes(v.ini)+" e "+diaMes(v.fim)+"."); return; }
+    // marca já os pagamentos presenciais (PAY, maquininha, cartão) e os que parecem de viagem; Pix para pessoas e contas fixas ficam desmarcados
+    const fixas=new Set(["Moradia","Serviço doméstico","Educação","Transferências"]);
+    const marca=l=>!fixas.has(GRUPO_DE[l.categoria])&&!["Unimed","Corrida","Assinaturas","Solano – pessoal","Tâmara – pessoal","Meninas"].includes(l.categoria)&&
+      (/^(PAY|RSC+S*)\b/i.test(l.hist)||l.origem==="cartao"||sugereCatViagem(l.hist)!=="Outros");
+    const ops=c=>CATS_VIAGEM.map(x=>'<option'+(x===c?" selected":"")+'>'+esc(x)+'</option>').join("");
+    modal('<h3 class="modal-tit">Gastos de '+esc(v.nome)+'</h3>'+
+      '<p class="modal-corpo">Lançamentos de '+diaMes(v.ini)+' a '+diaMes(v.fim)+' (pela data da compra). Marque os da viagem e confira a categoria. '+
+      'Eles passam a contar como <b>'+CAT_VIAGEM_ORC+'</b> no orçamento.</p>'+
+      '<form onsubmit="return false"><div class="vg-cand">'+cand.map(({l,i})=>
+        '<label class="vg-cl"><input type="checkbox" name="c'+i+'"'+(marca(l)?" checked":"")+'>'+
+        '<span class="sub">'+diaMes(dataReal(l))+'</span><span class="vg-h">'+esc(l.hist)+'<small>'+esc(l.categoria)+'</small></span>'+
+        '<b>'+brl(l.valor)+'</b><select name="s'+i+'">'+ops(sugereCatViagem(l.hist))+'</select></label>').join("")+'</div>'+
+      '<div class="modal-acoes"><button type="button" class="bt vazado" data-modal="cancelar">Cancelar</button>'+
+      '<button type="button" class="bt" data-modal="ok">Vincular marcados</button></div></form>').then(f=>{
+        if(!f) return; let n=0, s=0;
+        cand.forEach(({l,i})=>{ if(f["c"+i]){ vincularLanc(l,v,f["s"+i]); n++; s+=l.valor; } });
+        if(!n) return; salvar(); renderViagens(); avisar(n+" lançamento"+(n===1?"":"s")+" vinculado"+(n===1?"":"s")+" a "+v.nome+" (R$ "+brl(-s)+").");
+      });
+  }
+  const somaDiasISO=(iso,n)=>{ const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+
+  function renderViagens(){
+    const corpo=$("#corpo"); dados.viagens=dados.viagens||[];
+    $("#abas").innerHTML='<div class="periodo"><span class="sub" style="margin:0">Histórico, orçamento, programação e gastos de cada viagem. '+
+      'Gastos vinculados contam como <b>'+CAT_VIAGEM_ORC+'</b> no orçamento.</span></div>'+
+      '<button class="bt" data-vgnova="1" style="font-size:12px;padding:6px 12px">+ Nova viagem</button>';
+    $("#abas").onclick=e=>{ if(e.target.closest("[data-vgnova]")) novaViagem(); };
+    const VS=dados.viagens.slice().sort((a,b)=>(b.ini||b.ano||"").localeCompare(a.ini||a.ano||""));
+    if(!VS.length){
+      corpo.innerHTML='<div class="vazio"><p class="num">Nenhuma viagem ainda</p><p>Clique em <b>+ Nova viagem</b>.</p></div>'; return;
+    }
+    if(!VS.some(v=>v.id===ui.viagem)){ const hj=hojeISO(); ui.viagem=(VS.find(v=>v.ini&&v.ini<=hj)||VS[0]).id; }
+    const v=dados.viagens.find(x=>x.id===ui.viagem), G=gastosViagem(v);
+    const real=VS.filter(x=>x.status!=="planejada"), tots=real.map(x=>gastosViagem(x).total);
+    const totGeral=cent(tots.reduce((s,x)=>s+x,0)), ano=hojeISO().slice(0,4);
+    const totAno=cent(real.filter(x=>(x.ini||x.ano||"").slice(0,4)===ano).reduce((s,x)=>s+gastosViagem(x).total,0));
+    const porAno={}; real.forEach(x=>{ const a=(x.ini||x.ano||"").slice(0,4); if(a) porAno[a]=(porAno[a]||0)+gastosViagem(x).total; });
+    const anos=Object.keys(porAno), mediaAno=anos.length?cent(anos.reduce((s,a)=>s+porAno[a],0)/anos.length):0;
+
+    const dias=diasViagem(v), pes=+v.pessoas||0;
+    const fmtD=x=>x.ini?diaMes(x.ini)+"/"+x.ini.slice(2,4)+(x.fim?" – "+diaMes(x.fim)+"/"+x.fim.slice(2,4):""):(x.ano||"");
+    const lista='<div class="rolagem"><table class="pv-tab vg-lista"><colgroup><col><col style="width:150px"><col style="width:60px"><col class="c-val"><col class="c-val"><col style="width:110px"></colgroup>'+
+      '<thead><tr><th>Viagem</th><th>Quando</th><th class="n">Dias</th><th class="n">Total</th><th class="n">R$/dia</th><th>Status</th></tr></thead><tbody>'+
+      VS.map(x=>{ const g=gastosViagem(x), d=diasViagem(x);
+        return '<tr class="vg-l'+(x.id===v.id?" on":"")+'" data-vgsel="'+esc(x.id)+'"><td>'+esc(x.nome||"(sem nome)")+(x.tipo==="internacional"?' <span class="vg-int">internacional</span>':'')+'</td>'+
+          '<td class="sub">'+fmtD(x)+'</td><td class="n">'+(d||"—")+'</td><td class="n vg-num">'+brl(g.total)+'</td>'+
+          '<td class="n vg-num">'+(d&&g.total?brl(g.total/d):"—")+'</td><td><span class="vg-st '+(x.status||"")+'">'+(STATUS_VIAGEM[x.status]||"")+'</span></td></tr>'; }).join("")+
+      '</tbody></table></div>';
+
+    const at=k=>' data-vg="'+k+'" data-foco="vg:'+k+'"';
+    const sel=(k,op,val)=>'<select class="campo"'+at(k)+'>'+Object.keys(op).map(c=>'<option value="'+c+'"'+(c===val?" selected":"")+'>'+op[c]+'</option>').join("")+'</select>';
+    const ficha='<div class="vg-ficha">'+
+      '<label>Viagem<input class="campo"'+at("nome")+' value="'+esc(v.nome||"")+'"></label>'+
+      '<label>Destino<input class="campo"'+at("destino")+' value="'+esc(v.destino||"")+'" placeholder="cidade / região"></label>'+
+      '<label>Início<input type="date" class="campo"'+at("ini")+' value="'+esc(v.ini||"")+'"></label>'+
+      '<label>Fim<input type="date" class="campo"'+at("fim")+' value="'+esc(v.fim||"")+'"></label>'+
+      '<label>Pessoas<input class="campo"'+at("pessoas")+' value="'+(v.pessoas||"")+'" inputmode="numeric" placeholder="—"></label>'+
+      '<label>Tipo'+sel("tipo",{nacional:"Nacional",internacional:"Internacional"},v.tipo)+'</label>'+
+      '<label>Status'+sel("status",STATUS_VIAGEM,v.status)+'</label>'+
+      '<label class="vg-notas">Notas<input class="campo"'+at("notas")+' value="'+esc(v.notas||"")+'" placeholder="hospedagem, reservas, lembretes"></label>'+
+      '</div>';
+
+    // guardar por mês para viagem planejada
+    let guardar="";
+    if(v.status==="planejada"&&v.ini&&G.orc>0){
+      const m=Math.max(1,(+v.ini.slice(0,4)-+ano)*12+(+v.ini.slice(5,7))-(+hojeISO().slice(5,7)));
+      const falta=Math.max(0,cent(G.orc-(+v.guardado||0)));
+      guardar='<div class="g-num"><span class="rot">Guardar por mês</span><div class="v">R$ '+brl(falta/m)+'</div><span class="kpi-sub">'+m+' mes'+(m===1?"":"es")+' até a viagem · falta R$ '+brl(falta)+'</span></div>';
+    }
+    const cards='<section class="dash-geral">'+
+      '<div class="g-num"><span class="rot">Gasto na viagem</span><div class="v">R$ '+brl(G.total)+'</div><span class="kpi-sub">'+
+        (G.orc?(G.total<=G.orc?"dentro do orçado (R$ "+brl(G.orc)+")":'<span style="color:#C0392B">R$ '+brl(G.total-G.orc)+' acima do orçado</span>'):"sem orçamento")+'</span></div>'+
+      '<div class="g-num"><span class="rot">Por dia</span><div class="v">'+(dias&&G.total?"R$ "+brl(G.total/dias):"—")+'</div><span class="kpi-sub">'+
+        (dias?dias+" dia"+(dias===1?"":"s"):"")+(pes&&dias&&G.total?" · R$ "+brl(G.total/dias/pes)+" por pessoa/dia":"")+'</span></div>'+
+      (guardar||'<div class="g-num"><span class="rot">Programação</span><div class="v">R$ '+brl(G.prog)+'</div><span class="kpi-sub">'+(v.prog||[]).length+' ite'+((v.prog||[]).length===1?"m":"ns")+' com custo previsto</span></div>')+
+      '</section>';
+
+    const mx=Math.max(1,...CATS_VIAGEM.map(c=>Math.max(G.tot[c],+((v.orc||{})[c])||0)));
+    const vIn=(k,val,tt)=>'<td class="valor"><input class="campo" data-vgv="'+k+'" data-foco="vgv:'+k+'" value="'+(val?brl(val):"")+'" placeholder="—" inputmode="decimal" title="'+esc(tt)+'"></td>';
+    const cats='<div class="rolagem"><table class="pv-tab vg-cat"><colgroup><col><col class="c-val"><col class="c-val"><col class="c-val"><col class="c-val"><col class="c-val"><col style="width:120px"></colgroup>'+
+      '<thead><tr><th>Categoria</th><th class="n">Orçado</th><th class="n">Lançamentos</th><th class="n">Fora do app</th><th class="n">Gasto</th><th class="n">Diferença</th><th></th></tr></thead><tbody>'+
+      CATS_VIAGEM.map(c=>{ const o=+((v.orc||{})[c])||0, t=G.tot[c], dif=cent(o-t);
+        return '<tr><td title="'+esc(DICA_CAT_VIAGEM[c])+'">'+esc(c)+'<small class="vg-dica">'+esc(DICA_CAT_VIAGEM[c])+'</small></td>'+
+          vIn("orc:"+c,o,"Orçado")+'<td class="n vg-num">'+(G.app[c]?brl(G.app[c]):"—")+'</td>'+
+          vIn("hist:"+c,G.fora[c],"Gasto que não está nos lançamentos (dinheiro, viagem antiga, pago por outra pessoa)")+
+          '<td class="n vg-num"><b>'+(t?brl(t):"—")+'</b></td>'+
+          '<td class="n vg-num" style="color:'+(o&&dif<0?"#C0392B":"#1E8A5F")+'">'+(o?brl(dif):"")+'</td>'+
+          '<td><div class="vg-barra"><i style="width:'+Math.round(t/mx*100)+'%"></i>'+(o?'<s style="left:'+Math.min(100,Math.round(o/mx*100))+'%"></s>':"")+'</div></td></tr>'; }).join("")+
+      '<tr class="orc-t"><td>Total</td><td class="n vg-num">'+brl(G.orc)+'</td><td class="n vg-num">'+brl(cent(CATS_VIAGEM.reduce((s,c)=>s+G.app[c],0)))+'</td>'+
+        '<td class="n vg-num">'+brl(cent(CATS_VIAGEM.reduce((s,c)=>s+G.fora[c],0)))+'</td><td class="n vg-num"><b>'+brl(G.total)+'</b></td>'+
+        '<td class="n vg-num">'+(G.orc?brl(cent(G.orc-G.total)):"")+'</td><td></td></tr></tbody></table></div>';
+
+    const P=(v.prog||[]).map((p,i)=>({p,i})).sort((a,b)=>((a.p.data||"")+(a.p.hora||"")).localeCompare((b.p.data||"")+(b.p.hora||"")));
+    const pa=(i,k)=>' data-vgp="'+i+'" data-k="'+k+'" data-foco="vgp:'+i+':'+k+'"';
+    const prog='<div class="rolagem"><table class="pv-tab vg-prog"><colgroup><col style="width:140px"><col style="width:84px"><col><col style="width:170px"><col style="width:150px"><col class="c-val"><col><col class="c-acao"></colgroup>'+
+      '<thead><tr><th>Data</th><th>Hora</th><th>Programação</th><th>Local</th><th>Categoria</th><th class="n">Custo previsto</th><th>Obs. / reserva</th><th></th></tr></thead><tbody>'+
+      (P.length?P.map(({p,i})=>'<tr><td><input type="date" class="campo"'+pa(i,"data")+' value="'+esc(p.data||"")+'"></td>'+
+        '<td><input type="time" class="campo"'+pa(i,"hora")+' value="'+esc(p.hora||"")+'"></td>'+
+        '<td><input class="campo"'+pa(i,"item")+' value="'+esc(p.item||"")+'" placeholder="Ex.: passeio de lancha"></td>'+
+        '<td><input class="campo"'+pa(i,"local")+' value="'+esc(p.local||"")+'"></td>'+
+        '<td><select class="campo"'+pa(i,"cat")+'><option value="">—</option>'+CATS_VIAGEM.map(c=>'<option'+(c===p.cat?" selected":"")+'>'+esc(c)+'</option>').join("")+'</select></td>'+
+        '<td class="valor"><input class="campo"'+pa(i,"custo")+' value="'+(+p.custo?brl(+p.custo):"")+'" placeholder="—" inputmode="decimal"></td>'+
+        '<td><input class="campo"'+pa(i,"obs")+' value="'+esc(p.obs||"")+'"></td>'+
+        '<td class="acao"><button class="apagar" data-vgpdel="'+i+'" aria-label="Apagar">×</button></td></tr>').join("")
+        :'<tr><td colspan="8" class="sub" style="padding:10px 6px">Nada programado ainda.</td></tr>')+
+      '</tbody></table></div><button class="ver-mais" data-vgpnovo="1">+ Item na programação</button>'+
+      (G.prog?'<button class="ver-mais" data-vgporc="1" title="Soma o custo previsto da programação por categoria e grava no Orçado">Levar custos da programação para o Orçado</button>':'');
+
+    const LV=lancsViagem(v).sort((a,b)=>dataReal(a).localeCompare(dataReal(b)));
+    const gastos='<div class="rolagem"><table class="pv-tab vg-gastos"><colgroup><col style="width:70px"><col><col style="width:80px"><col class="c-val"><col style="width:200px"><col class="c-acao"></colgroup>'+
+      '<thead><tr><th>Data</th><th>Descrição</th><th>Conta</th><th class="n">Valor</th><th>Categoria da viagem</th><th></th></tr></thead><tbody>'+
+      (LV.length?LV.map(l=>{ const i=dados.lancamentos.indexOf(l);
+        return '<tr><td class="sub">'+diaMes(dataReal(l))+'</td><td>'+esc(l.hist)+(l.obs&&!l.obs.startsWith("✈")?'<small class="vg-dica">'+esc(l.obs)+'</small>':'')+'</td>'+
+          '<td class="sub">'+esc(NOMES_ORIGEM[l.origem]||l.origem||"")+'</td><td class="n vg-num" style="color:#B42318">'+brl(l.valor)+'</td>'+
+          '<td><select class="campo" data-vglc="'+i+'">'+CATS_VIAGEM.map(c=>'<option'+(c===l.catViagem?" selected":"")+'>'+esc(c)+'</option>').join("")+'</select></td>'+
+          '<td class="acao"><button class="apagar" data-vgldes="'+i+'" title="Tirar desta viagem (volta à categoria anterior)" aria-label="Desvincular">×</button></td></tr>'; }).join("")
+        :'<tr><td colspan="6" class="sub" style="padding:10px 6px">Nenhum lançamento vinculado. Use “Buscar lançamentos do período”.</td></tr>')+
+      '</tbody></table></div><button class="ver-mais" data-vgbuscar="1">Buscar lançamentos do período</button>';
+
+    const kAnos=anos.sort().map(a=>'<span class="vg-ano">'+a+': <b>R$ '+brl(porAno[a])+'</b></span>').join("");
+    corpo.innerHTML=
+      '<section class="dash-geral">'+
+        '<div class="g-num"><span class="rot">Total em viagens</span><div class="v">R$ '+brl(totGeral)+'</div><span class="kpi-sub">'+real.length+' viage'+(real.length===1?"m":"ns")+' · média R$ '+brl(real.length?totGeral/real.length:0)+'</span></div>'+
+        '<div class="g-num"><span class="rot">Em '+ano+'</span><div class="v">R$ '+brl(totAno)+'</div><span class="kpi-sub">orçamento mensal de '+CAT_VIAGEM_ORC+': R$ '+brl(+(orcamentoDe(mesAtual())[CAT_VIAGEM_ORC])||0)+'</span></div>'+
+        '<div class="g-num"><span class="rot">Média por ano</span><div class="v">R$ '+brl(mediaAno)+'</div><span class="kpi-sub">guardar R$ '+brl(mediaAno/12)+' por mês para manter o ritmo</span></div>'+
+      '</section>'+
+      (kAnos?'<div class="vg-anos">'+kAnos+'</div>':'')+
+      '<div class="tit-secao" style="margin-top:30px"><h3>Viagens</h3></div>'+lista+
+      '<div class="tit-secao" style="margin-top:38px"><h3>'+esc(v.nome||"Viagem")+'</h3>'+
+        '<button class="ver-mais" data-vgdel="1" style="margin-left:auto;color:#B42318">apagar viagem</button></div>'+
+      ficha+cards+
+      '<div class="tit-secao" style="margin-top:30px"><h3>Orçado × gasto por categoria</h3></div>'+cats+
+      '<div class="tit-secao" style="margin-top:30px"><h3>Programação</h3></div>'+prog+
+      '<div class="tit-secao" style="margin-top:30px"><h3>Gastos lançados ('+LV.length+')</h3></div>'+gastos;
+
+    corpo.onchange=e=>{
+      const t=e.target;
+      if(t.dataset.vg){
+        const k=t.dataset.vg; let val=t.value;
+        if(k==="pessoas") val=+val||null;
+        if(k==="nome"&&!String(val).trim()) val="Viagem";
+        if(k==="nome"){ const ant="✈ "+v.nome; lancsViagem(v).forEach(l=>{ if(l.obs&&l.obs.startsWith(ant)) l.obs="✈ "+val+l.obs.slice(ant.length); }); }
+        v[k]=val; salvar(); manterFoco(renderViagens); return;
+      }
+      if(t.dataset.vgv){
+        const [g,c]=t.dataset.vgv.split(":"), n=Math.abs(numero(String(t.value||"0").replace("−","-")))||0;
+        v[g]=v[g]||{}; if(n) v[g][c]=cent(n); else delete v[g][c];
+        salvar(); manterFoco(renderViagens); return;
+      }
+      if(t.dataset.vgp!=null){
+        const p=v.prog[+t.dataset.vgp], k=t.dataset.k; if(!p) return;
+        p[k]= k==="custo" ? (Math.abs(numero(String(t.value||"0")))||null) : t.value;
+        if(k==="item"&&!p.cat&&t.value) p.cat=sugereCatViagem(t.value)!=="Outros"?sugereCatViagem(t.value):"";
+        salvar(); manterFoco(renderViagens); return;
+      }
+      if(t.dataset.vglc!=null){
+        const l=dados.lancamentos[+t.dataset.vglc]; if(l){ l.catViagem=t.value; salvar(); renderViagens(); } return;
+      }
+    };
+    corpo.onclick=e=>{
+      const s=e.target.closest("[data-vgsel]"); if(s){ ui.viagem=s.dataset.vgsel; renderViagens(); return; }
+      if(e.target.closest("[data-vgbuscar]")){ buscarLancsViagem(v); return; }
+      if(e.target.closest("[data-vgpnovo]")){
+        (v.prog=v.prog||[]).push({data:v.ini||"",hora:"",item:"",local:v.destino||"",cat:"",custo:null,obs:""});
+        salvar(); renderViagens(); const f=document.querySelector('[data-foco="vgp:'+(v.prog.length-1)+':item"]'); if(f) f.focus(); return;
+      }
+      if(e.target.closest("[data-vgporc]")){
+        const o={}; (v.prog||[]).forEach(p=>{ if(+p.custo){ const c=p.cat||"Outros"; o[c]=cent((o[c]||0)+(+p.custo)); } });
+        v.orc=Object.assign(v.orc||{},o); salvar(); renderViagens(); avisar("Orçado atualizado com a programação."); return;
+      }
+      const pd=e.target.closest("[data-vgpdel]"); if(pd){ v.prog.splice(+pd.dataset.vgpdel,1); salvar(); renderViagens(); return; }
+      const ld=e.target.closest("[data-vgldes]");
+      if(ld){ const l=dados.lancamentos[+ld.dataset.vgldes]; if(l){ desvincularLanc(l); salvar(); renderViagens(); avisar("Lançamento tirado da viagem."); } return; }
+      if(e.target.closest("[data-vgdel]")){
+        const n=lancsViagem(v).length;
+        confirmar("Apagar "+(v.nome||"viagem")+"?","A viagem sai do app."+(n?" Os "+n+" lançamentos vinculados continuam, voltando à categoria anterior.":""),"Apagar").then(ok=>{
+          if(!ok) return; lancsViagem(v).forEach(desvincularLanc);
+          dados.viagens=dados.viagens.filter(x=>x!==v); ui.viagem=null; salvar(); renderViagens();
+        });
+      }
+    };
+  }
+
   function render(){
     const corpo=$("#corpo"); corpo.onclick=null; corpo.onkeydown=null; corpo.onchange=null; $("#abas").onclick=null;
     corpo.classList.toggle("largo", ui.conta==="fluxo");
@@ -5709,6 +6057,7 @@
     if(ui.conta==="prev"){ renderPrevisao(); return; }
     if(ui.conta==="fluxo"){ renderFluxo(); return; }
     if(ui.conta==="metas"){ renderMetas(); return; }
+    if(ui.conta==="viagens"){ renderViagens(); return; }
     if(ui.conta==="invest"){ renderInvest(); return; }
     if(!ui.view) ui.view="mes";
 
