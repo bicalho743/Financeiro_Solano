@@ -1151,7 +1151,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:14,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:15,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],viagens:[],conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -1322,6 +1322,20 @@
       });
       dados.versao=14; dados._migrou=true;
       if(n) setTimeout(()=>avisar("Aba Viagens criada: "+n+" lançamentos de 10 a 14/10 vinculados à Ilha Grande 2026."),900);
+    }
+    if(dados.versao<15){
+      // Pix/compras de fim de semana gravados duas vezes (no dia real e no dia útil em que o extrato compensou): risca a cópia sem confirmação
+      let n=0;
+      dados.lancamentos.filter(l=>(l.origem==="itau"||l.origem==="bb")&&l.confExtrato&&!l.ignorado).forEach(m=>{
+        const c=parFimDeSemana(m, l=>!l.confExtrato&&!l.ignorado);
+        if(!c) return;
+        if(c.catManual&&!m.catManual){ m.categoria=c.categoria; m.catManual=true; }
+        if(c.obs&&!m.obs) m.obs=c.obs;
+        if(c.viagem&&!m.viagem){ m.viagem=c.viagem; m.catViagem=c.catViagem; m.catAntes=c.catAntes; }
+        c.ignorado=true; c.riscadoExtrato=true; c.obs=(c.obs?c.obs+" · ":"")+"duplicado: o extrato trouxe em "+diaMes(m.data); n++;
+      });
+      dados.versao=15; dados._migrou=true;
+      if(n) setTimeout(()=>avisar(n+" lançamento"+(n===1?"":"s")+" duplicado"+(n===1?"":"s")+" de fim de semana riscado"+(n===1?"":"s")+"."),1200);
     }
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
     dados.lancamentos.forEach(l=>{
@@ -2405,6 +2419,14 @@
   /* Grava itens {iso,hist,valor,doc[,categoria]} de uma origem (itau, bb, cartao, manual).
      O que já existe (mesma data, valor e descrição, na mesma origem) não entra de novo;
      por isso dá para importar a planilha e depois os extratos dos mesmos meses. */
+  // lançamento já gravado no dia real da compra/Pix que o extrato traz compensado no dia útil seguinte
+  const nomeSemData = h => String(h).toUpperCase().normalize("NFD").replace(/\d{2}\/?\d{2}\s*$/,"").replace(/[^A-Z0-9]/g,"");
+  function parFimDeSemana(it, ok){
+    const dr=dataReal(it); if(dr===it.data) return null;
+    const nh=nomeSemData(it.hist); if(nh.length<6) return null;
+    return dados.lancamentos.find(l=>l!==it&&l.origem===it.origem&&Math.abs(l.valor-it.valor)<0.005&&l.data===dr&&ok(l)&&
+      (()=>{ const nl=nomeSemData(l.hist); return nl.length>=6&&(nl.startsWith(nh)||nh.startsWith(nl)); })())||null;
+  }
   function gravarLinhas(itens,origem){
     const norm=s=>String(s).toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g,"").slice(0,20);
     const fp=(d,v,h)=>d+"|"+Number(v).toFixed(2)+"|"+norm(h);
@@ -2436,6 +2458,13 @@
           (nTot(l.hist).startsWith(nh)||nh.startsWith(nTot(l.hist))||!pareceBanco(l.hist)))
           .sort((a,b)=>(a.ignorado?1:0)-(b.ignorado?1:0))[0];
         if(par){ usados.add(par); if(!it.categoria) volta(par); if(!it.categoria) par.confExtrato=true; repetidos++; return; }
+      }
+      // Pix/compra de fim de semana ou feriado: antes de compensar, o banco mostra no dia real com a descrição completa
+      // ("PIX TRANSF José Adau", 10/10); compensado, vem no dia útil seguinte com a data no fim ("PIX TRANSF JOSE AD10/10", 13/10).
+      // É o mesmo lançamento: o do extrato fica com a data e a descrição do banco, mantendo categoria, observação e viagem.
+      if(origem!=="cartao"){
+        const par=parFimDeSemana({data:iso,hist:hist,valor:valor,origem:origem}, l=>!usados.has(l)&&!l.confExtrato);
+        if(par){ usados.add(par); volta(par); par.data=iso; par.hist=hist; if(doc) par.doc=doc; par.confExtrato=true; repetidos++; meses.add(iso.slice(0,7)); return; }
       }
       // mesmo documento com valor diferente: o banco corrigiu, atualiza sem perder categoria/observação
       if(doc && origem!=="cartao"){
