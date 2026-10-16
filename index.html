@@ -3091,7 +3091,7 @@
               iCat=h.findIndex(x=>/^categoria/i.test(x)), iSub=h.findIndex(x=>/^subcat/i.test(x));
         for(let i=cab+1;i<L.length;i++){
           const r=L[i], car=celTexto(r[iCar]), d=celTexto(r[iDes]);
-          if(/FATURA/i.test(car) && !/TOTAL/i.test(car)){ dv.faturaAvulsos=valsDe(r,ms); continue; }
+          if(/FATURA/i.test(car) && !/TOTAL/i.test(car)) continue; // avulsos vêm das faturas importadas, não da planilha
           if(/TOTAL PARCEL/i.test(car)){
             // a fórmula do total (ex.: SUM(N7:N22)) diz quais linhas contam; as de fora vêm desmarcadas
             const j0=ms.findIndex(Boolean), cel=j0>=0?wb.Sheets[a][XLSX.utils.encode_cell({r:i,c:j0})]:null;
@@ -4793,7 +4793,10 @@
     // 2) parcelamentos no cartão
     const ativos=[], quitados=[];
     dv.parcelas.forEach((p,i)=>{ const k=Object.keys(p.vals); (k.length===0||k.some(m=>m>=hoje&&p.vals[m])?ativos:quitados).push(i); });
-    const msP=janelaMeses(hoje, ativos.map(i=>dv.parcelas[i].vals).concat([dv.faturaAvulsos]), 12, 36);
+    // compras à vista de cada fatura (lançamentos dos cartões, sem as parceladas e sem pagamentos de fatura)
+    const avulsos={}; dados.lancamentos.forEach(l=>{ if(l.origem!=="cartao"||l.ignorado||CATS_FORA.has(l.categoria)||/PARC\s*\d{1,2}\/\d{1,2}/i.test(l.hist)) return;
+      const m=faturaDe(l); avulsos[m]=cent((avulsos[m]||0)-l.valor); });
+    const msP=janelaMeses(hoje, ativos.map(i=>dv.parcelas[i].vals), 12, 36);
     const totP=m=>ativos.reduce((s,i)=>s+(dv.parcelas[i].foraTotal?0:(+dv.parcelas[i].vals[m]||0)),0);
     h+='<div class="tit-secao" id="dv-parcelas" style="margin-top:40px"><h3>Parcelamentos no cartão — mês a mês</h3></div>'+
       '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Descrição</th><th style="text-align:left">Cartão</th><th style="text-align:left">Categoria</th>'+
@@ -4810,10 +4813,10 @@
       }).join("")+
       '<tr class="fx-sub"><td colspan="3">▸ Total parcelamento cartão</td>'+msP.map(m=>'<td>'+brl(totP(m))+'</td>').join("")+
         '<td>'+brl(qCartao)+'</td></tr>'+
-      '<tr><td colspan="3" style="font-size:12.5px;color:var(--cinza)">▸ Fatura do cartão (avulsos/mês)</td>'+
-        msP.map(m=>inp('data-dv="f" data-m="'+m+'"',"f:"+m,dv.faturaAvulsos[m])).join("")+'<td></td></tr>'+
+      '<tr><td colspan="3" style="font-size:12.5px;color:var(--cinza)">▸ Fatura do cartão (avulsos/mês) <span class="sub" style="display:inline">· compras à vista das faturas importadas</span></td>'+
+        msP.map(m=>'<td class="fx-calc" title="Compras à vista na fatura de '+abrevMes(m)+' (lançamentos importados)">'+(avulsos[m]?brl(avulsos[m]):"·")+'</td>').join("")+'<td></td></tr>'+
       '<tr class="fx-t"><td colspan="3">▸▸ Total cartão (parcela + fatura)</td>'+
-        msP.map(m=>'<td>'+brl(totP(m)+(+dv.faturaAvulsos[m]||0))+'</td>').join("")+'<td></td></tr>'+
+        msP.map(m=>'<td>'+brl(totP(m)+(+avulsos[m]||0))+'</td>').join("")+'<td></td></tr>'+
       '</tbody></table></div>'+
       '<button class="ver-mais" data-dvnova="1">+ Compra parcelada</button>'+
       (quitados.length?'<details class="contas-pagas"><summary>'+quitados.length+' parcelamento'+(quitados.length>1?"s":"")+' já quitado'+(quitados.length>1?"s":"")+'</summary>'+
