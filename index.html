@@ -681,6 +681,21 @@
   .ir-cl{grid-template-columns:22px 46px 1fr 86px 110px 190px!important}
   .modal-caixa:has(.ir-cl){max-width:900px}
   @media (max-width:700px){.ir-cl{grid-template-columns:22px 40px 1fr 70px!important}.ir-cl select{grid-column:2/-1}}
+  .cg-tab td,.cg-dados td{padding:5px 6px}.cg-tab td.n,.cg-tab th.n,.cg-dados th.n{text-align:right}.cg-tab{min-width:1180px}.cg-dados{min-width:1320px}
+  .cg-l td:first-child{white-space:nowrap}.cg-dados td:first-child .campo{min-width:110px}.cg-dados input[type=date].campo{min-width:128px;font-size:12px}
+  .cg-tab tr.orc-t td{font-weight:600;border-top:1px solid var(--verde);padding-top:8px}
+  .cg-l{cursor:pointer}.cg-l:hover td{background:#F5F8FC}.cg-l.on td{background:#EEF4FF}
+  .cg-tab tr.ir-sub td{background:#FAFBFD;font-size:12.5px;padding:3px 6px}
+  .cg-tx{font-family:var(--serif);font-size:14.5px;padding:1px 6px;border-radius:6px}.cg-tx.caro{background:#FDECEA;color:#B42318}
+  .cg-bar{height:6px;background:var(--linha-clara);border-radius:4px;min-width:70px}.cg-bar i{display:block;height:100%;background:#1E8A5F;border-radius:4px}
+  .cg-bt{font-size:11px!important;padding:3px 9px!important}
+  .cg-dados .campo{font-size:13px}.cg-dados .cg-n,.cg-tab .cg-n{text-align:right;font-family:var(--serif)}.cg-dados tr.cg-q td{opacity:.55}
+  .cg-sim{display:grid;grid-template-columns:220px 260px 1fr;gap:10px 16px;align-items:end}
+  .cg-sim label{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--cinza);display:flex;flex-direction:column;gap:3px}
+  .cg-sim .campo{border:1px solid var(--linha)!important;background:#fff;border-radius:6px;padding:7px 9px;font-size:15px;font-family:var(--serif);text-transform:none;letter-spacing:0;color:var(--tinta)}
+  .cg-sim p{margin:0;font-size:12.5px;line-height:1.5}
+  .cg-ok{color:#1E8A5F;font-size:12px;font-weight:600}.cg-nao{color:#92400E;font-size:12px}
+  @media (max-width:800px){.cg-sim{grid-template-columns:1fr 1fr}.cg-sim p{grid-column:1/-1}}
   /* ---- fluxo anual ---- */
   .fx-tab{border-collapse:separate;border-spacing:0;min-width:1560px;width:100%}
   .fx-caixa{overflow:auto;max-height:calc(100vh - 150px);min-height:320px;border:1px solid var(--linha);border-radius:4px;
@@ -3112,7 +3127,21 @@
         const iT=L[hc].map(celTexto).findIndex(x=>/total parcelas/i.test(x));
         for(let i=hc+1;i<L.length;i++){ const k=celTexto(L[i][0]); if(!k) break; tot[k]=L[i][iT]; }
       }
-      const hs=L.findIndex(r=>r.some(c=>/parcela atual/i.test(celTexto(c))));
+      // tabela DADOS DOS CONTRATOS (valor financiado, taxa, 1ª parcela): base do cálculo Price no app
+      const hd=L.findIndex(r=>r.some(c=>/valor\s*financiado/i.test(celTexto(c))));
+      if(hd>=0){
+        const h=L[hd].map(celTexto), ix=re=>h.findIndex(x=>re.test(x)), isoDe=v=>{ if(v instanceof Date) return v.toISOString().slice(0,10);
+          if(typeof v==="number") return new Date(Math.round((v-25569)*864e5)).toISOString().slice(0,10); const m=String(v||"").match(/(\d{2})\/(\d{2})\/(\d{4})/); return m?m[3]+"-"+m[2]+"-"+m[1]:null; };
+        const iD=ix(/^data\s*contrato/i), iF=ix(/financiado/i), iN=ix(/total\s*parcelas/i), iP=ix(/^pmt/i), iT=ix(/nominal/i), iCm=ix(/cet\s*mensal/i), iCa=ix(/cet\s*ano/i), i1=ix(/1.\s*parcela/i);
+        const ant=(dados.dividas&&dados.dividas.consignados)||[];
+        for(let i=hd+1;i<L.length;i++){ const r=L[i], k=celTexto(r[0]); if(!k||!/^\d{5,}$/.test(k)) break;
+          const velho=ant.find(c=>String(c.contrato)===k)||{};
+          dv.consignados.push(Object.assign({},velho,{contrato:k, data:isoDe(r[iD]), valorFin:+r[iF]||null, total:+r[iN]||null, pmt:+r[iP]||0,
+            taxa:+r[iT]||null, cetM:+r[iCm]||null, cetA:+r[iCa]||null, primeira:isoDe(r[i1])}));
+        }
+        ant.filter(c=>c.quitado&&!dv.consignados.some(x=>String(x.contrato)===String(c.contrato))).forEach(c=>dv.consignados.push(c));
+      }
+      const hs=dv.consignados.length?-1:L.findIndex(r=>r.some(c=>/parcela atual/i.test(celTexto(c))));
       if(hs>=0){
         const h=L[hs].map(celTexto), ix=re=>h.findIndex(x=>re.test(x));
         const iP=ix(/^pmt/i), iA=ix(/parcela atual/i), iR=ix(/restantes/i), iS=ix(/saldo devedor/i),
@@ -4508,6 +4537,181 @@
     });
   }
 
+  /* ================= consignados (Tabela Price) ================= */
+  // Cada contrato: contrato, apelido, data, valorFin, total, pmt, taxa (nominal a.m., fração), cetM, cetA (% a.a.), primeira (ISO),
+  // antec (parcelas do fim já antecipadas), quitado {data,valor} | null.
+  // Saldo para quitar = valor presente das parcelas que faltam, à taxa do contrato (é o que o banco cobra na liquidação antecipada).
+  const cgAddMes=(iso,k)=>{ const [a,m,d]=iso.split("-").map(Number), t=new Date(a,m-1+k,1), ult=new Date(t.getFullYear(),t.getMonth()+1,0).getDate();
+    return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(Math.min(d,ult)).padStart(2,"0"); };
+  const cgVP=(pmt,i,n)=>n<=0?0:(i>0?pmt*(1-Math.pow(1+i,-n))/i:pmt*n);
+  function cgCalc(c,hj){
+    hj=hj||hojeISO();
+    const i=+c.taxa||0, P=+c.pmt||0, N=Math.max(0,(+c.total||0)-(+c.antec||0));
+    let pagas;
+    if(c.primeira){ pagas=0; while(pagas<N&&cgAddMes(c.primeira,pagas)<=hj) pagas++; }
+    else pagas=Math.max(0,(+c.atual||1)-1);
+    if(c.quitado) pagas=N;
+    const rest=Math.max(0,N-pagas), saldo=c.quitado?0:cent(cgVP(P,i,rest)), juros=cent(saldo*i), amort=cent(Math.min(P,saldo)-juros);
+    const fin=+c.valorFin||0;
+    return {i,P,N,pagas,rest,saldo,juros,amort:rest?amort:0,
+      jurosFut:cent(P*rest-saldo),
+      jurosPagos:fin?cent(Math.max(0,P*pagas-(fin-(c.quitado?0:saldo)))-(c.quitado?0:0)):null,
+      pct:fin?Math.max(0,Math.min(1,1-saldo/fin)):null,
+      prox:c.primeira&&rest?cgAddMes(c.primeira,pagas):null,
+      fim:c.primeira&&N?cgAddMes(c.primeira,N-1):(c.venc?c.venc+"-07":null),
+      totalPago:cent(P*pagas+(c.quitado?+c.quitado.valor||0:0))};
+  }
+  // desconto em folha de um mês (soma das parcelas dos contratos ativos naquele mês)
+  function cgMes(lista,ym){
+    return cent(lista.reduce((s,c)=>{ if(!c.primeira||!(+c.pmt)) return s;
+      const N=Math.max(0,(+c.total||0)-(+c.antec||0)), ini=c.primeira.slice(0,7), fim=cgAddMes(c.primeira,N-1).slice(0,7);
+      if(ym<ini||ym>fim) return s; if(c.quitado&&ym>c.quitado.data.slice(0,7)) return s;
+      return s+(+c.pmt); },0));
+  }
+  // antecipar as k últimas parcelas custa o valor presente delas (as do fim têm mais desconto)
+  function cgAntecipar(c,C,valor){
+    let k=0, custo=0;
+    while(k<C.rest){ const v=C.P/Math.pow(1+C.i,C.rest-k); if(custo+v>valor+0.005) break; custo+=v; k++; }
+    return {k,custo:cent(custo),economia:cent(k*C.P-custo)};
+  }
+  function cgSimular(lista,valor){
+    const at=lista.map(c=>({c,C:cgCalc(c)})).filter(x=>!x.c.quitado&&x.C.rest>0).sort((a,b)=>(b.C.i-a.C.i)||(b.C.saldo-a.C.saldo));
+    let sobra=valor; const linhas=[]; let liber=0, econ=0, usado=0;
+    at.forEach(x=>{
+      if(sobra>=x.C.saldo){ sobra=cent(sobra-x.C.saldo); usado+=x.C.saldo; liber+=x.C.P; econ+=x.C.jurosFut;
+        linhas.push({x,acao:"quitar",custo:x.C.saldo,econ:x.C.jurosFut,liber:x.C.P}); }
+      else if(sobra>0){ const a=cgAntecipar(x.c,x.C,sobra);
+        if(a.k){ sobra=cent(sobra-a.custo); usado+=a.custo; econ+=a.economia;
+          linhas.push({x,acao:"antecipar",k:a.k,custo:a.custo,econ:a.economia,liber:0}); }
+        else linhas.push({x,acao:"nada"}); }
+      else linhas.push({x,acao:"nada"});
+    });
+    return {linhas,sobra:cent(sobra),usado:cent(usado),liber:cent(liber),econ:cent(econ)};
+  }
+  function renderConsignados(dv){
+    const L=dv.consignados, hj=hojeISO(), pct=v=>v==null?"—":(v*100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+    const dt=iso=>iso?iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4):"—";
+    const ativos=L.map((c,i)=>({c,i,C:cgCalc(c,hj)})).filter(x=>!x.c.quitado), quit=L.map((c,i)=>({c,i,C:cgCalc(c,hj)})).filter(x=>x.c.quitado);
+    const S=k=>cent(ativos.reduce((s,x)=>s+(+x.C[k]||0),0));
+    const folha=cgMes(L,mesAtual())||S("P"), rende=dv.cgRende!=null?+dv.cgRende:0.009;
+    const taxaMedia=S("saldo")?ativos.reduce((s,x)=>s+x.C.i*x.C.saldo,0)/S("saldo"):0;
+    const anual=i=>Math.pow(1+i,12)-1;
+    const at=(i,k)=>'data-cg="'+k+'" data-i="'+i+'" data-foco="cg:'+i+':'+k+'"';
+    const num=(i,k,v,dec,ph)=>'<input class="campo cg-n" '+at(i,k)+' value="'+(v==null||v===""?"":(dec==="%"?(v*100).toLocaleString("pt-BR",{maximumFractionDigits:4}):dec===0?v:brl(+v)))+'" placeholder="'+(ph||"·")+'" inputmode="decimal">';
+    let h='<div class="tit-secao" id="dv-consignados" style="margin-top:40px"><h3>Consignados</h3></div>'+
+      '<section class="dash-geral">'+
+        '<div class="g-num"><span class="rot">Desconto em folha / mês</span><div class="v">R$ '+brl(folha)+'</div><span class="kpi-sub">'+ativos.length+' contrato'+(ativos.length===1?"":"s")+' ativo'+(ativos.length===1?"":"s")+' · taxa média '+pct(taxaMedia)+' a.m. ('+pct(anual(taxaMedia))+' a.a.)</span></div>'+
+        '<div class="g-num"><span class="rot">Juros × amortização do mês</span><div class="v">R$ '+brl(S("juros"))+'</div><span class="kpi-sub">vão para o banco · R$ '+brl(S("amort"))+' reduzem a dívida ('+(folha?Math.round(S("juros")/folha*100):0)+'% da parcela é juros)</span></div>'+
+        '<div class="g-num"><span class="rot">Para quitar tudo hoje</span><div class="v" style="color:#C0392B">R$ '+brl(S("saldo"))+'</div><span class="kpi-sub">se levar até o fim: R$ '+brl(cent(S("saldo")+S("jurosFut")))+' · <b>R$ '+brl(S("jurosFut"))+'</b> de juros futuros evitáveis</span></div>'+
+      '</section>';
+    // situação de cada contrato
+    h+='<div class="rolagem"><table class="pv-tab cg-tab"><thead><tr><th>Contrato</th><th class="n">Parcela</th><th class="n">Taxa a.m.</th><th class="n">Pagas</th><th class="n">Restam</th>'+
+      '<th class="n">Saldo p/ quitar</th><th class="n">Juros do mês</th><th class="n">Amortização</th><th class="n">Juros pagos</th><th class="n">Juros futuros</th><th>Quitado</th><th>Termina</th><th></th></tr></thead><tbody>'+
+      ativos.sort((a,b)=>b.C.i-a.C.i||b.C.saldo-a.C.saldo).map(({c,i,C})=>{
+        const ab=(ui.cgAbre||{})[i], caro=C.i>rende;
+        let r='<tr class="cg-l'+(ab?" on":"")+'" data-cgab="'+i+'" title="Clique para ver o cronograma"><td><span class="ir-seta">'+(ab?"▾":"▸")+'</span> <b>'+esc(c.apelido||c.contrato||"—")+'</b>'+(c.apelido&&c.contrato?'<small class="vg-dica">'+esc(c.contrato)+'</small>':'')+'</td>'+
+          '<td class="n vg-num">'+brl(C.P)+'</td><td class="n vg-num"><span class="cg-tx'+(caro?" caro":"")+'" title="'+(caro?"Taxa maior que o rendimento do investimento: quitar compensa":"Taxa menor que o rendimento: investir rende mais")+'">'+pct(C.i)+'</span></td>'+
+          '<td class="n">'+C.pagas+'/'+C.N+'</td><td class="n">'+C.rest+'</td>'+
+          '<td class="n vg-num"><b>'+brl(C.saldo)+'</b></td><td class="n vg-num">'+brl(C.juros)+'</td><td class="n vg-num">'+brl(C.amort)+'</td>'+
+          '<td class="n vg-num">'+(C.jurosPagos!=null?brl(C.jurosPagos):"—")+'</td><td class="n vg-num" style="color:#B42318">'+brl(C.jurosFut)+'</td>'+
+          '<td><div class="cg-bar"><i style="width:'+Math.round((C.pct||0)*100)+'%"></i></div><small class="vg-dica">'+pct(C.pct)+'</small></td>'+
+          '<td class="sub">'+(C.fim?C.fim.slice(5,7)+"/"+C.fim.slice(0,4):"—")+'</td>'+
+          '<td class="acao"><button class="bt vazado cg-bt" data-cgquit="'+i+'">quitar</button></td></tr>';
+        if(ab){
+          let s=C.saldo; const rows=[];
+          for(let k=0;k<Math.min(C.rest,12);k++){ const j=cent(s*C.i), a=cent(C.P-j); s=cent(Math.max(0,s-a));
+            rows.push('<tr class="ir-sub"><td>'+(C.pagas+k+1)+'ª parcela</td><td class="n sub">'+(c.primeira?dt(cgAddMes(c.primeira,C.pagas+k)):"")+'</td><td></td><td></td><td></td>'+
+              '<td class="n vg-num">'+brl(s)+'</td><td class="n vg-num">'+brl(j)+'</td><td class="n vg-num">'+brl(a)+'</td><td colspan="5" class="sub">'+
+              (k===0?'saldo após cada parcela':'')+'</td></tr>'); }
+          r+=rows.join("")+'<tr class="ir-sub"><td colspan="13" class="sub">Antecipar as últimas parcelas: '+
+            [1,6,12,24].filter(k=>k<=C.rest).map(k=>{ let cu=0; for(let j=C.rest-k+1;j<=C.rest;j++) cu+=C.P/Math.pow(1+C.i,j);
+              return '<b>'+k+'</b> por R$ '+brl(cu)+' (economia R$ '+brl(k*C.P-cu)+')'; }).join(" · ")+'</td></tr>';
+        }
+        return r; }).join("")+
+      '<tr class="orc-t"><td>Total</td><td class="n vg-num">'+brl(S("P"))+'</td><td class="n">'+pct(taxaMedia)+'</td><td></td><td></td><td class="n vg-num"><b>'+brl(S("saldo"))+'</b></td>'+
+        '<td class="n vg-num">'+brl(S("juros"))+'</td><td class="n vg-num">'+brl(S("amort"))+'</td><td class="n vg-num">'+brl(S("jurosPagos"))+'</td><td class="n vg-num">'+brl(S("jurosFut"))+'</td><td colspan="3"></td></tr>'+
+      '</tbody></table></div>';
+    // simulador
+    const V=+dv.cgSimV||0, sim=V?cgSimular(L,V):null;
+    h+='<div class="tit-secao" style="margin-top:30px"><h3>Simulador de quitação e amortização</h3></div>'+
+      '<div class="cg-sim"><label>Valor disponível (R$)<input class="campo" data-cgsim="v" data-foco="cgsim:v" value="'+(V?brl(V):"")+'" placeholder="ex.: 30.000,00" inputmode="decimal"></label>'+
+      '<label>Seu investimento rende líquido (% a.m.)<input class="campo" data-cgsim="r" data-foco="cgsim:r" value="'+(rende*100).toLocaleString("pt-BR",{maximumFractionDigits:3})+'" inputmode="decimal"></label>'+
+      '<p class="sub">Quita primeiro os contratos de <b>maior taxa</b>. O que sobrar antecipa as <b>últimas parcelas</b> do próximo (é a amortização que mais desconta juros e encurta o prazo; a parcela em folha não muda). '+
+      'Compensa quitar quando a taxa do contrato é maior que o rendimento líquido do dinheiro aplicado ('+pct(rende)+' a.m. = '+pct(anual(rende))+' a.a.).</p></div>'+
+      (sim?'<section class="dash-geral" style="margin-top:12px">'+
+        '<div class="g-num"><span class="rot">Usar</span><div class="v">R$ '+brl(sim.usado)+'</div><span class="kpi-sub">sobra R$ '+brl(sim.sobra)+'</span></div>'+
+        '<div class="g-num"><span class="rot">Libera na folha</span><div class="v">R$ '+brl(sim.liber)+'/mês</div><span class="kpi-sub">desconto passa de R$ '+brl(folha)+' para R$ '+brl(cent(folha-sim.liber))+'</span></div>'+
+        '<div class="g-num"><span class="rot">Juros economizados</span><div class="v" style="color:#1E8A5F">R$ '+brl(sim.econ)+'</div><span class="kpi-sub">'+(sim.usado?'retorno de '+Math.round(sim.econ/sim.usado*100)+'% sobre o valor usado':'')+'</span></div>'+
+        '</section><div class="rolagem"><table class="pv-tab cg-tab" style="margin-top:8px"><thead><tr><th>Ordem</th><th>Contrato</th><th class="n">Taxa a.m.</th><th>O que fazer</th><th class="n">Custo</th><th class="n">Libera/mês</th><th class="n">Juros economizados</th><th class="n">Payback</th><th>Vale a pena?</th></tr></thead><tbody>'+
+        sim.linhas.map((l,k)=>'<tr><td>'+(k+1)+'º</td><td>'+esc(l.x.c.apelido||l.x.c.contrato)+'</td><td class="n">'+pct(l.x.C.i)+'</td>'+
+          '<td>'+(l.acao==="quitar"?'<b>Quitar</b> ('+l.x.C.rest+' parcelas)':l.acao==="antecipar"?'Antecipar as <b>'+l.k+'</b> últimas parcelas · termina '+l.k+' meses antes':'<span class="sub">—</span>')+'</td>'+
+          '<td class="n vg-num">'+(l.custo?brl(l.custo):"—")+'</td><td class="n vg-num">'+(l.liber?brl(l.liber):"—")+'</td><td class="n vg-num" style="color:#1E8A5F">'+(l.econ?brl(l.econ):"—")+'</td>'+
+          '<td class="n">'+(l.acao==="quitar"?Math.ceil(l.custo/l.x.C.P)+' meses':"—")+'</td>'+
+          '<td>'+(l.acao==="nada"?"":(l.x.C.i>rende?'<span class="cg-ok">sim, taxa &gt; rendimento</span>':'<span class="cg-nao">investir rende mais</span>'))+'</td></tr>').join("")+
+        '</tbody></table></div>':'');
+    // dados dos contratos (editáveis)
+    h+='<div class="tit-secao" style="margin-top:30px"><h3>Dados dos contratos</h3><span class="sub" style="margin-left:10px">editáveis · base do cálculo (Tabela Price, taxa nominal)</span></div>'+
+      '<div class="rolagem"><table class="pv-tab cg-dados"><colgroup><col style="width:120px"><col style="width:110px"><col style="width:140px"><col><col style="width:80px"><col><col><col><col style="width:80px"><col style="width:140px"><col style="width:90px"><col class="c-acao"></colgroup><thead><tr><th>Contrato</th><th>Apelido</th><th>Data</th><th class="n">Valor financiado</th><th class="n">Nº parcelas</th><th class="n">Parcela (PMT)</th>'+
+      '<th class="n">Taxa nominal % a.m.</th><th class="n">CET % a.m.</th><th class="n">CET % a.a.</th><th>1ª parcela</th><th class="n">Antecipadas</th><th></th></tr></thead><tbody>'+
+      ativos.concat(quit).sort((a,b)=>(a.c.quitado?1:0)-(b.c.quitado?1:0)).map(({c,i})=>'<tr'+(c.quitado?' class="cg-q"':'')+'><td><input class="campo" '+at(i,"contrato")+' value="'+esc(c.contrato||"")+'"></td>'+
+        '<td><input class="campo" '+at(i,"apelido")+' value="'+esc(c.apelido||"")+'" placeholder="ex.: Emp. II"></td>'+
+        '<td><input type="date" class="campo" '+at(i,"data")+' value="'+esc(c.data||"")+'"></td>'+
+        '<td class="valor">'+num(i,"valorFin",c.valorFin)+'</td><td class="valor">'+num(i,"total",c.total,0)+'</td><td class="valor">'+num(i,"pmt",c.pmt)+'</td>'+
+        '<td class="valor">'+num(i,"taxa",c.taxa,"%")+'</td><td class="valor">'+num(i,"cetM",c.cetM,"%")+'</td><td class="valor">'+num(i,"cetA",c.cetA,0)+'</td>'+
+        '<td><input type="date" class="campo" '+at(i,"primeira")+' value="'+esc(c.primeira||"")+'"></td><td class="valor">'+num(i,"antec",c.antec||"",0,"0")+'</td>'+
+        '<td class="acao"><button class="apagar" data-dvdel="g:'+i+'" aria-label="Apagar">×</button></td></tr>').join("")+
+      '</tbody></table></div><button class="ver-mais" data-dvadd="g">+ Consignado</button>';
+    // quitados
+    if(quit.length){
+      const eco=quit.reduce((s,x)=>{ const c=x.c, n0=Math.max(0,(+c.total||0)-(+c.quitado.apos||0)); return s+(c.quitado.apos!=null?n0*(+c.pmt||0)-(+c.quitado.valor||0):0); },0);
+      h+='<div class="tit-secao" style="margin-top:30px"><h3>Contratos quitados</h3>'+(eco>0?'<span class="sub" style="margin-left:10px">R$ '+brl(cent(eco))+' de juros evitados com as quitações</span>':'')+'</div>'+
+        '<div class="rolagem"><table class="pv-tab cg-tab"><thead><tr><th>Contrato</th><th class="n">Parcela</th><th class="n">Taxa a.m.</th><th>Quitado em</th><th class="n">Após a parcela</th><th class="n">Valor pago na quitação</th><th class="n">Restavam (soma)</th><th class="n">Juros evitados</th><th></th></tr></thead><tbody>'+
+        quit.map(({c,i})=>{ const q=c.quitado, n0=q.apos!=null?Math.max(0,(+c.total||0)-q.apos):null, soma=n0!=null?cent(n0*(+c.pmt||0)):null;
+          return '<tr><td><b>'+esc(c.apelido||c.contrato)+'</b>'+(c.apelido?'<small class="vg-dica">'+esc(c.contrato||"")+'</small>':'')+'</td><td class="n vg-num">'+brl(+c.pmt||0)+'</td><td class="n">'+(c.taxa?pct(+c.taxa):"—")+'</td>'+
+            '<td><input type="date" class="campo" data-cgq="data" data-i="'+i+'" value="'+esc(q.data||"")+'"></td>'+
+            '<td class="valor"><input class="campo cg-n" data-cgq="apos" data-i="'+i+'" value="'+(q.apos!=null?q.apos+"/"+(c.total||"?"):"")+'"></td>'+
+            '<td class="valor"><input class="campo cg-n" data-cgq="valor" data-i="'+i+'" value="'+(q.valor?brl(+q.valor):"")+'"></td>'+
+            '<td class="n vg-num">'+(soma!=null?brl(soma):"—")+'</td><td class="n vg-num" style="color:#1E8A5F">'+(soma!=null&&q.valor?brl(cent(soma-q.valor)):"—")+'</td>'+
+            '<td class="acao"><button class="ver-mais" data-cgreabre="'+i+'" title="Desfazer quitação">desfazer</button></td></tr>'; }).join("")+
+        '</tbody></table></div>';
+    }
+    h+='<p class="sub" style="margin-top:10px">Cálculo pela Tabela Price com a taxa nominal mensal: saldo para quitar = valor presente das parcelas que faltam; juros do mês = saldo × taxa; amortização = parcela − juros. '+
+      'Pode diferir até ~1% do app do banco (juros diários e feriados). A parcela é descontada em folha; quitações e antecipações aparecem no extrato do Itaú.</p>';
+    return h;
+  }
+  function cgEventos(dv,e){
+    const t=e.target;
+    if(e.type==="change"){
+      if(t.dataset.cg){ const c=dv.consignados[+t.dataset.i], k=t.dataset.cg; if(!c) return true;
+        const v=String(t.value||"").trim();
+        if(["contrato","apelido","data","primeira"].includes(k)) c[k]=v||null;
+        else if(["taxa","cetM"].includes(k)) c[k]=v?cent(numero(v)*100)/10000:null;
+        else if(["total","antec","cetA"].includes(k)) c[k]=v?+String(v).replace(",","."):null;
+        else c[k]=v?Math.abs(numero(v)):null;
+        salvar(); manterFoco(renderDividas); return true; }
+      if(t.dataset.cgsim){ const v=String(t.value||"").trim();
+        if(t.dataset.cgsim==="v") dv.cgSimV=v?Math.abs(numero(v)):0; else dv.cgRende=v?numero(v)/100:0.009;
+        salvar(); manterFoco(renderDividas); return true; }
+      if(t.dataset.cgq){ const c=dv.consignados[+t.dataset.i]; if(!c||!c.quitado) return true; const k=t.dataset.cgq, v=String(t.value||"").trim();
+        if(k==="data") c.quitado.data=v; else if(k==="apos") c.quitado.apos=v?parseInt(v,10):null; else c.quitado.valor=v?Math.abs(numero(v)):0;
+        salvar(); renderDividas(); return true; }
+      return false;
+    }
+    const ab=t.closest("[data-cgab]");
+    if(ab&&!t.closest("[data-cgquit]")){ ui.cgAbre=ui.cgAbre||{}; const k=ab.dataset.cgab; if(ui.cgAbre[k]) delete ui.cgAbre[k]; else ui.cgAbre[k]=true; renderDividas(); return true; }
+    const q=t.closest("[data-cgquit]");
+    if(q){ const c=dv.consignados[+q.dataset.cgquit], C=cgCalc(c);
+      modal('<h3 class="modal-tit">Quitar '+esc(c.apelido||c.contrato)+'</h3><p class="modal-corpo">Saldo calculado hoje: <b>R$ '+brl(C.saldo)+'</b> ('+C.rest+' parcelas restantes). '+
+        'Use o valor do boleto de quitação do banco.</p><form onsubmit="return false"><div class="modal-duo"><label>Data<input type="date" name="data" value="'+hojeISO()+'" required></label>'+
+        '<label>Valor pago (R$)<input name="valor" value="'+brl(C.saldo)+'" inputmode="decimal" required></label></div>'+
+        '<div class="modal-acoes"><button type="button" class="bt vazado" data-modal="cancelar">Cancelar</button><button type="button" class="bt" data-modal="ok">Registrar quitação</button></div></form>').then(f=>{
+          if(!f) return; c.quitado={data:f.data,valor:Math.abs(numero(f.valor)),apos:C.pagas}; salvar(); renderDividas(); avisar("Quitação registrada. A parcela sai do desconto em folha a partir do mês seguinte."); });
+      return true; }
+    const re=t.closest("[data-cgreabre]");
+    if(re){ const c=dv.consignados[+re.dataset.cgreabre]; confirmar("Desfazer quitação?","O contrato volta a contar como ativo.","Desfazer").then(ok=>{ if(ok){ delete c.quitado; salvar(); renderDividas(); } }); return true; }
+    return false;
+  }
+
   function renderDividas(){
     const corpo=$("#corpo");
     $("#abas").innerHTML='<div class="periodo"><span class="sub" style="margin:0">Mês a mês e editável — clique num valor para mudar; fica salvo.</span></div>'+
@@ -4529,14 +4733,15 @@
     const ms12=[]; for(let m=hoje; ms12.length<12; m=proxMes(m)) ms12.push(m);
 
     // linhas do consolidado: Cartão e Consórcio somam as tabelas abaixo; as outras são digitadas
-    const auto=l=>/cart/i.test(l.nome)&&dv.parcelas.length?"cartao":/cons[óo]rcio/i.test(l.nome)&&dv.consorcio.length?"consorcio":null;
+    const temCg=dv.consignados.some(c=>c.primeira&&+c.pmt);
+    const auto=l=>/cart/i.test(l.nome)&&dv.parcelas.length?"cartao":/cons[óo]rcio/i.test(l.nome)&&dv.consorcio.length?"consorcio":/consig/i.test(l.nome)&&temCg?"consig":null;
     const noTotal=dv.parcelas.filter(p=>!p.foraTotal);
-    const valLinha=(l,m)=>{ const a=auto(l); return a==="cartao"?somaMes(noTotal,m):a==="consorcio"?somaMes(dv.consorcio,m):(+l.vals[m]||0); };
+    const valLinha=(l,m)=>{ const a=auto(l); return a==="cartao"?somaMes(noTotal,m):a==="consorcio"?somaMes(dv.consorcio,m):a==="consig"?cgMes(dv.consignados,m):(+l.vals[m]||0); };
     const totM=m=>dv.consolida.linhas.reduce((s,l)=>s+valLinha(l,m),0);
 
     const qCartao=noTotal.reduce((s,p)=>s+falta(p.vals),0);
     const qConsorcio=dv.consorcio.reduce((s,c)=>s+(+c.quitacao||0),0);
-    const qConsig=dv.consignados.reduce((s,c)=>s+(+c.saldo||0),0);
+    const qConsig=cent(dv.consignados.filter(c=>!c.quitado).reduce((s,c)=>s+cgCalc(c).saldo,0));
     const outras=dv.quitacao.map((q,i)=>({q:q,i:i})).filter(x=>!/cart|cons[óo]rcio|consig/i.test(x.q.nome));
     const qOutras=outras.reduce((s,x)=>s+(+x.q.v||0),0);
 
@@ -4580,7 +4785,7 @@
       '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Compromisso</th>'+ms12.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'</tr></thead><tbody>'+
       dv.consolida.linhas.map((l,i)=>{ const a=auto(l);
         return '<tr><td>'+esc(cap(l.nome.trim().toLowerCase()))+
-          (a?' <span class="sub" style="display:inline">(soma '+(a==="cartao"?"dos parcelamentos":"do consórcio")+')</span>':'')+'</td>'+
+          (a?' <span class="sub" style="display:inline">(soma '+(a==="cartao"?"dos parcelamentos":a==="consig"?"dos contratos":"do consórcio")+')</span>':'')+'</td>'+
           ms12.map(m=>a?'<td class="fx-calc">'+brl(valLinha(l,m))+'</td>':inp('data-dv="l" data-i="'+i+'" data-m="'+m+'"',"l:"+i+":"+m,l.vals[m])).join("")+'</tr>';
       }).join("")+
       '<tr class="fx-t"><td>Total</td>'+ms12.map(m=>'<td>'+brl(totM(m))+'</td>').join("")+'</tr></tbody></table></div>';
@@ -4633,23 +4838,7 @@
       '</tbody></table></div><button class="ver-mais" data-dvadd="c">+ Consórcio</button>';
 
     // 4) consignados
-    const tg=k=>dv.consignados.reduce((s,c)=>s+(+c[k]||0),0);
-    h+='<div class="tit-secao" id="dv-consignados" style="margin-top:40px"><h3>Consignados</h3></div>'+
-      '<div class="rolagem"><table class="fx-tab dv-tab" style="min-width:820px"><thead><tr><th>Contrato</th><th>Parcela</th><th>Parcela atual</th>'+
-      '<th>Total de parcelas</th><th>Restam</th><th>Saldo devedor</th><th>Termina</th></tr></thead><tbody>'+
-      dv.consignados.map((c,i)=>{ const at=k=>'data-dv="g" data-i="'+i+'" data-k="'+k+'"';
-        const restam=c.total?Math.max(0,c.total-c.atual+1):(c.restantes||0);
-        return '<tr><td><div class="fx-rot">'+txt(at("contrato"),"g:"+i+":contrato",c.contrato,"Contrato")+
-            '<button class="apagar" data-dvdel="g:'+i+'" aria-label="Apagar">×</button></div></td>'+
-          inp(at("pmt"),"g:"+i+":pmt",c.pmt)+
-          '<td class="valor dv-num">'+txt(at("atual"),"g:"+i+":atual",c.atual||"","")+'</td>'+
-          '<td class="valor dv-num">'+txt(at("total"),"g:"+i+":total",c.total||"","")+'</td>'+
-          '<td class="fx-calc">'+restam+'</td>'+
-          inp(at("saldo"),"g:"+i+":saldo",c.saldo)+
-          '<td class="valor"><input type="month" class="campo" '+at("venc")+' data-foco="g:'+i+':venc" value="'+esc(c.venc||"")+'"></td></tr>';
-      }).join("")+
-      '<tr class="fx-t"><td>Total</td><td>'+brl(tg("pmt"))+'</td><td></td><td></td><td></td><td>'+brl(tg("saldo"))+'</td><td></td></tr>'+
-      '</tbody></table></div><button class="ver-mais" data-dvadd="g">+ Consignado</button>';
+    h+=renderConsignados(dv);
 
     // 5) outros valores para quitar (ex.: financiamento da casa)
     h+='<div class="tit-secao" id="dv-outros" style="margin-top:40px"><h3>Outros valores para quitar</h3></div>'+
@@ -4662,6 +4851,7 @@
     corpo.innerHTML=h+'<div class="rodape"><span>Importar a planilha de novo substitui estes valores pelos dela.</span><span>Família Bicalho</span></div>';
 
     corpo.onchange=e=>{
+      if(cgEventos(dv,e)) return;
       const el=e.target.closest("[data-dv]"); if(!el) return;
       const t=el.dataset.dv, i=+el.dataset.i, k=el.dataset.k, m=el.dataset.m, tx=String(el.value||"").trim();
       const n=tx===""?null:numero(tx.replace("−","-"));
@@ -4678,6 +4868,7 @@
       salvar(); manterFoco(renderDividas);
     };
     corpo.onclick=e=>{
+      if(cgEventos(dv,e)) return;
       if(e.target.closest("[data-dvnova]")){ novaParcelada(); return; }
       const d=e.target.closest("[data-dvdel]");
       if(d){
@@ -4690,7 +4881,7 @@
       if(a){
         const t=a.dataset.dvadd;
         if(t==="c") dv.consorcio.push({nome:"", situacao:"", parcelas:null, quitacao:null, vals:{}});
-        if(t==="g") dv.consignados.push({contrato:"", pmt:0, atual:1, total:null, restantes:0, saldo:0, quitar:0, venc:null, pct:0});
+        if(t==="g") dv.consignados.push({contrato:"", apelido:"", data:null, valorFin:null, total:120, pmt:0, taxa:null, cetM:null, cetA:null, primeira:null, antec:0});
         if(t==="q") dv.quitacao.push({nome:"", v:0});
         salvar(); renderDividas();
       }
