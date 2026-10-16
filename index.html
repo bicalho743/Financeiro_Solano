@@ -664,6 +664,18 @@
   .vg-cl select{font-size:12px;padding:3px}
   .modal-caixa:has(.vg-cand){max-width:760px;width:94vw}
   @media (max-width:700px){.vg-ficha{grid-template-columns:1fr 1fr}.vg-cl{grid-template-columns:22px 40px 1fr 70px}.vg-cl select{grid-column:2/-1}}
+  /* ---- imposto de renda ---- */
+  .ir-pes td,.ir-itens td,.ir-ficha td{padding:4px 6px}.ir-pes td.n,.ir-itens td.n,.ir-ficha td.n{text-align:right}
+  .ir-itens{min-width:1180px}.ir-ficha{min-width:860px}.ir-pes{min-width:760px}
+  .ir-itens tr.orc-t td{font-weight:600;border-top:1px solid var(--verde);padding-top:8px}
+  .ir-pes tr.ir-fora td{color:var(--cinza)}.ir-pes tr.ir-fora .vg-num{text-decoration:line-through}
+  .ir-lim{font-size:10px;font-family:var(--sans);color:#92400E;background:#FEF3C7;border-radius:999px;padding:1px 6px}
+  .ir-falta{background:#FFF7ED!important}.ir-falta-t{color:#B42318;font-size:12px}
+  .ir-alerta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:12px;font-size:13px;color:#92400E}
+  .ir-nota{max-width:110ch;margin:4px 0 8px;font-size:12.5px;line-height:1.5}
+  .ir-cl{grid-template-columns:22px 46px 1fr 86px 110px 190px!important}
+  .modal-caixa:has(.ir-cl){max-width:900px}
+  @media (max-width:700px){.ir-cl{grid-template-columns:22px 40px 1fr 70px!important}.ir-cl select{grid-column:2/-1}}
   /* ---- fluxo anual ---- */
   .fx-tab{border-collapse:separate;border-spacing:0;min-width:1560px;width:100%}
   .fx-caixa{overflow:auto;max-height:calc(100vh - 150px);min-height:320px;border:1px solid var(--linha);border-radius:4px;
@@ -818,6 +830,7 @@
   .conta-tab[data-conta=dividas].ativa{background:var(--neg)}
   .conta-tab[data-conta=metas].ativa{background:var(--roxo)}
   .conta-tab[data-conta=invest].ativa{background:#B45309}
+  .conta-tab[data-conta=ir].ativa{background:#1F6FB2}
   .conta-tab.banco[data-conta=itau].ativa{background:#EC7000}
   .conta-tab.banco[data-conta=bb].ativa{background:#0038A8}
   .conta-tab.banco[data-conta=cartao].ativa{background:#5B4FCF}
@@ -944,6 +957,7 @@
     <button class="conta-tab" data-conta="dividas">Dívidas e parcelas</button>
     <button class="conta-tab" data-conta="metas">Metas e caixinhas</button>
     <button class="conta-tab" data-conta="viagens">Viagens</button>
+    <button class="conta-tab" data-conta="ir" title="Despesas de escola e saúde para a declaração do IR">Imposto de renda</button>
     <button class="conta-tab" data-conta="invest">Investimentos</button>
     <span class="conta-sep">Conferir:</span>
     <button class="conta-tab banco" data-conta="itau">Itaú</button>
@@ -987,7 +1001,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 19;
+  const BUILD = 20;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -1170,7 +1184,7 @@
 
   /* ================= estado ================= */
   let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:18,
-               orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],viagens:[],conferencia:{}};
+               orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],viagens:[],ir:null,conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
   /* O que NÃO é gasto nem receita:
@@ -2140,6 +2154,7 @@
     dados.dividas     = d.dividas||null;
     dados.metas       = d.metas||[];
     dados.viagens     = d.viagens||[];
+    dados.ir          = d.ir||null;
     dados.conferencia = d.conferencia||{};
     dados.saldosDia   = d.saldosDia||{};
     dados.chequeUsados= d.chequeUsados||{};
@@ -6172,6 +6187,201 @@
     };
   }
 
+  /* ================= imposto de renda (educação e saúde) ================= */
+  // dados.ir = {pessoas:[{id,nome,dep}], itens:[{id,ano,tipo:"edu"|"sau",cod,pessoa,prest,doc,data,valor,reemb,comp,lanc,obs}]}
+  // Educação: limite anual por pessoa (titular ou dependente). Saúde: sem limite, abate o reembolso.
+  const IR_LIM_EDU = 3561.50, IR_ALIQ = 0.275;
+  const IR_COD = {
+    edu:{"01":"01 – Instrução no Brasil","02":"02 – Instrução no exterior"},
+    sau:{"10":"10 – Médicos","11":"11 – Dentistas","12":"12 – Psicólogos","13":"13 – Fisioterapeutas","14":"14 – Terapeutas ocupacionais",
+         "09":"09 – Fonoaudiólogos","21":"21 – Hospitais, clínicas e laboratórios","26":"26 – Planos de saúde"}
+  };
+  const IR_CATS_EDU = ["Escola / educação"], IR_CATS_SAU = ["Unimed","Saúde fora do plano"];
+  function irDados(){
+    dados.ir=dados.ir||{};
+    if(!dados.ir.pessoas||!dados.ir.pessoas.length) dados.ir.pessoas=[
+      {id:"p-sol",nome:"Solano",dep:"titular"},{id:"p-tam",nome:"Tâmara",dep:"nao"},
+      {id:"p-jul",nome:"Júlia",dep:"sim"},{id:"p-cec",nome:"Cecília",dep:"sim"}];
+    dados.ir.itens=dados.ir.itens||[];
+    return dados.ir;
+  }
+  const irConta = p => p&&(p.dep==="titular"||p.dep==="sim");
+  const irCodSaude = h => { h=String(h||"").toUpperCase();
+    if(/UNIMED|AMIL|BRADESCO SAUDE|SULAMERICA|HAPVIDA|PLANO/.test(h)) return "26";
+    if(/ODONTO|DENT/.test(h)) return "11"; if(/PSIC/.test(h)) return "12"; if(/FISIO|PILATES/.test(h)) return "13";
+    if(/FONO/.test(h)) return "09"; if(/LAB|HOSP|CLINIC|HERMES|IMAGEM|DIAGNOS/.test(h)) return "21"; return "10"; };
+  function irCalc(ano){
+    const I=irDados(), its=I.itens.filter(x=>x.ano===ano), por={};
+    I.pessoas.forEach(p=>{ por[p.id]={p,edu:0,sau:0,reemb:0}; });
+    its.forEach(x=>{ const r=por[x.pessoa]; if(!r) return;
+      if(x.tipo==="edu") r.edu=cent(r.edu+(+x.valor||0)); else { r.sau=cent(r.sau+(+x.valor||0)); r.reemb=cent(r.reemb+(+x.reemb||0)); } });
+    let eduPago=0, eduDed=0, sauDed=0, fora=0;
+    Object.values(por).forEach(r=>{ r.eduDed=Math.min(r.edu,IR_LIM_EDU); r.sauDed=Math.max(0,cent(r.sau-r.reemb));
+      if(irConta(r.p)){ eduPago+=r.edu; eduDed+=r.eduDed; sauDed+=r.sauDed; } else fora+=r.edu+r.sauDed; });
+    return {its,por,eduPago:cent(eduPago),eduDed:cent(eduDed),sauDed:cent(sauDed),fora:cent(fora),tot:cent(eduDed+sauDed)};
+  }
+  // linhas da ficha "Pagamentos efetuados": uma por código + beneficiário + prestador
+  function irFicha(ano){
+    const I=irDados(), g={};
+    I.itens.filter(x=>x.ano===ano).forEach(x=>{
+      const p=I.pessoas.find(q=>q.id===x.pessoa); if(!irConta(p)) return;
+      const k=[x.cod,x.pessoa,(x.doc||"").replace(/\D/g,"")||x.prest].join("|");
+      g[k]=g[k]||{cod:x.cod,pessoa:p,prest:x.prest||"",doc:x.doc||"",valor:0,reemb:0,n:0,semDoc:false};
+      g[k].valor=cent(g[k].valor+(+x.valor||0)); g[k].reemb=cent(g[k].reemb+(+x.reemb||0)); g[k].n++;
+      if(!x.comp) g[k].semDoc=true; if(!g[k].doc&&x.doc) g[k].doc=x.doc; if(!g[k].prest&&x.prest) g[k].prest=x.prest;
+    });
+    return Object.values(g).sort((a,b)=>(a.cod+a.pessoa.nome).localeCompare(b.cod+b.pessoa.nome));
+  }
+  function irBuscar(ano){
+    const I=irDados(), ja=new Set(I.itens.filter(x=>x.lanc).map(x=>x.lanc));
+    const cand=dados.lancamentos.map((l,i)=>({l,i})).filter(({l})=>!l.ignorado&&l.valor<0&&(l.data||"").slice(0,4)===ano&&
+      (IR_CATS_EDU.includes(l.categoria)||IR_CATS_SAU.includes(l.categoria))&&!ja.has(l.id)).sort((a,b)=>a.l.data.localeCompare(b.l.data));
+    if(!cand.length){ avisar("Nenhum lançamento novo de escola ou saúde em "+ano+"."); return; }
+    const pes=I.pessoas, tit=(pes.find(p=>p.dep==="titular")||pes[0]||{}).id;
+    const opsP=pes.map(p=>'<option value="'+esc(p.id)+'"'+(p.id===tit?" selected":"")+'>'+esc(p.nome)+'</option>').join("");
+    const opsC=(t,c)=>Object.keys(IR_COD[t]).map(k=>'<option value="'+k+'"'+(k===c?" selected":"")+'>'+esc(IR_COD[t][k])+'</option>').join("");
+    modal('<h3 class="modal-tit">Escola e saúde de '+ano+'</h3>'+
+      '<p class="modal-corpo">Lançamentos das categorias '+IR_CATS_EDU.concat(IR_CATS_SAU).map(esc).join(", ")+'. Marque os dedutíveis e diga de quem é a despesa. '+
+      'Material escolar, passeios, idiomas, esportes e farmácia <b>não</b> deduzem.</p>'+
+      '<form onsubmit="return false"><div class="vg-cand">'+cand.map(({l,i})=>{ const t=IR_CATS_EDU.includes(l.categoria)?"edu":"sau";
+        return '<label class="vg-cl ir-cl"><input type="checkbox" name="c'+i+'" checked>'+
+        '<span class="sub">'+diaMes(l.data)+'</span><span class="vg-h">'+esc(l.hist)+'<small>'+esc(l.categoria)+'</small></span>'+
+        '<b>'+brl(l.valor)+'</b><select name="p'+i+'">'+opsP+'</select><select name="k'+i+'">'+opsC(t,t==="edu"?"01":irCodSaude(l.hist))+'</select></label>'; }).join("")+'</div>'+
+      '<div class="modal-acoes"><button type="button" class="bt vazado" data-modal="cancelar">Cancelar</button>'+
+      '<button type="button" class="bt" data-modal="ok">Trazer marcados</button></div></form>').then(f=>{
+        if(!f) return; let n=0, s=0;
+        cand.forEach(({l,i})=>{ if(!f["c"+i]) return; const t=IR_CATS_EDU.includes(l.categoria)?"edu":"sau";
+          const prev=I.itens.find(x=>x.prest&&x.doc&&x.prest===l.hist); // reaproveita CNPJ já informado para o mesmo prestador
+          I.itens.push({id:"ir"+Date.now()+"-"+i,ano,tipo:t,cod:f["k"+i],pessoa:f["p"+i],prest:l.hist,doc:prev?prev.doc:"",data:l.data,
+            valor:cent(-l.valor),reemb:0,comp:false,lanc:l.id,obs:""}); n++; s-=l.valor; });
+        if(!n) return; salvar(); renderIR(); avisar(n+" despesa"+(n===1?"":"s")+" trazida"+(n===1?"":"s")+" (R$ "+brl(s)+"). Preencha o CNPJ/CPF de quem recebeu.");
+      });
+  }
+  async function irCopiar(ano){
+    const L=irFicha(ano);
+    if(!L.length){ avisar("Nada para copiar em "+ano+".",true); return; }
+    const tsv=["Código\tBeneficiário\tCNPJ/CPF\tNome do prestador\tValor pago\tParcela não dedutível/reembolso"].concat(
+      L.map(r=>[r.cod,r.pessoa.nome+(r.pessoa.dep==="titular"?" (titular)":" (dependente)"),r.doc,r.prest,brl(r.valor),brl(r.reemb)].join("\t"))).join("\n");
+    try{ await navigator.clipboard.writeText(tsv); avisar(L.length+" linhas copiadas (ficha Pagamentos efetuados)."); }
+    catch(e){ avisar("Não consegui copiar.",true); }
+  }
+  function renderIR(){
+    const corpo=$("#corpo"), I=irDados();
+    const anoAt=hojeISO().slice(0,4);
+    const anos=[...new Set([anoAt].concat(I.itens.map(x=>x.ano),
+      dados.lancamentos.filter(l=>IR_CATS_EDU.includes(l.categoria)||IR_CATS_SAU.includes(l.categoria)).map(l=>(l.data||"").slice(0,4))))].filter(Boolean).sort().reverse();
+    if(!ui.irAno||!anos.includes(ui.irAno)) ui.irAno=anoAt;
+    const ano=ui.irAno, C=irCalc(ano);
+    $("#abas").innerHTML='<div class="periodo"><select id="selIrAno" aria-label="Ano-base">'+anos.map(a=>'<option value="'+a+'"'+(a===ano?" selected":"")+'>Ano-base '+a+' · declaração '+(+a+1)+'</option>').join("")+'</select></div>'+
+      '<button class="bt vazado" data-irbuscar="1" style="font-size:12px;padding:6px 12px">Buscar nos lançamentos</button>'+
+      '<button class="bt" data-ircopiar="1" style="font-size:12px;padding:6px 12px">Copiar para a declaração</button>';
+    $("#selIrAno").onchange=e=>{ ui.irAno=e.target.value; renderIR(); };
+    $("#abas").onclick=e=>{ if(e.target.closest("[data-irbuscar]")) irBuscar(ano); if(e.target.closest("[data-ircopiar]")) irCopiar(ano); };
+
+    const semDoc=C.its.filter(x=>!x.comp).length, semCnpj=C.its.filter(x=>!(x.doc||"").replace(/\D/g,"")).length;
+    const cards='<section class="dash-geral">'+
+      '<div class="g-num"><span class="rot">Educação dedutível</span><div class="v">R$ '+brl(C.eduDed)+'</div><span class="kpi-sub">pago R$ '+brl(C.eduPago)+' · limite R$ '+brl(IR_LIM_EDU)+' por pessoa</span></div>'+
+      '<div class="g-num"><span class="rot">Saúde dedutível</span><div class="v">R$ '+brl(C.sauDed)+'</div><span class="kpi-sub">sem limite · já sem reembolsos</span></div>'+
+      '<div class="g-num"><span class="rot">Reduz o imposto em até</span><div class="v">R$ '+brl(C.tot*IR_ALIQ)+'</div><span class="kpi-sub">R$ '+brl(C.tot)+' × 27,5% · só na declaração completa</span></div>'+
+      '</section>'+
+      ((semDoc||semCnpj||C.fora)?'<div class="ir-alerta">'+
+        (semCnpj?'<span>⚠ '+semCnpj+' despesa'+(semCnpj===1?"":"s")+' sem CNPJ/CPF do prestador</span>':'')+
+        (semDoc?'<span>⚠ '+semDoc+' sem comprovante conferido</span>':'')+
+        (C.fora?'<span>R$ '+brl(C.fora)+' de quem não é titular nem dependente (não entra nesta declaração)</span>':'')+'</div>':'');
+
+    // por pessoa
+    const pa=(i,k)=>' data-irp="'+i+'" data-k="'+k+'" data-foco="irp:'+i+':'+k+'"';
+    const pessoas='<div class="rolagem"><table class="pv-tab ir-pes"><colgroup><col><col style="width:150px"><col class="c-val"><col class="c-val"><col class="c-val"><col class="c-val"><col class="c-acao"></colgroup>'+
+      '<thead><tr><th>Pessoa</th><th>Na declaração</th><th class="n">Educação paga</th><th class="n">Educação dedutível</th><th class="n">Saúde (líquida)</th><th class="n">Total dedutível</th><th></th></tr></thead><tbody>'+
+      I.pessoas.map((p,i)=>{ const r=C.por[p.id], ok=irConta(p), ex=r.edu>IR_LIM_EDU;
+        return '<tr'+(ok?'':' class="ir-fora"')+'><td><input class="campo"'+pa(i,"nome")+' value="'+esc(p.nome)+'"></td>'+
+          '<td><select class="campo"'+pa(i,"dep")+'>'+[["titular","Titular"],["sim","Dependente"],["nao","Não entra"]].map(o=>'<option value="'+o[0]+'"'+(o[0]===p.dep?" selected":"")+'>'+o[1]+'</option>').join("")+'</select></td>'+
+          '<td class="n vg-num">'+(r.edu?brl(r.edu):"—")+'</td>'+
+          '<td class="n vg-num"'+(ex?' title="Acima do limite de R$ '+brl(IR_LIM_EDU)+': R$ '+brl(r.edu-IR_LIM_EDU)+' não deduz"':'')+'>'+(r.edu?brl(r.eduDed):"—")+(ex?' <span class="ir-lim">limite</span>':'')+'</td>'+
+          '<td class="n vg-num">'+(r.sauDed?brl(r.sauDed):"—")+'</td>'+
+          '<td class="n vg-num"><b>'+(ok&&(r.eduDed+r.sauDed)?brl(r.eduDed+r.sauDed):"—")+'</b></td>'+
+          '<td class="acao">'+(I.itens.some(x=>x.pessoa===p.id)?'':'<button class="apagar" data-irpdel="'+i+'" aria-label="Apagar">×</button>')+'</td></tr>'; }).join("")+
+      '</tbody></table></div><button class="ver-mais" data-irpnova="1">+ Pessoa</button>';
+
+    const tabela=t=>{
+      const L=C.its.filter(x=>x.tipo===t).sort((a,b)=>(a.data||"").localeCompare(b.data||""));
+      const ia=(x,k)=>' data-iri="'+esc(x.id)+'" data-k="'+k+'" data-foco="iri:'+esc(x.id)+':'+k+'"';
+      const opsP=x=>I.pessoas.map(p=>'<option value="'+esc(p.id)+'"'+(p.id===x.pessoa?" selected":"")+'>'+esc(p.nome)+'</option>').join("");
+      const opsC=x=>Object.keys(IR_COD[t]).map(k=>'<option value="'+k+'"'+(k===x.cod?" selected":"")+'>'+esc(IR_COD[t][k])+'</option>').join("");
+      const tot=cent(L.reduce((s,x)=>s+(+x.valor||0),0)), totR=cent(L.reduce((s,x)=>s+(+x.reemb||0),0));
+      return '<div class="rolagem"><table class="pv-tab ir-itens"><colgroup><col style="width:132px"><col style="width:120px"><col style="width:'+(t==="edu"?170:210)+'px"><col><col style="width:160px"><col class="c-val">'+
+        (t==="sau"?'<col class="c-val">':'')+'<col style="width:56px"><col style="width:140px"><col class="c-acao"></colgroup>'+
+        '<thead><tr><th>Data</th><th>Beneficiário</th><th>Código</th><th>Prestador (escola, médico, clínica)</th><th>CNPJ / CPF</th><th class="n">Valor pago</th>'+
+        (t==="sau"?'<th class="n">Reembolso</th>':'')+'<th title="Comprovante / recibo / informe conferido">Comp.</th><th>Obs.</th><th></th></tr></thead><tbody>'+
+        (L.length?L.map(x=>'<tr'+(x.lanc?' title="Veio dos lançamentos"':'')+'><td><input type="date" class="campo"'+ia(x,"data")+' value="'+esc(x.data||"")+'"></td>'+
+          '<td><select class="campo"'+ia(x,"pessoa")+'>'+opsP(x)+'</select></td>'+
+          '<td><select class="campo"'+ia(x,"cod")+'>'+opsC(x)+'</select></td>'+
+          '<td><input class="campo"'+ia(x,"prest")+' value="'+esc(x.prest||"")+'" placeholder="Nome como no recibo"></td>'+
+          '<td><input class="campo'+((x.doc||"").replace(/\D/g,"")?'':' ir-falta')+'"'+ia(x,"doc")+' value="'+esc(x.doc||"")+'" placeholder="00.000.000/0000-00" inputmode="numeric"></td>'+
+          '<td class="valor"><input class="campo"'+ia(x,"valor")+' value="'+(+x.valor?brl(+x.valor):"")+'" placeholder="—" inputmode="decimal"></td>'+
+          (t==="sau"?'<td class="valor"><input class="campo"'+ia(x,"reemb")+' value="'+(+x.reemb?brl(+x.reemb):"")+'" placeholder="—" inputmode="decimal"></td>':'')+
+          '<td style="text-align:center"><input type="checkbox"'+ia(x,"comp")+(x.comp?" checked":"")+'></td>'+
+          '<td><input class="campo"'+ia(x,"obs")+' value="'+esc(x.obs||"")+'"></td>'+
+          '<td class="acao"><button class="apagar" data-irdel="'+esc(x.id)+'" aria-label="Apagar">×</button></td></tr>').join("")
+          :'<tr><td colspan="'+(t==="sau"?10:9)+'" class="sub" style="padding:10px 6px">Nada lançado. Use “Buscar nos lançamentos” ou “+ Despesa”.</td></tr>')+
+        (L.length?'<tr class="orc-t"><td colspan="5">Total</td><td class="n vg-num">'+brl(tot)+'</td>'+(t==="sau"?'<td class="n vg-num">'+brl(totR)+'</td>':'')+'<td colspan="3"></td></tr>':'')+
+        '</tbody></table></div><button class="ver-mais" data-irnovo="'+t+'">+ Despesa '+(t==="edu"?"de educação":"de saúde")+'</button>';
+    };
+
+    const F=irFicha(ano);
+    const ficha='<div class="rolagem"><table class="pv-tab ir-ficha"><colgroup><col style="width:200px"><col style="width:170px"><col><col style="width:170px"><col class="c-val"><col class="c-val"></colgroup>'+
+      '<thead><tr><th>Código</th><th>Beneficiário</th><th>Prestador</th><th>CNPJ / CPF</th><th class="n">Valor pago</th><th class="n">Não dedutível</th></tr></thead><tbody>'+
+      (F.length?F.map(r=>{ const t=IR_COD.edu[r.cod]?"edu":"sau";
+        return '<tr><td>'+esc(IR_COD[t][r.cod]||r.cod)+'</td><td>'+esc(r.pessoa.nome)+'<small class="vg-dica">'+(r.pessoa.dep==="titular"?"titular":"dependente")+'</small></td>'+
+          '<td>'+esc(r.prest||"—")+'<small class="vg-dica">'+r.n+' pagamento'+(r.n===1?"":"s")+(r.semDoc?' · falta conferir comprovante':'')+'</small></td>'+
+          '<td'+(r.doc?'':' class="ir-falta-t"')+'>'+esc(r.doc||"falta")+'</td><td class="n vg-num">'+brl(r.valor)+'</td><td class="n vg-num">'+(r.reemb?brl(r.reemb):"—")+'</td></tr>'; }).join("")
+        :'<tr><td colspan="6" class="sub" style="padding:10px 6px">Sem despesas dedutíveis em '+ano+'.</td></tr>')+
+      '</tbody></table></div>';
+
+    corpo.innerHTML=cards+
+      '<div class="tit-secao" style="margin-top:30px"><h3>Por pessoa</h3></div>'+pessoas+
+      '<div class="tit-secao" style="margin-top:34px"><h3>Educação</h3></div>'+
+      '<p class="sub ir-nota">Deduz: educação infantil (creche e pré-escola), ensinos fundamental, médio e superior, pós-graduação e ensino técnico — até R$ '+brl(IR_LIM_EDU)+' por pessoa no ano. '+
+        'Não deduz: material escolar e uniforme, passeios, transporte, idiomas, esportes, cursos livres e cursinho.</p>'+tabela("edu")+
+      '<div class="tit-secao" style="margin-top:34px"><h3>Saúde</h3></div>'+
+      '<p class="sub ir-nota">Deduz sem limite: plano de saúde (pelo informe da Unimed, separado por beneficiário), médicos, dentistas, psicólogos, fisioterapeutas, fonoaudiólogos, terapeutas ocupacionais, '+
+        'hospitais, clínicas, exames e laboratórios. Informe o reembolso recebido. Não deduz: farmácia e remédios (só se estiverem na conta do hospital), óculos fora de nota médica, academia.</p>'+tabela("sau")+
+      '<div class="tit-secao" style="margin-top:34px"><h3>Para a declaração — ficha “Pagamentos efetuados”</h3></div>'+
+      '<p class="sub ir-nota">Uma linha por código, beneficiário e prestador, somando o ano. “Copiar para a declaração” leva esta tabela para a área de transferência.</p>'+ficha;
+
+    corpo.onchange=e=>{
+      const t=e.target;
+      if(t.dataset.irp!=null){
+        const p=I.pessoas[+t.dataset.irp]; if(!p) return;
+        p[t.dataset.k]= t.dataset.k==="nome" ? (t.value.trim()||"Pessoa") : t.value;
+        if(t.dataset.k==="dep"&&t.value==="titular") I.pessoas.forEach(q=>{ if(q!==p&&q.dep==="titular") q.dep="sim"; });
+        salvar(); manterFoco(renderIR); return;
+      }
+      if(t.dataset.iri!=null){
+        const x=I.itens.find(y=>y.id===t.dataset.iri), k=t.dataset.k; if(!x) return;
+        if(k==="valor"||k==="reemb") x[k]=Math.abs(numero(String(t.value||"0")))||0;
+        else if(k==="comp") x.comp=t.checked;
+        else x[k]=t.value;
+        if(k==="data"&&t.value) x.ano=t.value.slice(0,4);
+        if(k==="doc"&&t.value) I.itens.forEach(y=>{ if(y!==x&&!y.doc&&y.prest&&y.prest===x.prest) y.doc=t.value; }); // mesmo prestador, mesmo CNPJ
+        if(k==="reemb"&&x.reemb>x.valor) x.reemb=x.valor;
+        salvar(); manterFoco(renderIR); return;
+      }
+    };
+    corpo.onclick=e=>{
+      const nv=e.target.closest("[data-irnovo]");
+      if(nv){ const t=nv.dataset.irnovo, tit=(I.pessoas.find(p=>p.dep==="titular")||I.pessoas[0]||{}).id, id="ir"+Date.now();
+        I.itens.push({id,ano,tipo:t,cod:t==="edu"?"01":"10",pessoa:tit,prest:"",doc:"",data:ano===anoAt?hojeISO():ano+"-12-31",valor:0,reemb:0,comp:false,lanc:null,obs:""});
+        salvar(); renderIR(); const f=document.querySelector('[data-foco="iri:'+id+':prest"]'); if(f) f.focus(); return; }
+      const d=e.target.closest("[data-irdel]");
+      if(d){ I.itens=I.itens.filter(x=>x.id!==d.dataset.irdel); salvar(); renderIR(); return; }
+      if(e.target.closest("[data-irpnova]")){ I.pessoas.push({id:"p"+Date.now(),nome:"Nova pessoa",dep:"sim"}); salvar(); renderIR();
+        const f=document.querySelector('[data-foco="irp:'+(I.pessoas.length-1)+':nome"]'); if(f){ f.focus(); f.select(); } return; }
+      const pd=e.target.closest("[data-irpdel]");
+      if(pd){ I.pessoas.splice(+pd.dataset.irpdel,1); salvar(); renderIR(); return; }
+    };
+  }
+
   function render(){
     const corpo=$("#corpo"); corpo.onclick=null; corpo.onkeydown=null; corpo.onchange=null; $("#abas").onclick=null;
     corpo.classList.toggle("largo", ui.conta==="fluxo");
@@ -6184,6 +6394,7 @@
     if(ui.conta==="fluxo"){ renderFluxo(); return; }
     if(ui.conta==="metas"){ renderMetas(); return; }
     if(ui.conta==="viagens"){ renderViagens(); return; }
+    if(ui.conta==="ir"){ renderIR(); return; }
     if(ui.conta==="invest"){ renderInvest(); return; }
     if(!ui.view) ui.view="mes";
 
@@ -6958,6 +7169,8 @@
         dados.fluxo       = remoto.fluxo||null;
         dados.dividas     = remoto.dividas||null;
         dados.metas       = remoto.metas||[];
+        dados.viagens     = remoto.viagens||[];
+        dados.ir          = remoto.ir||null;
         dados.conferencia = remoto.conferencia||{};
         dados.saldosDia   = remoto.saldosDia||{};
         dados.invest      = remoto.invest||null;
