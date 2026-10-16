@@ -4793,9 +4793,6 @@
     // 2) parcelamentos no cartão
     const ativos=[], quitados=[];
     dv.parcelas.forEach((p,i)=>{ const k=Object.keys(p.vals); (k.length===0||k.some(m=>m>=hoje&&p.vals[m])?ativos:quitados).push(i); });
-    // compras à vista de cada fatura (lançamentos dos cartões, sem as parceladas e sem pagamentos de fatura)
-    const avulsos={}; dados.lancamentos.forEach(l=>{ if(l.origem!=="cartao"||l.ignorado||CATS_FORA.has(l.categoria)||/PARC\s*\d{1,2}\/\d{1,2}/i.test(l.hist)) return;
-      const m=faturaDe(l); avulsos[m]=cent((avulsos[m]||0)-l.valor); });
     const msP=janelaMeses(hoje, ativos.map(i=>dv.parcelas[i].vals), 12, 36);
     const totP=m=>ativos.reduce((s,i)=>s+(dv.parcelas[i].foraTotal?0:(+dv.parcelas[i].vals[m]||0)),0);
     h+='<div class="tit-secao" id="dv-parcelas" style="margin-top:40px"><h3>Parcelamentos no cartão — mês a mês</h3></div>'+
@@ -4811,12 +4808,8 @@
           msP.map(m=>inp('data-dv="p" data-i="'+i+'" data-m="'+m+'"',"p:"+i+":"+m,p.vals[m])).join("")+
           '<td class="fx-tt">'+brl(falta(p.vals))+'</td></tr>';
       }).join("")+
-      '<tr class="fx-sub"><td colspan="3">▸ Total parcelamento cartão</td>'+msP.map(m=>'<td>'+brl(totP(m))+'</td>').join("")+
+      '<tr class="fx-t"><td colspan="3">▸ Total parcelamento cartão</td>'+msP.map(m=>'<td>'+brl(totP(m))+'</td>').join("")+
         '<td>'+brl(qCartao)+'</td></tr>'+
-      '<tr><td colspan="3" style="font-size:12.5px;color:var(--cinza)">▸ Fatura do cartão (avulsos/mês) <span class="sub" style="display:inline">· compras à vista das faturas importadas</span></td>'+
-        msP.map(m=>'<td class="fx-calc" title="Compras à vista na fatura de '+abrevMes(m)+' (lançamentos importados)">'+(avulsos[m]?brl(avulsos[m]):"·")+'</td>').join("")+'<td></td></tr>'+
-      '<tr class="fx-t"><td colspan="3">▸▸ Total cartão (parcela + fatura)</td>'+
-        msP.map(m=>'<td>'+brl(totP(m)+(+avulsos[m]||0))+'</td>').join("")+'<td></td></tr>'+
       '</tbody></table></div>'+
       '<button class="ver-mais" data-dvnova="1">+ Compra parcelada</button>'+
       (quitados.length?'<details class="contas-pagas"><summary>'+quitados.length+' parcelamento'+(quitados.length>1?"s":"")+' já quitado'+(quitados.length>1?"s":"")+'</summary>'+
