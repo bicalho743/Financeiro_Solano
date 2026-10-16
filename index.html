@@ -671,6 +671,8 @@
   .ir-pes tr.ir-fora td{color:var(--cinza)}.ir-pes tr.ir-fora .vg-num{text-decoration:line-through}
   .ir-lim{font-size:10px;font-family:var(--sans);color:#92400E;background:#FEF3C7;border-radius:999px;padding:1px 6px}
   .ir-falta{background:#FFF7ED!important}.ir-falta-t{color:#B42318;font-size:12px}
+  .ir-th{cursor:pointer;user-select:none}.ir-th:hover{color:var(--tinta)}.ir-th.on{color:var(--tinta)}
+  .ir-ord{font-size:9px;margin-left:4px;opacity:.45}.ir-th.on .ir-ord{opacity:1}
   .ir-fl{cursor:pointer}.ir-fl:hover td{background:#F5F8FC}.ir-fl.on td{background:#EEF4FF;font-weight:600}
   .ir-seta{display:inline-block;width:12px;color:var(--cinza)}
   .ir-ficha tr.ir-sub td{background:#FAFBFD;font-size:12.5px;padding:3px 6px}.ir-ficha tr.ir-sub td:first-child{padding-left:24px}
@@ -6268,6 +6270,17 @@
     try{ await navigator.clipboard.writeText(tsv); avisar(L.length+" linhas copiadas (ficha Pagamentos efetuados)."); }
     catch(e){ avisar("Não consegui copiar.",true); }
   }
+  // ordenação das tabelas da aba IR: clique no cabeçalho alterna crescente/decrescente
+  function irOrd(tab,arr,get,def){
+    const o=(ui.irSort||{})[tab]||def, g=get[o.c]||get[def.c];
+    return arr.sort((a,b)=>{ const x=g(a), y=g(b);
+      const r=(typeof x==="number"&&typeof y==="number")?x-y:String(x==null?"":x).localeCompare(String(y==null?"":y),"pt-BR",{numeric:true,sensitivity:"base"});
+      return r*o.d; });
+  }
+  function irTh(tab,c,rot,def,cls){
+    const o=(ui.irSort||{})[tab]||def, on=o.c===c;
+    return '<th class="ir-th'+(on?" on":"")+(cls?" "+cls:"")+'" data-irs="'+tab+':'+c+'" title="Ordenar">'+rot+'<span class="ir-ord">'+(on?(o.d>0?"▲":"▼"):"↕")+'</span></th>';
+  }
   function renderIR(){
     const corpo=$("#corpo"), I=irDados();
     const anoAt=hojeISO().slice(0,4);
@@ -6293,10 +6306,13 @@
         (C.fora?'<span>R$ '+brl(C.fora)+' de quem não é titular nem dependente (não entra nesta declaração)</span>':'')+'</div>':'');
 
     // por pessoa
+    const DP={c:"dep",d:1}, DI={c:"data",d:1}, DF={c:"cod",d:1};
     const pa=(i,k)=>' data-irp="'+i+'" data-k="'+k+'" data-foco="irp:'+i+':'+k+'"';
     const pessoas='<div class="rolagem"><table class="pv-tab ir-pes"><colgroup><col><col style="width:150px"><col class="c-val"><col class="c-val"><col class="c-val"><col class="c-val"><col class="c-acao"></colgroup>'+
-      '<thead><tr><th>Pessoa</th><th>Na declaração</th><th class="n">Educação paga</th><th class="n">Educação dedutível</th><th class="n">Saúde (líquida)</th><th class="n">Total dedutível</th><th></th></tr></thead><tbody>'+
-      I.pessoas.map((p,i)=>{ const r=C.por[p.id], ok=irConta(p), ex=r.edu>IR_LIM_EDU;
+      '<thead><tr>'+irTh("pes","nome","Pessoa",DP)+irTh("pes","dep","Na declaração",DP)+irTh("pes","edu","Educação paga",DP,"n")+irTh("pes","eduDed","Educação dedutível",DP,"n")+
+        irTh("pes","sau","Saúde (líquida)",DP,"n")+irTh("pes","tot","Total dedutível",DP,"n")+'<th></th></tr></thead><tbody>'+
+      irOrd("pes",I.pessoas.map((p,i)=>({p,i})),{nome:o=>o.p.nome,dep:o=>({titular:0,sim:1,nao:2})[o.p.dep],edu:o=>C.por[o.p.id].edu,eduDed:o=>C.por[o.p.id].eduDed,
+        sau:o=>C.por[o.p.id].sauDed,tot:o=>irConta(o.p)?C.por[o.p.id].eduDed+C.por[o.p.id].sauDed:-1},DP).map(({p,i})=>{ const r=C.por[p.id], ok=irConta(p), ex=r.edu>IR_LIM_EDU;
         return '<tr'+(ok?'':' class="ir-fora"')+'><td><input class="campo"'+pa(i,"nome")+' value="'+esc(p.nome)+'"></td>'+
           '<td><select class="campo"'+pa(i,"dep")+'>'+[["titular","Titular"],["sim","Dependente"],["nao","Não entra"]].map(o=>'<option value="'+o[0]+'"'+(o[0]===p.dep?" selected":"")+'>'+o[1]+'</option>').join("")+'</select></td>'+
           '<td class="n vg-num">'+(r.edu?brl(r.edu):"—")+'</td>'+
@@ -6307,15 +6323,17 @@
       '</tbody></table></div><button class="ver-mais" data-irpnova="1">+ Pessoa</button>';
 
     const tabela=t=>{
-      const L=C.its.filter(x=>x.tipo===t).sort((a,b)=>(a.data||"").localeCompare(b.data||""));
+      const nomeP=id=>(I.pessoas.find(p=>p.id===id)||{}).nome||"";
+      const L=irOrd(t,C.its.filter(x=>x.tipo===t),{data:x=>x.data||"",pessoa:x=>nomeP(x.pessoa),cod:x=>x.cod,prest:x=>x.prest||"",doc:x=>x.doc||"",
+        valor:x=>+x.valor||0,reemb:x=>+x.reemb||0,comp:x=>x.comp?1:0,obs:x=>x.obs||""},DI);
       const ia=(x,k)=>' data-iri="'+esc(x.id)+'" data-k="'+k+'" data-foco="iri:'+esc(x.id)+':'+k+'"';
       const opsP=x=>I.pessoas.map(p=>'<option value="'+esc(p.id)+'"'+(p.id===x.pessoa?" selected":"")+'>'+esc(p.nome)+'</option>').join("");
       const opsC=x=>Object.keys(IR_COD[t]).map(k=>'<option value="'+k+'"'+(k===x.cod?" selected":"")+'>'+esc(IR_COD[t][k])+'</option>').join("");
       const tot=cent(L.reduce((s,x)=>s+(+x.valor||0),0)), totR=cent(L.reduce((s,x)=>s+(+x.reemb||0),0));
       return '<div class="rolagem"><table class="pv-tab ir-itens"><colgroup><col style="width:132px"><col style="width:120px"><col style="width:'+(t==="edu"?170:210)+'px"><col><col style="width:160px"><col class="c-val">'+
         (t==="sau"?'<col class="c-val">':'')+'<col style="width:56px"><col style="width:140px"><col class="c-acao"></colgroup>'+
-        '<thead><tr><th>Data</th><th>Beneficiário</th><th>Código</th><th>Prestador (escola, médico, clínica)</th><th>CNPJ / CPF</th><th class="n">Valor pago</th>'+
-        (t==="sau"?'<th class="n">Reembolso</th>':'')+'<th title="Comprovante / recibo / informe conferido">Comp.</th><th>Obs.</th><th></th></tr></thead><tbody>'+
+        '<thead><tr>'+irTh(t,"data","Data",DI)+irTh(t,"pessoa","Beneficiário",DI)+irTh(t,"cod","Código",DI)+irTh(t,"prest","Prestador (escola, médico, clínica)",DI)+
+        irTh(t,"doc","CNPJ / CPF",DI)+irTh(t,"valor","Valor pago",DI,"n")+(t==="sau"?irTh(t,"reemb","Reembolso",DI,"n"):'')+irTh(t,"comp","Comp.",DI)+irTh(t,"obs","Obs.",DI)+'<th></th></tr></thead><tbody>'+
         (L.length?L.map(x=>'<tr'+(x.lanc?' title="Veio dos lançamentos"':'')+'><td><input type="date" class="campo"'+ia(x,"data")+' value="'+esc(x.data||"")+'"></td>'+
           '<td><select class="campo"'+ia(x,"pessoa")+'>'+opsP(x)+'</select></td>'+
           '<td><select class="campo"'+ia(x,"cod")+'>'+opsC(x)+'</select></td>'+
@@ -6331,9 +6349,10 @@
         '</tbody></table></div><button class="ver-mais" data-irnovo="'+t+'">+ Despesa '+(t==="edu"?"de educação":"de saúde")+'</button>';
     };
 
-    const F=irFicha(ano);
+    const F=irOrd("ficha",irFicha(ano),{cod:r=>r.cod+"|"+r.pessoa.nome,pessoa:r=>r.pessoa.nome,prest:r=>r.prest,doc:r=>r.doc,valor:r=>r.valor,reemb:r=>r.reemb},DF);
     const ficha='<div class="rolagem"><table class="pv-tab ir-ficha"><colgroup><col style="width:200px"><col style="width:170px"><col><col style="width:170px"><col class="c-val"><col class="c-val"></colgroup>'+
-      '<thead><tr><th>Código</th><th>Beneficiário</th><th>Prestador</th><th>CNPJ / CPF</th><th class="n">Valor pago</th><th class="n">Não dedutível</th></tr></thead><tbody>'+
+      '<thead><tr>'+irTh("ficha","cod","Código",DF)+irTh("ficha","pessoa","Beneficiário",DF)+irTh("ficha","prest","Prestador",DF)+irTh("ficha","doc","CNPJ / CPF",DF)+
+        irTh("ficha","valor","Valor pago",DF,"n")+irTh("ficha","reemb","Não dedutível",DF,"n")+'</tr></thead><tbody>'+
       (F.length?F.map(r=>{ const t=IR_COD.edu[r.cod]?"edu":"sau";
         const ab=(ui.irAbre||{})[r.k], porId={}; dados.lancamentos.forEach(l=>{ if(l.id) porId[l.id]=l; });
         return '<tr class="ir-fl'+(ab?" on":"")+'" data-irf="'+esc(r.k)+'" title="Clique para ver os pagamentos"><td><span class="ir-seta">'+(ab?"▾":"▸")+'</span> '+esc(IR_COD[t][r.cod]||r.cod)+'</td><td>'+esc(r.pessoa.nome)+'<small class="vg-dica">'+(r.pessoa.dep==="titular"?"titular":"dependente")+'</small></td>'+
@@ -6377,6 +6396,9 @@
       }
     };
     corpo.onclick=e=>{
+      const so=e.target.closest("[data-irs]");
+      if(so){ const [tb,c]=so.dataset.irs.split(":"); ui.irSort=ui.irSort||{}; const at=ui.irSort[tb];
+        ui.irSort[tb]={c,d:at&&at.c===c?-at.d:(["valor","reemb","edu","eduDed","sau","tot","comp"].includes(c)?-1:1)}; renderIR(); return; }
       const fl=e.target.closest("[data-irf]");
       if(fl){ ui.irAbre=ui.irAbre||{}; const k=fl.dataset.irf; if(ui.irAbre[k]) delete ui.irAbre[k]; else ui.irAbre[k]=true; renderIR(); return; }
       const nv=e.target.closest("[data-irnovo]");
