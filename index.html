@@ -1801,6 +1801,7 @@
     // regra: cobrir NO 10º dia — o banco pode ficar negativo no máximo 9 dias do ciclo. Se passar, o banco cobra juros
     // do PERÍODO INTEIRO do ciclo (todos os dias negativos), não só dos dias a mais.
     // regra fixa (decisão do Solano): todo banco é coberto NO 10º dia. Passar dele só quando não há outro jeito de chegar ao salário
+    // quando alguém tem que passar, o Itaú é o último (ele é coberto no 10º dia sempre)
     const PENAL_10=1e5;
     function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0, custoJ=0, pen=0; const cic={};
       for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue;
@@ -1808,7 +1809,7 @@
         // v[k+"!"] marca o ciclo que já passou do limite neste plano (não cobra duas vezes)
         const c=cic[k]||(cic[k]={soma:0, ant:antes, cobrado:!!v[k+"!"]}); const dia=falta(d)*TAXA_CHEQUE[o]/30; c.soma+=dia;
         if(c.cobrado){ juros++; custoJ+=dia; }
-        else if(v[k]>=DIAS_CHEQUE&&!(v[k]===DIAS_CHEQUE&&fimDeCiclo(o,d))){ c.cobrado=true; v[k+"!"]=1; juros+=v[k]; custoJ+=c.soma+c.ant*dia; pen+=PENAL_10; }   // dias anteriores do ciclo estimados pelo valor de hoje
+        else if(v[k]>=DIAS_CHEQUE&&!(v[k]===DIAS_CHEQUE&&fimDeCiclo(o,d))){ c.cobrado=true; v[k+"!"]=1; juros+=v[k]; custoJ+=c.soma+c.ant*dia; pen+=o==="itau"?3*PENAL_10:PENAL_10; }   // dias anteriores do ciclo estimados pelo valor de hoje
       }
       return {u:v, juros:juros, custoJ:custoJ, pen:pen}; }
     const BANCOS=["itau","bb","santander"];
