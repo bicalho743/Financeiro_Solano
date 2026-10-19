@@ -1634,6 +1634,22 @@
   const somaDias=(iso,n)=>{ const ck=iso+"|"+n; if(_sd[ck]) return _sd[ck]; const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return _sd[ck]=d.toISOString().slice(0,10); };
   const difDias=(a,b)=>Math.round((new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5);
   function saldoItauEm(D){ const ym=D.slice(0,7); return cent(saldoInicio("itau",ym).v+movConta("itau",ym+"-01",somaDias(D,1))); }
+  // data em que o gasto aconteceu. O Itaú lança no dia útil seguinte o que foi feito no fim de semana/feriado e anota a
+  // data verdadeira no histórico ("PAY REFUG 11/10", "PIX WHATS JOSE AL10/10", "RSCSS MP CABANAS 1310").
+  // O cheque especial conta por essa data: compras de sáb/dom/feriado já deixam o saldo negativo naquele dia.
+  function dataReal(l){
+    const h=String(l.hist||"").trim(), r=h.match(/(\d{2})\/(\d{2})$/)||(/^RSC/i.test(h)&&h.match(/(\d{2})(\d{2})$/));
+    if(!r) return l.data;
+    const dd=+r[1], mm=+r[2], [a,m]=l.data.split("-").map(Number); if(dd<1||dd>31||mm<1||mm>12) return l.data;
+    const iso=(mm>m?a-1:a)+"-"+String(mm).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
+    return iso<l.data&&difDias(l.data,iso)<=7?iso:l.data;
+  }
+  // saldo do Itaú no fim do dia D como o banco apura o cheque especial (pela data real de cada gasto)
+  function saldoItauRealEm(D){
+    let v=saldoItauEm(D); const fim=somaDias(D,8);
+    for(const l of dados.lancamentos){ if(l.origem==="itau"&&!l.ignorado&&l.data>D&&l.data<=fim&&dataReal(l)<=D) v+=l.valor; }
+    return cent(v);
+  }
   // início do ciclo atual e data da próxima renovação. O ciclo sempre começa em dia útil:
   // se o dia de renovação cai em fim de semana/feriado, o ciclo novo começa no próximo dia útil (o anterior vai até a véspera)
   function renovaEm(o,a,m){ if(m<1){m+=12;a--;} if(m>12){m-=12;a++;}
@@ -1650,26 +1666,15 @@
   function usoCheque(o,s){
     const hj=hojeISO(), c=cicloCheque(o), sd=(dados.saldosDia||{})[o]||{}, ks=Object.keys(sd).sort();
     // saldo no fim do dia: Itaú pelos lançamentos; BB/Santander o último saldo registrado até o dia
-    const saldoEm = d => d===hj&&s ? s.v : o==="itau" ? saldoItauEm(d) : (()=>{ let k=null; for(const x of ks){ if(x<=d) k=x; else break; } return k?+sd[k]:null; })();
-    let usados=0, ultimo=null, ini=c.ini;
-    // dias conferidos no extrato do banco (ex.: Itaú "quantidade de dias utilizados até 16/10"): o banco conta
-    // uso em fim de semana/feriado no próximo dia útil, o que os lançamentos não mostram. Vale o extrato até a data
-    // informada; dali em diante o app conta os dias negativos pelos saldos.
-    const ext=(dados.chequeExtrato||{})[o+"|"+c.ini];
-    if(ext&&ext.ate&&ext.ate>=c.ini&&ext.ate<=hj&&ext.dias!=null){ usados=+ext.dias; ini=somaDias(ext.ate,1); if(usados) ultimo=ext.ate; }
-    for(let d=ini; d<=hj; d=somaDias(d,1)){ const v=saldoEm(d); if(v!=null&&v<0){ usados++; ultimo=d; } }
+    const saldoEm = d => d===hj&&s ? s.v : o==="itau" ? saldoItauRealEm(d) : (()=>{ let k=null; for(const x of ks){ if(x<=d) k=x; else break; } return k?+sd[k]:null; })();
+    let usados=0, ultimo=null;
+    for(let d=c.ini; d<=hj; d=somaDias(d,1)){ const v=saldoEm(d); if(v!=null&&v<0){ usados++; ultimo=d; } }
     // dias usados informados à mão (Santander: o app só conhece o saldo digitado)
     const man=(dados.chequeUsados||{})[o+"|"+c.ini]; if(man!=null&&man!=="") usados=Math.max(usados,+man);
     const neg=!!(s&&s.v<0), resta=DIAS_CHEQUE-usados;
     // negativo hoje: o último dia sem juros, se continuar negativo
     const vence = neg&&resta>=0 ? somaDias(hj,resta) : null;
-    return {usados:usados, resta:resta, neg:neg, ultimo:ultimo, renova:c.renova, ini:c.ini, vence:vence&&vence<c.renova?vence:null, ext:ext&&ini!==c.ini?ext:null};
-  }
-  // campo para conferir os dias com o extrato do banco (Itaú/BB)
-  function campoExtCheque(o){
-    const e=(dados.chequeExtrato||{})[o+"|"+cicloCheque(o).ini]||{};
-    return '<label class="bc-aj" data-cq-ext="'+o+'">extrato: <input class="campo" data-cq-ext-dias type="number" min="0" max="31" value="'+esc(String(e.dias??""))+
-      '" placeholder="dias" style="width:56px"> dias até <input class="campo" data-cq-ext-ate type="date" value="'+esc(e.ate||"")+'" style="width:auto"></label>';
+    return {usados:usados, resta:resta, neg:neg, ultimo:ultimo, renova:c.renova, ini:c.ini, vence:vence&&vence<c.renova?vence:null};
   }
   function tagCheque(o,s){
     const u=usoCheque(o,s);
@@ -1680,7 +1685,6 @@
       txt+=u.vence?" · vence "+diaMes(u.vence)+(u.resta===0?" (hoje)":u.resta===1?" (amanhã)":""):" · dá até a renovação";
     } else if(u.usados){ cor="#9A5B07"; txt+=" · último "+(u.ultimo?diaMes(u.ultimo):"informado à mão"); }
     txt+=" · renova "+diaMes(u.renova);
-    if(u.ext) txt+=" · extrato: "+u.ext.dias+" até "+diaMes(u.ext.ate);
     return '<span class="bc-cq" style="color:'+cor+'" title="Ciclo de '+diaMes(u.ini)+' a '+diaMes(somaDias(u.renova,-1))+'">'+txt+'</span>';
   }
   // saldos nos bancos: o que você tem de verdade e quanto de cheque especial está em uso
@@ -1691,8 +1695,8 @@
       (extra||'<b style="color:'+(s?cor(s.v):"var(--cinza)")+'">'+(s?'R$ '+brl(s.v):'—')+'</b>')+'<span class="kpi-sub">'+fonte+'</span></div>';
     const vals=[it.v, bb?bb.v:0, st?st.v:0], tot=cent(vals.reduce((a,b)=>a+b,0)), neg=cent(vals.filter(v=>v<0).reduce((a,b)=>a+b,0));
     return '<section class="bancos"><div class="tit-secao" style="margin:0 0 6px"><h3>Saldos nos bancos</h3></div><div class="bc-grid">'+
-      linha("Itaú",it,"pelos lançamentos, até "+diaMes(it.data)+tagCheque("itau",it)+campoExtCheque("itau"),{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
-      linha("BB",bb,(bb?"extrato de "+diaMes(bb.data):"importe o extrato do BB")+tagCheque("bb",bb)+campoExtCheque("bb"),{conta:"bb",mes:ui.mes,alvo:"#conf",dica:"Ver a conta do BB"})+
+      linha("Itaú",it,"pelos lançamentos, até "+diaMes(it.data)+tagCheque("itau",it),{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
+      linha("BB",bb,(bb?"extrato de "+diaMes(bb.data):"importe o extrato do BB")+tagCheque("bb",bb),{conta:"bb",mes:ui.mes,alvo:"#conf",dica:"Ver a conta do BB"})+
       linha("Santander",st,(st?"digitado em "+diaMes(st.data):"digite o saldo quando usar")+tagCheque("santander",st)+
         '<label class="bc-aj">dias já usados neste ciclo <input class="campo" data-cq-usados="santander" type="number" min="0" max="10" value="'+
         esc(String((dados.chequeUsados||{})["santander|"+cicloCheque("santander").ini]??""))+'" placeholder="0"></label>',null,
@@ -1749,7 +1753,7 @@
   function estrategiaCheque(){
     const hj=hojeISO(), sal=quintoDiaUtil(proxMes(mesAtual()));
     const pj=projecaoItau(sal);
-    const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.chequeExtrato,dados.livreAte,dados.estValor,dados.pixFimSemana,
+    const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.livreAte,dados.estValor,dados.pixFimSemana,
       ["itau","bb","santander"].map(o=>usoCheque(o,o==="itau"?saldoContaApp(mesAtual()):saldoBanco(o)).usados)]);
     if(cacheEst.k!==kc){ cacheEst={k:kc,r:montaEstrategia(hj,sal,pj)};
       // o plano fica salvo para o resumo do WhatsApp avisar no dia de cada Pix
@@ -2144,16 +2148,6 @@
       const la=e.target.closest("[data-livre-ate]");
       if(la){ dados.livreAte=dados.livreAte||{}; if(la.value) dados.livreAte[la.dataset.livreAte]=la.value; else delete dados.livreAte[la.dataset.livreAte];
         salvar(); render(); avisar(la.value?"Saldo do BB livre até "+diaMes(la.value)+" — a estratégia foi refeita.":"Saldo do BB fora da estratégia."); return; }
-      const cx=e.target.closest("[data-cq-ext]");
-      if(cx){
-        const o=cx.dataset.cqExt, nm={itau:"Itaú",bb:"BB"}[o]||o, k=o+"|"+cicloCheque(o).ini, n=String(cx.querySelector("[data-cq-ext-dias]").value).trim(), ate=cx.querySelector("[data-cq-ext-ate]").value;
-        dados.chequeExtrato=dados.chequeExtrato||{};
-        if(n===""){ delete dados.chequeExtrato[k]; salvar(); render(); avisar(nm+": dias do cheque voltam a ser contados pelos saldos."); return; }
-        if(!ate) return; // espera a data
-        dados.chequeExtrato[k]={dias:Math.max(0,Math.round(+n)||0), ate:ate};
-        salvar(); render(); avisar(nm+": "+dados.chequeExtrato[k].dias+" dias de cheque até "+diaMes(ate)+" pelo extrato — a estratégia foi refeita.");
-        return;
-      }
       const cu=e.target.closest("[data-cq-usados]");
       if(cu){
         const o=cu.dataset.cqUsados, k=o+"|"+cicloCheque(o).ini, n=String(cu.value).trim();
