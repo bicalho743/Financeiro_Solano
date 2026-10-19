@@ -2847,6 +2847,7 @@
     try{ texto=new TextDecoder("utf-8",{fatal:true}).decode(buf); }
     catch(e){ texto=new TextDecoder("iso-8859-1").decode(buf); }
     if(origem==="planilha"){ avisar("A planilha de orçamento precisa ser o arquivo .xlsx.",true); return; }
+    if(/SISBB/i.test(texto)&&/Fatura do Cart/i.test(texto)){ importarFaturaBBTexto(texto.split(/\r?\n/),texto); return; }
     if(/SISBB/i.test(texto)&&/Extrato de conta corrente/i.test(texto)){ concluirImport(lerExtratoBBTexto(texto.split(/\r?\n/)),"bb",texto); return; }
     const r = /<OFX>|OFXHEADER/i.test(texto) ? lerOFX(texto) : linhasParaItens(lerCSV(texto));
     const o=await resolverOrigem(origem,texto); if(o) concluirImport(r,o,texto);
@@ -3352,6 +3353,68 @@
     return r;
   }
 
+  /* ================= fatura do cartão BB em TXT/PDF (SISBB — "Fatura do Cartão de Crédito", ex.: Altus) =================
+     Linha: DD/MM  DESCRIÇÃO  CIDADE  PAÍS  Valor R$  Valor US$. Seções: Pagamentos (fora), Créditos diversos (estorno),
+     Compras... "LANÇAMENTOS FUTUROS" = fatura em aberto; com "Vencimento" no cabeçalho = fatura fechada. */
+  function importarFaturaBBTexto(linhasTxt,textoTotal){
+    const NUM="(-?\\d{1,3}(?:\\.\\d{3})*,\\d{2})";
+    const RE=new RegExp("^\\s*(\\d{2})\\/(\\d{2})\\s+(.+?)(?:\\s+([A-Z]{2}))?\\s+"+NUM+"\\s+"+NUM+"\\s*$");
+    const numBR=s=>parseFloat(String(s).replace(/\./g,"").replace(",","."));
+    const dataBR=s=>s?s.split("/").reverse().join("-"):"";
+    const t=String(textoTotal||"");
+    const mEmis=t.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    const mVenc=t.match(/Vencimento\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i);
+    const mFin=t.match(/\d{4}\.\*{4}\.\*{4}\.(\d{4})/)||t.match(/final\s*(\d{4})/i);
+    const mMod=t.match(/Modalidade\s*:\s*([^\n\r]+)/i);
+    const fin=mFin?mFin[1]:FINAL_CARTAO.bb;
+    const nome=(mMod?mMod[1].trim():"Altus").replace(/\s{2,}/g," ");
+    const doc=(/altus|ourocard|bb/i.test(nome)?nome:"BB "+nome)+" final "+fin;
+    const ref=mVenc?dataBR(mVenc[1]):(mEmis?mEmis[3]+"-"+mEmis[2]+"-"+mEmis[1]:hojeISO());
+    const anoRef=+ref.slice(0,4), mesRef_=+ref.slice(5,7);
+    const aberta=!mVenc && /L\s*A\s*N\s*.\s*A\s*M\s*E\s*N\s*T\s*O\s*S\s+F\s*U\s*T\s*U\s*R\s*O\s*S/i.test(t);
+    let secao="", total=null; const lancs=[];
+    (linhasTxt||[]).forEach(raw=>{
+      const l=String(raw).replace(/[\u0000-\u001f]/g," ");
+      const s=l.trim();
+      if(!s) return;
+      const mt=s.match(/^(Sub\s*Total|Total)\b.*?(-?\d{1,3}(?:\.\d{3})*,\d{2})/i);
+      if(mt){ if(/^Total/i.test(mt[1])) total=numBR(mt[2]); return; }
+      const m=l.match(RE);
+      if(!m){ if(!/^\*{3}|Cota/i.test(s) && !/\d{2}\/\d{2}/.test(s)) secao=s; return; }
+      const desc=m[3].replace(/\s{2,}/g," ").trim();
+      if(/^Pagamento/i.test(secao) || /^(PGTO|PAGTO|PAGAMENTO|SALDO FATURA|TOTAL|ESTORNO C\/?\s*CRED)/i.test(desc)) return;
+      const v=numBR(m[5]); if(!v||isNaN(v)) return;
+      const mm=+m[2], ano=mm>mesRef_?anoRef-1:anoRef;
+      const iso=ano+"-"+m[2]+"-"+m[1];
+      lancs.push({data:ajustarParc(iso,desc), hist:desc, valor:-Math.round(v*100)/100, doc:doc});
+    });
+    if(!lancs.length){ avisar("Não encontrei compras nessa fatura do BB.",true); return; }
+    const soma=-lancs.reduce((a,x)=>a+x.valor,0);
+    const opts={};
+    if(mVenc) opts.fatura=ref.slice(0,7);
+    const rc=conciliarCartao(lancs,"bb",opts);
+    const tot=total!=null?total:Math.round(soma*100)/100;
+    if(aberta){
+      dados.faturaAberta={cartao:"Altus final "+fin, total:tot, pendente:0, nPendentes:0,
+        atualizadoEm:hojeISO(), fechamento:(dados.faturaFechada&&dados.faturaFechada.proxFechamento)||""};
+    } else if(mVenc){
+      dados.faturasCartao=dados.faturasCartao||{};
+      const info={final:fin, vencimento:ref, fechamento:somaDias(ref,-10), total:tot, paga:false, aberta:false};
+      dados.faturasCartao["bb:"+ref.slice(0,7)]=info;
+      const fa=dados.faturasCartao.bb; if(!fa||(fa.vencimento||"")<=ref) dados.faturasCartao.bb=info;
+    }
+    dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+    ui.conta="cartao"; ui.cartao="bb"; ui.view="mes";
+    const meses=rc.meses.length?rc.meses:lancs.map(x=>x.data.slice(0,7));
+    ui.mes=opts.fatura||lancs.map(x=>faturaDe(x)).sort().pop()||meses.sort().pop();
+    salvar(); render();
+    avisar("Altus: "+rc.novos+" lançamento"+(rc.novos===1?"":"s")+" importado"+(rc.novos===1?"":"s")+
+      (rc.novos?" · "+rc.prontos+" já classificado"+(rc.prontos===1?"":"s"):"")+
+      (rc.repetidos?" · "+rc.repetidos+" já existia"+(rc.repetidos===1?"":"m"):"")+
+      (rc.conferidos?" · "+rc.conferidos+" da planilha conferido"+(rc.conferidos===1?"":"s"):"")+
+      (aberta?" · fatura em aberto":" · total da fatura")+": R$ "+brl(tot));
+  }
+
   /* ================= fatura do cartão Itaú em Excel (app/site: "Fatura Paga - Outubro/2026") =================
      Colunas: Data (da compra) | Lançamento | Parcelamento ("Parcela 6 de 21") | Valor | ... | Número do cartão.
      Parcela: o dia da compra no mês que cai no período desta fatura (parcelas antecipadas entram nela). */
@@ -3493,6 +3556,11 @@
     const textoTotal = paginas.map(it=>agruparLinhas(it).map(l=>l.txt).join("\n")).join("\n");
     // demonstrativo do financiamento imobiliário (Itaú: "Demonstrativo Descritivo de Crédito")
     if(/Demonstrativo Descritivo de Cr[ée]dito|Evolu[çc][ãa]o de Saldo Devedor/i.test(textoTotal)){ importarFinanciamento(textoTotal); return; }
+    // fatura do cartão BB impressa pelo SISBB (mesmo layout do TXT)
+    if(/SISBB/i.test(textoTotal)&&/Fatura do Cart/i.test(textoTotal)){
+      const ls=[]; paginas.forEach(it=>agruparLinhas(it).forEach(l=>ls.push(l.txt)));
+      importarFaturaBBTexto(ls,textoTotal); return;
+    }
     // extrato do BB em PDF (SISBB / Autoatendimento BB)
     if(/SISBB/i.test(textoTotal)&&/Hist[óo]rico/i.test(textoTotal)){
       const ls=[]; paginas.forEach(it=>agruparLinhas(it).forEach(l=>ls.push(l.txt)));
