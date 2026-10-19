@@ -1846,8 +1846,10 @@
     else {
       // começa no Itaú, ou já no 1º dia passa a dívida para outro banco
       melhor=resolve("itau",ini0,uIni);
-      if(pixOk(ini0)) ["bb","santander"].forEach(x=>{ const r=resolve(x,ini0,uIni);
-        const cand={juros:r.juros, custo:r.custo, fases:[{o:"itau",de:ini0,ate:ini0,decimo:ini0,prox:x,juros:0,custoJ:0,inicio:true}].concat(r.fases)};
+      // passar a dívida já no 1º dia também gera o IOF adicional de 0,38% no banco que recebe (antes não era somado,
+      // e o plano preferia cobrir o Itaú hoje em vez de usar o dia livre que ainda resta)
+      if(pixOk(ini0)) ["bb","santander"].forEach(x=>{ const r=resolve(x,ini0,uIni), troca=falta(ini0)*IOF_ADIC_TROCA;
+        const cand={juros:r.juros, custo:r.custo+troca, fases:[{o:"itau",de:ini0,ate:ini0,decimo:ini0,prox:x,juros:0,custoJ:0,inicio:true}].concat(r.fases)};
         if(melhorQue(cand,melhor)) melhor=cand; });
     }
     if(melhor&&dono) melhor.fases[0].desde=desde(dono);
@@ -1896,7 +1898,7 @@
     if(fases[0]&&!fases[0].inicio&&!fases[0].desde){ const f0=fases[0], negDe0=(()=>{ let d=f0.de; while(d<f0.ate&&!conta(f0.o,d)) d=somaDias(d,1); return d; })();
       if(negDe0<f0.ate) tr.push({d:negDe0, de:"entra", para:f0.o, v:falta(negDe0), iof:0, obs:NOME[f0.o]+" negativo de "+diaMes(negDe0)+" a "+diaMes(somaDias(f0.ate,-1))+" ("+difDias(f0.ate,negDe0)+" dia"+(difDias(f0.ate,negDe0)===1?"":"s")+") · sem Pix: só acompanhar"}); }
     fases.forEach(f=>{
-      if(f.inicio){ tr.push({d:f.de, de:f.prox, para:"itau", v:cent(f.zera+f.reforco), iof:0, obs:"Itaú não entra no cheque especial", k:f.chave, ed:f.editado}); return; }
+      if(f.inicio){ tr.push({d:f.de, de:f.prox, para:"itau", v:cent(f.zera+f.reforco), iof:0, obs:pj.hoje<0?"cobre o Itaú hoje":"Itaú não entra no cheque especial", k:f.chave, ed:f.editado}); return; }
       let obs=f.juros?f.juros+" dia"+(f.juros===1?"":"s")+" de juros no "+NOME[f.o]:"";
       if(f.salario){
         tr.push({d:sal, de:"sal", para:f.o, v:cent(f.zera-f.iof), iof:f.iof, k:f.chave, ed:f.editado, obs:("salário cai no BB"+(f.o==="bb"?" e zera o negativo":"; Pix do BB para zerar o "+NOME[f.o]))+(obs?" · "+obs:"")});
