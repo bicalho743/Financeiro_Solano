@@ -621,7 +621,11 @@
   .pv-tab th.pv-ord:hover,.pv-tab th.pv-ord.on{color:var(--verde)}
   .pv-tab th.pv-ord .seta{opacity:.45;font-size:11px}.pv-tab th.pv-ord.on .seta{opacity:1}
   .pv-tab td{padding:2px 4px;border-bottom:1px solid var(--linha-clara);vertical-align:middle}
-  .pv-tab col.c-data{width:128px} .pv-tab col.c-val{width:118px} .pv-tab col.c-acao{width:62px}
+  .pv-tab col.c-data{width:128px} .pv-tab col.c-val{width:118px} .pv-tab col.c-acao{width:62px} .pv-tab col.c-tipo{width:96px}
+  .pv-tipo{font-size:12px;padding:4px 6px;border:1px solid transparent;border-radius:6px;background:transparent;font-weight:600;cursor:pointer;width:100%}
+  .pv-tipo.fixo{color:#5D6D2E} .pv-tipo.var{color:#1F4E8C}
+  .pv-tipo:hover,.pv-tipo:focus{border-color:var(--linha,#ddd)}
+  span.pv-tipo{display:inline-block;cursor:default}
   .pv-tab td.valor{width:auto}
   .pv-tab td.valor .campo{text-align:right;font-family:var(--serif);font-size:16px}
   .pv-tab input[type=date].campo{font-size:12.5px;color:var(--cinza);padding:4px 2px}
@@ -4357,7 +4361,7 @@
     // copia as linhas do último mês: o que foi pago vira previsto; nada marcado como pago
     const copia=l=>(l||[]).map(x=>x.media!=null
       ? {data:mover(x.data), d:x.d, cat:x.cat, media:x.mediaBase!=null?x.mediaBase:x.media, mediaBase:x.mediaBase, mediaRef:x.mediaRef, aPagar:-(x.mediaBase!=null?x.mediaBase:x.media), pago:null}
-      : {data:mover(x.data), d:x.d, aPagar:x.aPagar!=null?x.aPagar:(x.pago?-x.pago:null), pago:null});
+      : {data:mover(x.data), d:x.d, ...(x.tipo?{tipo:x.tipo}:{}), aPagar:x.aPagar!=null?x.aPagar:(x.pago?-x.pago:null), pago:null});
     const novo={aba:"criado no app", saldo:0, fixos:copia(base&&base.fixos), itens:copia(base&&base.itens),
       receitas:(base?base.receitas:[]).map(r=>({d:r.d, v:r.v})), notas:[]};
     // agendamentos que o extrato já trouxe para o mês de destino continuam (ligam à linha de mesmo valor)
@@ -4371,6 +4375,8 @@
     avisar(cap(rotuloMes(ym))+" criado"+(ult?" a partir de "+rotuloMes(ult):"")+".");
   }
 
+  // fixo × variável: linhas pela média são sempre variáveis; as demais, fixo salvo o que for marcado
+  const tipoPrev = x => x.media!=null ? "var" : (x.tipo==="var" ? "var" : "fixo");
   function renderPrevisao(){
     const corpo=$("#corpo"), ms=mesesPrev();
     if(!ms.includes(ui.prevMes))
@@ -4398,6 +4404,7 @@
       if(x.media!=null) return '<tr class="pv-media" title="'+esc(ttMedia)+'">'+
         '<td><input type="date" class="campo"'+at("data")+' value="'+esc(x.data||"")+'" aria-label="Data"></td>'+
         '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes"></td>'+
+        '<td><span class="pv-tipo var" title="Gasto pela média: sempre variável">Variável</span></td>'+
         '<td class="valor"><input class="campo"'+at("aPagar")+' value="'+val(x.aPagar,true)+'" placeholder="—" inputmode="decimal" aria-label="A pagar (média ajustável)"></td>'+
         '<td class="valor"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês" title="Gasto real da categoria no mês (pelos lançamentos)"></td>'+
         '<td class="acao">'+(x.aPagar!=null?'<button class="pv-pagar" data-ppagar="'+lista+':'+i+'" title="Encerrar: não falta mais nada deste gasto no mês">✓</button>':'')+
@@ -4405,6 +4412,7 @@
       return '<tr'+(venc?' class="pv-vencida" title="Vencida e ainda em aberto"':logo?' class="pv-hoje" title="Vence em até 3 dias"':'')+'>'+
         '<td><input type="date" class="campo"'+at("data")+' value="'+esc(x.data||"")+'" aria-label="Data"></td>'+
         '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes"></td>'+
+        '<td><select class="pv-tipo '+tipoPrev(x)+'"'+at("tipo")+' aria-label="Fixo ou variável"><option value="fixo"'+(tipoPrev(x)==="fixo"?" selected":"")+'>Fixo</option><option value="var"'+(tipoPrev(x)==="var"?" selected":"")+'>Variável</option></select></td>'+
         '<td class="valor"><input class="campo'+(x.aPagar>0?' pos':'')+'"'+at("aPagar")+' value="'+val(x.aPagar,true)+'" placeholder="—" inputmode="decimal" aria-label="A pagar"></td>'+
         '<td class="valor"><input class="campo"'+at("pago")+' value="'+val(x.pago)+'" placeholder="—" inputmode="decimal" aria-label="Pago"></td>'+
         '<td class="acao">'+(x.aPagar!=null&&x.aPagar<0?'<button class="pv-pagar" data-ppagar="'+lista+':'+i+'" title="Marcar como pago">✓</button>':'')+
@@ -4415,6 +4423,7 @@
     const idxOrdenados=lista=>{
       const o=ordPrev(lista), arr=p[lista].map((x,i)=>i);
       const chave=x=>o.k==="d" ? String(x.d||"").toLowerCase()
+        : o.k==="tipo" ? tipoPrev(x)
         : o.k==="data" ? (x.data||"")
         : o.k==="aPagar" ? (x.aPagar==null?null:Math.abs(x.aPagar))
         : (x.pago==null?null:+x.pago);
@@ -4428,8 +4437,8 @@
     };
     const tabela=(lista,titulo,nota)=>
       '<div class="tit-secao" id="pv-'+lista+'" style="margin:0 0 6px"><h3>'+titulo+'</h3></div>'+(nota?'<p class="sub" style="margin:0 0 10px">'+nota+'</p>':'')+
-      '<div class="rolagem"><table class="pv-tab pv-contas"><colgroup><col class="c-data"><col><col class="c-val"><col class="c-val"><col class="c-acao"></colgroup>'+
-      '<thead><tr>'+[["data","Data",""],["d","Detalhes",""],["aPagar","A pagar","n"],["pago","Pago","n"]].map(([k,r,c])=>{
+      '<div class="rolagem"><table class="pv-tab pv-contas"><colgroup><col class="c-data"><col><col class="c-tipo"><col class="c-val"><col class="c-val"><col class="c-acao"></colgroup>'+
+      '<thead><tr>'+[["data","Data",""],["d","Detalhes",""],["tipo","Tipo",""],["aPagar","A pagar","n"],["pago","Pago","n"]].map(([k,r,c])=>{
         const o=ordPrev(lista), on=o.k===k;
         return '<th class="pv-ord'+(c?" "+c:"")+(on?" on":"")+'" data-pvsort="'+lista+':'+k+'" title="Ordenar por '+r.toLowerCase()+'">'+r+
           '<span class="seta">'+(on?(o.dir>0?" ↑":" ↓"):" ↕")+'</span></th>'; }).join("")+'<th></th></tr></thead><tbody>'+
@@ -4444,6 +4453,8 @@
           '<td class="acao"><button class="pv-pagar" data-precebe="'+lista+':'+i+'" title="'+(x.recebido?"Ainda não recebido (volta para a soma)":"Marcar como recebido (sai da soma)")+'">'+(x.recebido?"↺":"✓")+'</button>'+
           '<button class="apagar" data-pdel="'+lista+':'+i+'" aria-label="Apagar">×</button></td></tr>'; }).join("")+
       '</tbody></table><button class="ver-mais" data-padd="'+lista+'">+ Adicionar</button>';
+    const fixVar=()=>{ const sm=tp=>cent(p.itens.reduce((a,x)=>a+(tipoPrev(x)===tp&&x.aPagar<0?-x.aPagar:0),0));
+      return 'fixos R$ '+brl(sm("fixo"))+' · <span style="color:#1F4E8C">variáveis R$ '+brl(sm("var"))+'</span>'; };
     const t=totaisPrev(p,ui.prevMes), recFx=receitasFluxo(ui.prevMes);
     const receitasHTML = recFx
       ? '<div class="tit-secao" id="pv-receitas" style="margin:26px 0 6px"><h3>Receitas esperadas</h3></div>'+
@@ -4476,6 +4487,7 @@
           '<div class="pv-l"><span>A receber</span><b id="pvReceber" style="color:#1E8A5F">'+brlS(t.receber)+'</b></div>'+
           '<div class="pv-l"><span>Anotações</span><b id="pvOutras" style="color:'+(t.outras<0?"#C0392B":"#1E8A5F")+'">'+brlS(t.outras)+'</b></div>'+
           '<div class="pv-l"><span>A pagar</span><b id="pvAPagar">'+brl(t.aPagar)+'</b></div>'+
+          '<p class="sub" id="pvFV" style="margin:-4px 0 6px;text-align:right">'+fixVar()+'</p>'+
           '<div class="pv-tot"><span id="pvRot">'+(t.resultado<0?"Déficit":"Superávit")+'</span>'+
             '<b id="pvRes" style="color:'+(t.resultado<0?"#C0392B":"#1E8A5F")+'">R$ '+brl(t.resultado)+'</b></div>'+
           '<p class="sub" style="margin-top:8px">Saldo em conta + a receber + anotações − a pagar. O ✓ numa receita marca como recebida e tira da soma (o dinheiro já está no saldo).</p>'+
@@ -4486,7 +4498,7 @@
       '</aside></div>';
 
     const atualizar=()=>{
-      const t=totaisPrev(p,ui.prevMes);
+      const t=totaisPrev(p,ui.prevMes); $("#pvFV").innerHTML=fixVar();
       $("#pvAPagar").textContent=brl(t.aPagar); $("#pvReceber").textContent=brlS(t.receber);
       $("#pvOutras").textContent=brlS(t.outras); $("#pvOutras").style.color=t.outras<0?"#C0392B":"#1E8A5F";
       $("#pvRot").textContent=t.resultado<0?"Déficit":"Superávit";
@@ -4503,6 +4515,7 @@
       }
       else{
         const x=p[lista][+el.dataset.i];
+        if(k==="tipo"){ if(x.media==null){ if(el.value==="var") x.tipo="var"; else delete x.tipo; } salvar(); renderPrevisao(); return; }
         if(k==="d"||k==="data") x[k]=el.value;
         else if(k==="aPagar"&&x.media!=null){ x.media=cent((x.pago||0)+(n==null?0:Math.abs(n))); x.aPagar=n==null||!Math.abs(n)?null:-Math.abs(n); }
         else if(k==="aPagar"){ x.aPagar = n==null?null : (/^\+/.test(txt)?Math.abs(n):-Math.abs(n)); }
