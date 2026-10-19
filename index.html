@@ -916,6 +916,11 @@
   tr.pv-vencida td:first-child{box-shadow:inset 4px 0 0 #DC2626}
   tr.pv-vencida input[data-k="d"]{color:#B42318;font-weight:600}
   tr.pv-hoje td:first-child{box-shadow:inset 4px 0 0 #D97706}
+  tr.pv-media td{background:#EEF4FB!important}
+  tr.pv-media td:first-child{box-shadow:inset 4px 0 0 #3B6FB6}
+  tr.pv-media input{color:#1F4E8C}
+  tr.pv-media input[data-k="pago"]{cursor:default}
+  .pv-leg-media{display:inline-block;width:10px;height:10px;background:#EEF4FB;border-left:3px solid #3B6FB6;margin-right:4px;vertical-align:middle}
   .selo-venc{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:999px;margin-left:6px;vertical-align:1px}
   .selo-venc.v{background:#FEE2E2;color:#B42318}.selo-venc.h{background:#FEF3C7;color:#92400E}
   .selo-agend{color:var(--alerta);font-weight:600}
@@ -1024,7 +1029,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 20;
+  const BUILD = 21;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -1751,6 +1756,11 @@
         if(x.pago!=null||x.aPagar==null||!(+x.aPagar)||ehLinhaCheque(x)||x.origem==="cartao") return;
         if(i===1&&!x.ext) return;
         if(x.ext) exts.add(x.ext);
+        // gasto médio (supermercado, padaria…): o que falta é distribuído pelos dias que restam no mês
+        if(x.media!=null){ const fim=fimDoMes(ym); let d0=ym+"-01"; if(d0<=hj) d0=somaDias(hj,1);
+          const ds=[]; for(let d=d0; d<=fim; d=somaDias(d,1)) ds.push(d);
+          if(!ds.length) ds.push(somaDias(hj,1));
+          ds.forEach(d=>add(d,+x.aPagar/ds.length)); return; }
         const d=/^\d{4}-\d{2}-\d{2}$/.test(x.data||"")?x.data:(i===0?fimDoMes(ym):null);
         if(d) add(d,+x.aPagar);
       });
@@ -2385,6 +2395,51 @@
       } else if(x&&x.auto===cq.auto&&x.aPagar!=null){
         x.pago=cent((x.pago||0)+Math.abs(x.aPagar)); x.aPagar=null; x.saldoData=s?s.data:null; mudou=true;
       }
+    });
+    return mudou;
+  }
+  /* Gastos que se repetem todo mês e não estão na previsão: entram como linha "média" (cor própria).
+     Recorrente = categoria com gasto (conta e dinheiro; compras no cartão já estão na fatura) em cada um dos 3 meses fechados
+     anteriores. A linha guarda o total do mês (x.media, ajustável); no mês atual o Pago acompanha o gasto real da categoria
+     e o A pagar é o que falta (média − gasto). Apagar a linha = não sugerir de novo nesse mês. */
+  const MEDIA_FORA = new Set(["IOF e taxas","Empréstimo recebido","Sem categoria"]);
+  const somaMesAnt = (ym,k) => { let [a,m]=ym.split("-").map(Number); m-=k; while(m<1){m+=12;a--;} return a+"-"+String(m).padStart(2,"0"); };
+  const lancMedia = l => !l.ignorado && l.valor<0 && l.origem!=="cartao" && ehMov(l) && !MEDIA_FORA.has(l.categoria) &&
+    GRUPO_DE[l.categoria] && GRUPO_DE[l.categoria]!=="Receitas" && GRUPO_DE[l.categoria]!=="Fora dos cálculos";
+  function gastosRecorrentes(){
+    const ref=[1,2,3].map(k=>somaMesAnt(mesAtual(),k)), por={};
+    dados.lancamentos.forEach(l=>{
+      const ym=(l.data||"").slice(0,7), k=ref.indexOf(ym); if(k<0||!lancMedia(l)) return;
+      const c=por[l.categoria]||(por[l.categoria]={v:[0,0,0],dias:[]}); c.v[k]+=-l.valor; c.dias.push(+l.data.slice(8));
+    });
+    return Object.keys(por).filter(c=>por[c].v.every(v=>v>0.005)).map(c=>{
+      const ds=por[c].dias.sort((a,b)=>a-b);
+      return {cat:c, media:Math.round(por[c].v.reduce((a,b)=>a+b,0)/3), dia:ds[Math.floor(ds.length/2)], de:ref[2], ate:ref[0]};
+    }).filter(r=>r.media>=20);
+  }
+  const gastoCatMes = (cat,ym) => cent(dados.lancamentos.reduce((s,l)=>s+(l.categoria===cat&&(l.data||"").slice(0,7)===ym&&realizado(l)&&lancMedia(l)?-l.valor:0),0));
+  function syncMediasPrev(){
+    const hj=mesAtual(); let mudou=false, rec=null;
+    Object.keys(dados.previsoes||{}).filter(ym=>ym>=hj).forEach(ym=>{
+      const p=dados.previsoes[ym]; p.itens=p.itens||[];
+      rec=rec||gastosRecorrentes();
+      const ign=p.mediaIgnorar||[], todas=p.itens.concat(p.fixos||[]);
+      const tem=c=>todas.some(x=>x.media!=null?x.cat===c:(catRotulo(x.d||"")===c||normTxt(x.d).includes(normTxt(c))));
+      rec.forEach(r=>{
+        if(ign.includes(r.cat)||tem(r.cat)) return;
+        const [a,m]=ym.split("-").map(Number), dias=new Date(a,m,0).getDate();
+        p.itens.push({data:ym+"-"+String(Math.min(r.dia||15,dias)).padStart(2,"0"), d:r.cat+" (média)", cat:r.cat, media:r.media,
+          mediaBase:r.media, mediaRef:r.de+"|"+r.ate, aPagar:-r.media, pago:null});
+        mudou=true;
+      });
+      // mês atual: Pago = gasto real da categoria; A pagar = o que falta da média
+      p.itens.forEach(x=>{
+        if(x.media==null) return;
+        const g=ym===hj?gastoCatMes(x.cat,ym):0, falta=cent(Math.max(0,x.media-g));
+        const ap=falta>0.005?-falta:null, pg=g>0.005?g:null;
+        if(x.aPagar!==ap||x.pago!==pg){ x.aPagar=ap; x.pago=pg; mudou=true; }
+      });
+      if(mudou) ordenarPrev(p);
     });
     return mudou;
   }
@@ -4300,7 +4355,9 @@
     const [a,m]=ym.split("-").map(Number), dias=new Date(a,m,0).getDate();
     const mover=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||"")?ym+"-"+String(Math.min(+d.slice(8),dias)).padStart(2,"0"):"";
     // copia as linhas do último mês: o que foi pago vira previsto; nada marcado como pago
-    const copia=l=>(l||[]).map(x=>({data:mover(x.data), d:x.d, aPagar:x.aPagar!=null?x.aPagar:(x.pago?-x.pago:null), pago:null}));
+    const copia=l=>(l||[]).map(x=>x.media!=null
+      ? {data:mover(x.data), d:x.d, cat:x.cat, media:x.mediaBase!=null?x.mediaBase:x.media, mediaBase:x.mediaBase, mediaRef:x.mediaRef, aPagar:-(x.mediaBase!=null?x.mediaBase:x.media), pago:null}
+      : {data:mover(x.data), d:x.d, aPagar:x.aPagar!=null?x.aPagar:(x.pago?-x.pago:null), pago:null});
     const novo={aba:"criado no app", saldo:0, fixos:copia(base&&base.fixos), itens:copia(base&&base.itens),
       receitas:(base?base.receitas:[]).map(r=>({d:r.d, v:r.v})), notas:[]};
     // agendamentos que o extrato já trouxe para o mês de destino continuam (ligam à linha de mesmo valor)
@@ -4334,7 +4391,17 @@
       const at=k=>' data-pv="'+lista+'" data-i="'+i+'" data-k="'+k+'" data-foco="'+lista+':'+i+':'+k+'"';
       // conta em aberto: vencida (vermelho) ou vencendo em até 3 dias (âmbar)
       const hj=hojeISO(), d3=new Date(hj+"T12:00:00"); d3.setDate(d3.getDate()+3);
-      const aberto=x.aPagar!=null&&x.aPagar<0&&x.data, venc=aberto&&x.data<hj, logo=aberto&&!venc&&x.data<=d3.toISOString().slice(0,10);
+      const aberto=x.media==null&&x.aPagar!=null&&x.aPagar<0&&x.data, venc=aberto&&x.data<hj, logo=aberto&&!venc&&x.data<=d3.toISOString().slice(0,10);
+      const ttMedia=x.media!=null?(()=>{ const r=(x.mediaRef||"").split("|");
+        return 'Gasto que se repete todo mês e não estava na previsão. Média de '+(r[0]?rotuloMes(r[0])+' a '+rotuloMes(r[1]):'3 meses')+': R$ '+brl(x.mediaBase!=null?x.mediaBase:x.media)+
+          ' · previsto para o mês: R$ '+brl(x.media)+(x.pago?' · já gasto: R$ '+brl(x.pago):'')+'. Digite em A pagar quanto ainda falta gastar para ajustar.'; })():'';
+      if(x.media!=null) return '<tr class="pv-media" title="'+esc(ttMedia)+'">'+
+        '<td><input type="date" class="campo"'+at("data")+' value="'+esc(x.data||"")+'" aria-label="Data"></td>'+
+        '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes"></td>'+
+        '<td class="valor"><input class="campo"'+at("aPagar")+' value="'+val(x.aPagar,true)+'" placeholder="—" inputmode="decimal" aria-label="A pagar (média ajustável)"></td>'+
+        '<td class="valor"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês" title="Gasto real da categoria no mês (pelos lançamentos)"></td>'+
+        '<td class="acao">'+(x.aPagar!=null?'<button class="pv-pagar" data-ppagar="'+lista+':'+i+'" title="Encerrar: não falta mais nada deste gasto no mês">✓</button>':'')+
+          '<button class="apagar" data-pdel="'+lista+':'+i+'" title="Apagar e não sugerir de novo neste mês" aria-label="Apagar linha">×</button></td></tr>';
       return '<tr'+(venc?' class="pv-vencida" title="Vencida e ainda em aberto"':logo?' class="pv-hoje" title="Vence em até 3 dias"':'')+'>'+
         '<td><input type="date" class="campo"'+at("data")+' value="'+esc(x.data||"")+'" aria-label="Data"></td>'+
         '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes"></td>'+
@@ -4395,6 +4462,8 @@
         'O ✓ move o valor para <b>Pago</b>. Importar a planilha de novo substitui os meses que estiverem nela.</p>'+
       '<div class="pv-grid"><div>'+
         tabela("itens","Contas a pagar")+
+        (p.itens.some(x=>x.media!=null)?'<p class="sub" style="margin:4px 0 0;font-size:12px"><span class="pv-leg-media"></span>Linhas em azul: gastos que se repetem todo mês e não estavam na previsão, pela média dos 3 últimos meses (conta e dinheiro; o cartão já está na fatura). '+
+          'Digite em <b>A pagar</b> quanto ainda falta gastar; no mês atual o <b>Pago</b> acompanha o gasto real. O × tira a sugestão deste mês.</p>':'')+
         '<div style="height:30px"></div>'+
         tabela("fixos","Separado no início do mês","Transferências fixas — não entram no “a pagar” (como as linhas 3 a 9 da planilha).")+
       '</div><aside class="pv-lado">'+
@@ -4435,6 +4504,7 @@
       else{
         const x=p[lista][+el.dataset.i];
         if(k==="d"||k==="data") x[k]=el.value;
+        else if(k==="aPagar"&&x.media!=null){ x.media=cent((x.pago||0)+(n==null?0:Math.abs(n))); x.aPagar=n==null||!Math.abs(n)?null:-Math.abs(n); }
         else if(k==="aPagar"){ x.aPagar = n==null?null : (/^\+/.test(txt)?Math.abs(n):-Math.abs(n)); }
         else if(k==="pago"){ x.pago = n==null?null:Math.abs(n); el.value=val(x.pago); }
         else if(k==="v"){ x.v=n; el.value=val(x.v); }
@@ -4464,10 +4534,13 @@
         return;
       }
       const del=e.target.closest("[data-pdel]");
-      if(del){ const [l,i]=del.dataset.pdel.split(":"); p[l].splice(+i,1); salvar(); renderPrevisao(); return; }
+      if(del){ const [l,i]=del.dataset.pdel.split(":"), x=p[l][+i];
+        if(x&&x.media!=null&&x.cat){ p.mediaIgnorar=p.mediaIgnorar||[]; if(!p.mediaIgnorar.includes(x.cat)) p.mediaIgnorar.push(x.cat); }
+        p[l].splice(+i,1); salvar(); renderPrevisao(); return; }
       const pg=e.target.closest("[data-ppagar]");
       if(pg){
         const [l,i]=pg.dataset.ppagar.split(":"), x=p[l][+i];
+        if(x.media!=null){ x.media=cent(x.pago||0); x.aPagar=null; salvar(); renderPrevisao(); avisar(x.d+": encerrado no mês."); return; }
         x.pago=Math.round(((x.pago||0)+Math.abs(x.aPagar))*100)/100; x.aPagar=null;
         salvar(); renderPrevisao(); avisar(x.d+" marcado como pago."); return;
       }
@@ -6876,7 +6949,7 @@
     corpo.classList.toggle("largo", ui.conta==="fluxo"||ui.conta==="fluxoreal");
     if(ui.conta!=="fluxo"&&ui.conta!=="fluxoreal") ui.fxScroll=null;
     marcarConta();
-    if(syncChequePrev()) salvar();
+    if(syncChequePrev()|syncMediasPrev()) salvar();
     if(ui.conta==="dash"){ renderDashboard(); return; }
     if(ui.conta==="dividas"){ renderDividas(); return; }
     if(ui.conta==="prev"){ renderPrevisao(); return; }
