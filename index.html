@@ -1800,15 +1800,17 @@
     const TAXA_CHEQUE={itau:0.08, bb:0.0798, santander:0.08}, IOF_ADIC_TROCA=0.0038;
     // regra: cobrir NO 10º dia — o banco pode ficar negativo no máximo 9 dias do ciclo. Se passar, o banco cobra juros
     // do PERÍODO INTEIRO do ciclo (todos os dias negativos), não só dos dias a mais.
-    function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0, custoJ=0; const cic={};
+    // o Itaú tem que ser coberto até o 10º dia (decisão do Solano): passar dele só se não houver outro jeito
+    const PENAL_ITAU=1e5;
+    function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0, custoJ=0, pen=0; const cic={};
       for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue;
         const k=o+"|"+inicioCiclo(o,d), antes=v[k]||0; v[k]=antes+1;
         // v[k+"!"] marca o ciclo que já passou do limite neste plano (não cobra duas vezes)
         const c=cic[k]||(cic[k]={soma:0, ant:antes, cobrado:!!v[k+"!"]}); const dia=falta(d)*TAXA_CHEQUE[o]/30; c.soma+=dia;
         if(c.cobrado){ juros++; custoJ+=dia; }
-        else if(v[k]>=DIAS_CHEQUE&&!(v[k]===DIAS_CHEQUE&&fimDeCiclo(o,d))){ c.cobrado=true; v[k+"!"]=1; juros+=v[k]; custoJ+=c.soma+c.ant*dia; }   // dias anteriores do ciclo estimados pelo valor de hoje
+        else if(v[k]>=DIAS_CHEQUE&&!(v[k]===DIAS_CHEQUE&&fimDeCiclo(o,d))){ c.cobrado=true; v[k+"!"]=1; juros+=v[k]; custoJ+=c.soma+c.ant*dia; if(o==="itau") pen+=PENAL_ITAU; }   // dias anteriores do ciclo estimados pelo valor de hoje
       }
-      return {u:v, juros:juros, custoJ:custoJ}; }
+      return {u:v, juros:juros, custoJ:custoJ, pen:pen}; }
     const BANCOS=["itau","bb","santander"];
     // procura a sequência de bancos com o MENOR CUSTO até o salário: juros dos dias além do 10º + 0,38% de IOF a cada troca
     // (uma troca a mais só compensa se evitar ~1,5 dia de juros). Troca só em dia útil; memoriza cada estado (banco, dia, dias usados).
@@ -1819,19 +1821,19 @@
       const k=o+"|"+de+"|"+BANCOS.map(x=>{ const c0=inicioCiclo(x,de); return Object.keys(u).filter(y=>y.startsWith(x+"|")&&y.slice(x.length+1)>=c0&&u[y]).sort().map(y=>y.slice(x.length+1)+"="+u[y]).join(";"); }).join("/");
       if(memo.has(k)) return memo.get(k);
       const p=prazo(u,o,de), mFim=marca(u,o,de,sal);
-      let best={juros:mFim.juros, custo:mFim.custoJ, fases:[{o:o,de:de,ate:sal,salario:true,juros:mFim.juros,custoJ:mFim.custoJ,decimo:p.decimo}]};
+      let best={juros:mFim.juros, custo:mFim.custoJ+mFim.pen, fases:[{o:o,de:de,ate:sal,salario:true,juros:mFim.juros,custoJ:mFim.custoJ,decimo:p.decimo}]};
       if(mFim.juros>0){
         // até quando vale a pena esperar para trocar: o 10º dia deste banco ou o 1º dia útil de renovação de outro banco
         let L=p.decimo; BANCOS.forEach(x=>{ if(x!==o){ const r=proxRenova(x,de); if(r>L) L=r; } });
         for(let c=somaDias(de,1); c<sal&&c<=L; c=somaDias(c,1)){
           if(!pixOk(c)) continue;
           const m=marca(u,o,de,c);
-          if(m.custoJ>best.custo) break;
+          if(m.custoJ+m.pen>best.custo) break;
           BANCOS.forEach(x=>{
             if(x===o) return;
             const px=prazo(m.u,x,c); if(px.cobre<=c&&px.decimo<sal) return;
             const troca=falta(c)*IOF_ADIC_TROCA;
-            const r=resolve(x,c,m.u), cand={juros:m.juros+r.juros, custo:m.custoJ+troca+r.custo, fases:[{o:o,de:de,ate:c,decimo:p.decimo,prox:x,juros:m.juros,custoJ:m.custoJ}].concat(r.fases)};
+            const r=resolve(x,c,m.u), cand={juros:m.juros+r.juros, custo:m.custoJ+m.pen+troca+r.custo, fases:[{o:o,de:de,ate:c,decimo:p.decimo,prox:x,juros:m.juros,custoJ:m.custoJ}].concat(r.fases)};
             if(melhorQue(cand,best)) best=cand;
           });
         }
@@ -1863,6 +1865,11 @@
       for(let d=f.desde||f.de; d<f.ate; d=somaDias(d,1)){ if(!conta(f.o,d)) continue; const v=f.o==="itau"?falta(d):carga; soma+=v; max=Math.max(max,v); }
       return cent(max*IOF_ADIC+soma*IOF_DIA);
     }
+    // IOF de cada fase separado pelo mês em que foi gerado (o banco debita o IOF do mês no 2º dia útil do mês seguinte)
+    function iofMes(f,carga){ const m={}; let max=0, mMax=null;
+      for(let d=f.desde||f.de; d<f.ate; d=somaDias(d,1)){ if(!conta(f.o,d)) continue; const v=f.o==="itau"?falta(d):carga, ym=d.slice(0,7);
+        m[ym]=(m[ym]||0)+v*IOF_DIA; if(v>max){ max=v; mMax=ym; } }
+      if(mMax) m[mMax]+=max*IOF_ADIC; return m; }
     const fases=melhor?melhor.fases:[]; let divida=dono?dev[dono]:0;
     // valor do Pix digitado na janela da estratégia (substitui o calculado); o IOF é recalculado sobre ele
     const ov=dados.estValor||{}, chaveTr=f=>f.salario?sal+"|sal|"+f.o:f.ate+"|"+f.prox+"|"+(f.o==="itau"||f.inicio?"itau":f.o);
@@ -1870,7 +1877,7 @@
     const iofSobre=(v,n)=>cent(v*IOF_ADIC+v*IOF_DIA*n);
     fases.forEach((f,i)=>{
       f.chave=chaveTr(f); const V=ov[f.chave]!=null&&ov[f.chave]!==""?+ov[f.chave]:null; f.editado=V!=null;
-      f.iof=f.inicio?0:iofFase(f,divida);
+      f.iof=f.inicio?0:iofFase(f,divida); f.iofM=f.inicio?{}:iofMes(f,divida);
       if(f.salario){
         if(V!=null){ f.iof=iofSobre(V,diasNeg(f)); f.zera=cent(V+f.iof); }
         else f.zera=cent((f.o==="itau"?falta(somaDias(sal,-1)):divida)+f.iof);
@@ -1912,17 +1919,29 @@
         if(f.reforco) tr.push({d:f.ate, de:f.prox, para:"itau", v:f.reforco, iof:0, obs:"gastos do Itaú até a próxima troca"});
       }
     });
+    // débito do IOF: Itaú pelo contrato ("O IOF será debitado no segundo dia útil do mês subsequente à utilização do Limite");
+    // BB e Santander pela mesma regra, estimada. O valor já vai junto no Pix que cobre a conta: deixe-o lá até a data do débito.
+    const diaUtilN=(ym,n)=>{ let d=ym+"-01", k=0; for(let i=0;i<40;i++,d=somaDias(d,1)) if(diaUtil(d)&&++k===n) return d; return d; };
+    const ymSeg=ym=>{ let [a,m]=ym.split("-").map(Number); if(++m>12){ m=1; a++; } return a+"-"+String(m).padStart(2,"0"); };
+    const MESES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"], iofDeb={};
+    fases.forEach(f=>{ if(!f.iof) return; const m=f.iofM||{}, tot=Object.values(m).reduce((a,b)=>a+b,0);
+      if(tot>0) Object.keys(m).forEach(ym=>{ const k=f.o+"|"+ym; iofDeb[k]=(iofDeb[k]||0)+f.iof*m[ym]/tot; });
+      else { const k=f.o+"|"+somaDias(f.ate,-1).slice(0,7); iofDeb[k]=(iofDeb[k]||0)+f.iof; } });
+    Object.keys(iofDeb).forEach(k=>{ const [o,ym]=k.split("|"), v=cent(iofDeb[k]); if(v<0.01) return; const d=diaUtilN(ymSeg(ym),2);
+      tr.push({d:d, de:"iof", para:o, v:v, iof:0, obs:"IOF de "+MESES[+ym.slice(5)-1]+" debitado no 2º dia útil"+(o==="itau"?" (contrato Itaú)":" (estimado)")+
+        " · já vai no Pix; deixe R$ "+brl(v)+" no "+NOME[o]+" até "+diaMes(d)+" para não ficar negativo"}); });
+    tr.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
     const jurosTot=fases.reduce((t,f)=>t+(f.juros||0),0), jurosR$=cent(fases.reduce((t,f)=>t+(f.custoJ||0),0));
-    const prox=tr.find(t=>t.de!=="sal"&&t.de!=="entra"&&t.d>=hj), entra=tr.find(t=>t.de==="entra"&&t.d>=hj);
+    const proxIof=tr.find(t=>t.de==="iof"&&t.d>=hj), prox=tr.find(t=>t.de!=="sal"&&t.de!=="entra"&&t.de!=="iof"&&t.d>=hj), entra=tr.find(t=>t.de==="entra"&&t.d>=hj);
     const nomeDe=t=>t.de==="sal"?"Salário":t.de==="entra"?"entra no cheque":NOME[t.de];
     const card='<section class="bancos est-card clic-card" data-abrir-est="1" role="button" tabindex="0" title="Ver a estratégia completa">'+
       '<div class="est-l"><span class="bc-n">10 dias sem juros</span>'+
         (prox?'<b>'+diaSem(prox.d)+' · '+nomeDe(prox)+' → '+NOME[prox.para]+' · R$ '+brl(cent(prox.v+prox.iof))+'</b><span class="kpi-sub">próximo Pix'+(entra?' · '+NOME[entra.para]+' entra no cheque em '+diaMes(entra.d)+' (R$ '+brl(entra.v)+')':'')+'</span>'
              :'<b>Salário em '+diaSem(sal)+'</b>')+'</div>'+
-      '<div class="est-l"><span class="kpi-sub">até o salário ('+diaSem(sal)+')</span><b>'+tr.filter(t=>t.de!=="sal"&&t.de!=="entra").length+' Pix · IOF R$ '+brl(iofTotal)+'</b>'+
+      '<div class="est-l"><span class="kpi-sub">até o salário ('+diaSem(sal)+')'+(proxIof?' · IOF do '+NOME[proxIof.para]+' cai em '+diaMes(proxIof.d)+' (R$ '+brl(proxIof.v)+')':'')+'</span><b>'+tr.filter(t=>t.de!=="sal"&&t.de!=="entra"&&t.de!=="iof").length+' Pix · IOF R$ '+brl(iofTotal)+'</b>'+
         '<span class="kpi-sub" style="color:'+(jurosTot?'#C0392B':'#1E8A5F')+'">'+(jurosTot?jurosTot+' dia'+(jurosTot===1?'':'s')+' com juros (~R$ '+brl(jurosR$)+')':'sem juros')+' · custo ~R$ '+brl(cent(iofTotal+jurosR$))+'</span></div>'+
       '<span class="est-ver">Ver estratégia ›</span></section>';
-    const lin=tr.map(t=>'<tr'+(t.d<hj?' class="est-passou"':'')+'><td>'+diaSem(t.d)+'</td><td>'+(t.de==="entra"?'<b>'+NOME[t.para]+' entra no cheque especial</b>':nomeDe(t)+' → '+NOME[t.para])+'</td>'+
+    const lin=tr.map(t=>'<tr'+(t.d<hj?' class="est-passou"':'')+'><td>'+diaSem(t.d)+'</td><td>'+(t.de==="entra"?'<b>'+NOME[t.para]+' entra no cheque especial</b>':t.de==="iof"?'<b>IOF debitado no '+NOME[t.para]+'</b>':nomeDe(t)+' → '+NOME[t.para])+'</td>'+
       '<td class="n">'+(t.k?'<input class="campo est-v'+(t.ed?' ed':'')+'" data-est-v="'+esc(t.k)+'" value="'+brl(t.v)+'" inputmode="decimal" title="Digite o valor do Pix; vazio volta ao calculado">':brl(t.v))+'</td><td class="n">'+(t.iof?brl(t.iof):'—')+'</td><td class="n"><b>'+brl(cent(t.v+t.iof))+'</b></td><td class="o">'+esc(t.obs)+'</td></tr>').join("");
     const sv=tr.reduce((a,t)=>a+t.v,0), si=tr.reduce((a,t)=>a+t.iof,0);
     const detalhe='<h3 class="modal-tit">10 dias sem juros — estratégia até o salário</h3>'+
@@ -1939,7 +1958,7 @@
       (bb&&bb.v>0?'<label class="bc-aj" style="margin-top:10px">Saldo do BB (R$ '+brl(bb.v)+') pode ser usado até <input class="campo" type="date" data-livre-ate="bb" value="'+esc(livreAte)+'" style="width:auto"> (vazio = não usar)</label>':'')+
       '<p class="sub" style="margin:8px 0 0;font-size:12px">O valor do Pix pode ser digitado (fundo amarelo = digitado; apague para voltar ao calculado). Estimativa com o saldo de hoje, agendamentos e contas em aberto da previsão deste mês. IOF: 0,0082% ao dia + 0,38% sobre o valor usado (já no Total). Cada troca de banco gera de novo o IOF adicional de 0,38%; passar dos 10 dias faz o banco cobrar juros do período inteiro. O plano é o de menor custo somando os dois. Confira o limite de cada banco.</p>'+
       '<div class="modal-acoes"><button class="bt" data-modal="ok">Fechar</button></div>';
-    const pix=tr.map(t=>({data:t.d, de:t.de==="sal"?"Salário":t.de==="entra"?"":NOME[t.de], para:NOME[t.para], tipo:t.de==="entra"?"entra":t.de==="sal"?"salario":"pix",
+    const pix=tr.map(t=>({data:t.d, de:t.de==="sal"?"Salário":t.de==="entra"||t.de==="iof"?"":NOME[t.de], para:NOME[t.para], tipo:t.de==="entra"?"entra":t.de==="sal"?"salario":t.de==="iof"?"iof":"pix",
       valor:cent(t.v), iof:cent(t.iof), total:cent(t.v+t.iof), obs:t.obs}));
     return {card:card, detalhe:detalhe, pix:pix};
   }
