@@ -1781,7 +1781,9 @@
     const devOut=cent(dev.bb+dev.santander);
     const falta=d=>{ const x=pj.serie.find(y=>y.d===d); return Math.max(0,cent(devOut-(x?x.s:pj.hoje))); };
     const negs=pj.serie.filter(x=>x.s-devOut<0);
-    const dono=dev.bb||dev.santander?(dev.bb>=dev.santander?"bb":"santander"):null;
+    // "dono" = banco que já carrega a dívida no lugar do Itaú (ex.: Pix do BB cobriu o Itaú). Se o Itaú ainda está negativo,
+    // o negativo do outro banco é só encargo (juros/IOF): o Itaú continua sendo quem carrega a dívida
+    const dono=pj.hoje>=0&&(dev.bb||dev.santander)?(dev.bb>=dev.santander?"bb":"santander"):null;
     if(pj.hoje-devOut>=0&&!negs.length) return {card:'<section class="bancos est-card"><div class="est-l"><span class="bc-n">10 dias sem juros</span>'+
       '<span class="kpi-sub">Pela previsão, nenhuma conta fica negativa até o salário ('+diaSem(sal)+').</span></div></section>', detalhe:""};
     const NOME={itau:"Itaú",bb:"BB",santander:"Santander"};
