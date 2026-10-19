@@ -4600,7 +4600,9 @@
     const corpo=$("#corpo");
     const cxAnt=document.querySelector("#corpo .fx-caixa");
     if(cxAnt) ui.fxScroll={l:cxAnt.scrollLeft, t:cxAnt.scrollTop};
-    const val=dados.lancamentos.filter(l=>!l.ignorado&&ehMov(l)&&realizado(l));
+    // compra de veículo e de imóveis (e seus custos) ficam fora do realizado
+    const FORA_REAL=new Set(["Veículo (compra)","Imóveis (compra e custos)"]);
+    const val=dados.lancamentos.filter(l=>!l.ignorado&&ehMov(l)&&realizado(l)&&!FORA_REAL.has(l.categoria));
     const anos=[...new Set(val.map(l=>l.data.slice(0,4)).concat([mesAtual().slice(0,4)]))].sort();
     if(!ui.fxrAno||!anos.includes(ui.fxrAno)) ui.fxrAno=mesAtual().slice(0,4);
     const ano=ui.fxrAno, ms=[];
@@ -4682,7 +4684,7 @@
       '<div class="fx-caixa" style="margin-top:14px"><table class="fx-tab"><thead><tr><th>Item</th>'+
       ms.map(m=>'<th'+(m===mA?' title="Mês em andamento: até hoje"':'')+'>'+abrevMes(m)+(m===mA?" *":"")+'</th>').join("")+'<th>Total ano</th></tr></thead><tbody>'+h+'</tbody></table></div>'+
       '<p class="nota-linha">Mesmas regras do Entrou/Gastou da Visão geral: compras do cartão contam na data da compra; pagamento de fatura, aplicações, '+
-      'transferências entre suas contas e empréstimo recebido ficam fora; estornos abatem a própria categoria; agendados ainda não entram. '+
+      'transferências entre suas contas, empréstimo recebido, compra de veículo e imóveis (compra e custos) ficam fora; estornos abatem a própria categoria; agendados ainda não entram. '+
       (ms.includes(mA)?'* mês em andamento (até hoje). ':'')+'— = mês sem lançamentos.</p>';
     const cx=corpo.querySelector(".fx-caixa");
     const ajustar=c=>{ c.style.maxHeight=Math.max(320, window.innerHeight-Math.max(c.getBoundingClientRect().top,0)-16)+"px"; };
