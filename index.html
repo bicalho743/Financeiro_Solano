@@ -1788,7 +1788,7 @@
       '<span class="kpi-sub">Pela previsão, nenhuma conta fica negativa até o salário ('+diaSem(sal)+').</span></div></section>', detalhe:""};
     const NOME={itau:"Itaú",bb:"BB",santander:"Santander",emp:"Empréstimo"};
     // empréstimo sem juros e sem IOF por alguns dias corridos (dados.emprestimo.dias): entra no plano como uma "conta" a mais,
-    // usada uma vez; pega e devolve em dia útil. Não gera IOF ao entrar; quem paga o empréstimo gera o IOF de 0,38% ao entrar no cheque.
+    // usada uma vez; pega e devolve em dia útil. Dias contados como o credor conta: do dia em que pega ao dia em que devolve, inclusive. Não gera IOF ao entrar; quem paga o empréstimo gera o IOF de 0,38% ao entrar no cheque.
     const EMP=dados.emprestimo&&+dados.emprestimo.dias>0?Math.round(+dados.emprestimo.dias):0;
     // hoje já conta nos dias usados (usoCheque): quem está negativo hoje segue a partir de amanhã
     const ini0=(dono||pj.hoje<0)?hj:negs[0].d;
@@ -1804,7 +1804,7 @@
     const bbS=saldoBanco("bb"), livreAte=(dados.livreAte||{}).bb||"", livre=bbS&&bbS.v>0&&livreAte>=hj?{o:"bb",v:bbS.v,ate:livreAte}:null;
     const conta=(o,d)=>!(livre&&o===livre.o&&d<=livre.ate&&falta(d)<=livre.v);
     function prazo(u,o,ini){
-      if(o==="emp"){ const d=somaDias(ini,EMP); let cb=d; while(!pixOk(cb)&&cb>ini) cb=somaDias(cb,-1); return {decimo:d, cobre:cb}; }
+      if(o==="emp"){ const d=somaDias(ini,EMP-1); let cb=d; while(!pixOk(cb)&&cb>ini) cb=somaDias(cb,-1); return {decimo:d, cobre:cb}; }
       const c={}; let d=ini;
       for(let i=0;i<70;i++,d=somaDias(d,1)){ if(!conta(o,d)) continue; const k=inicioCiclo(o,d); if(c[k]==null) c[k]=usa(u,o,d); if(++c[k]>=DIAS_CHEQUE&&!(c[k]===DIAS_CHEQUE&&fimDeCiclo(o,d))) break; }
       let cb=d; while(!pixOk(cb)&&cb>ini) cb=somaDias(cb,-1);
@@ -1821,7 +1821,7 @@
     const PENAL_10=1e5;
     function marca(u,o,de,ate){ const v=Object.assign({},u); let juros=0, custoJ=0, pen=0; const cic={};
       // empréstimo: sem juros; devolver depois do prazo não é permitido
-      if(o==="emp"){ v.emp=1; if(difDias(ate,de)>EMP) pen+=1e7; return {u:v, juros:0, custoJ:0, pen:pen}; }
+      if(o==="emp"){ v.emp=1; if(difDias(ate,de)+1>EMP) pen+=1e7; return {u:v, juros:0, custoJ:0, pen:pen}; }
       for(let d=de; d<ate; d=somaDias(d,1)){ if(!conta(o,d)) continue;
         const k=o+"|"+inicioCiclo(o,d), antes=v[k]||0; v[k]=antes+1;
         // v[k+"!"] marca o ciclo que já passou do limite neste plano (não cobra duas vezes)
@@ -1932,7 +1932,7 @@
         return;
       }
       const reg=f.decimo===f.ate?"10º dia":f.decimo<f.ate?"passa do 10º dia":"10º dia "+diaMes(f.decimo)+((()=>{ for(let d=somaDias(f.ate,1); d<=f.decimo; d=somaDias(d,1)) if(diaUtil(d)) return false; return true; })()?" (fim de semana/feriado)":" — troca antes: sai mais barato");
-      obs=(f.o==="emp"?"devolve o empréstimo ("+difDias(f.ate,f.de)+" de "+EMP+" dias, sem juros e sem IOF)":reg)+(obs?" · "+obs:"")+(f.prox==="emp"?" · empréstimo entra (sem IOF)":"");
+      obs=(f.o==="emp"?"devolve o empréstimo ("+(difDias(f.ate,f.de)+1)+" de "+EMP+" dias, sem juros e sem IOF)":reg)+(obs?" · "+obs:"")+(f.prox==="emp"?" · empréstimo entra (sem IOF)":"");
       if(f.o==="itau") tr.push({d:f.ate, de:f.prox, para:"itau", v:cent(f.zera-f.iof+f.reforco), iof:f.iof, k:f.chave, ed:f.editado, obs:obs+(f.reforco?" · inclui R$ "+brl(f.reforco)+" para gastos":"")});
       else {
         tr.push({d:f.ate, de:f.prox, para:f.o, v:cent(f.zera-f.iof), iof:f.iof, k:f.chave, ed:f.editado, obs:obs+(f.prox==="itau"?" · Itaú volta ao negativo":"")});
