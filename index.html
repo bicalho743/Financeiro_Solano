@@ -1670,11 +1670,21 @@
     let usados=0, ultimo=null;
     for(let d=c.ini; d<=hj; d=somaDias(d,1)){ const v=saldoEm(d); if(v!=null&&v<0){ usados++; ultimo=d; } }
     // dias usados informados à mão (Santander: o app só conhece o saldo digitado)
-    const man=(dados.chequeUsados||{})[o+"|"+c.ini]; if(man!=null&&man!=="") usados=Math.max(usados,+man);
+    // dias informados à mão valem até o dia em que foram digitados; dali em diante o app soma os dias negativos pelos saldos
+    const man=(dados.chequeUsados||{})[o+"|"+c.ini], manEm=(dados.chequeUsadosEm||{})[o+"|"+c.ini];
+    if(man!=null&&man!==""){
+      if(manEm&&manEm>=c.ini){ usados=+man; for(let d=somaDias(manEm,1); d<=hj; d=somaDias(d,1)){ const v=saldoEm(d); if(v!=null&&v<0){ usados++; ultimo=d; } } }
+      else usados=Math.max(usados,+man);
+    }
     const neg=!!(s&&s.v<0), resta=DIAS_CHEQUE-usados;
     // negativo hoje: o último dia sem juros, se continuar negativo
     const vence = neg&&resta>=0 ? somaDias(hj,resta) : null;
     return {usados:usados, resta:resta, neg:neg, ultimo:ultimo, renova:c.renova, ini:c.ini, vence:vence&&vence<c.renova?vence:null};
+  }
+  function gravaUsados(k,n){
+    dados.chequeUsados=dados.chequeUsados||{}; dados.chequeUsadosEm=dados.chequeUsadosEm||{};
+    if(n===""){ delete dados.chequeUsados[k]; delete dados.chequeUsadosEm[k]; }
+    else { dados.chequeUsados[k]=Math.max(0,Math.min(DIAS_CHEQUE,Math.round(+n)||0)); dados.chequeUsadosEm[k]=hojeISO(); }
   }
   function tagCheque(o,s){
     const u=usoCheque(o,s);
@@ -1753,7 +1763,7 @@
   function estrategiaCheque(){
     const hj=hojeISO(), sal=quintoDiaUtil(proxMes(mesAtual()));
     const pj=projecaoItau(sal);
-    const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.livreAte,dados.estValor,dados.pixFimSemana,
+    const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.chequeUsadosEm,dados.livreAte,dados.estValor,dados.pixFimSemana,
       ["itau","bb","santander"].map(o=>usoCheque(o,o==="itau"?saldoContaApp(mesAtual()):saldoBanco(o)).usados)]);
     if(cacheEst.k!==kc){ cacheEst={k:kc,r:montaEstrategia(hj,sal,pj)};
       // o plano fica salvo para o resumo do WhatsApp avisar no dia de cada Pix
@@ -1920,16 +1930,15 @@
         if(f.reforco) tr.push({d:f.ate, de:f.prox, para:"itau", v:f.reforco, iof:0, obs:"gastos do Itaú até a próxima troca"});
       }
     });
-    // débito do IOF: Itaú pelo contrato ("O IOF será debitado no segundo dia útil do mês subsequente à utilização do Limite");
-    // BB e Santander pela mesma regra, estimada. O valor já vai junto no Pix que cobre a conta: deixe-o lá até a data do débito.
+    // débito do IOF do mês: Itaú e Santander no 2º dia útil do mês seguinte; BB no 1º dia útil. O valor já vai junto no Pix que cobre a conta: deixe-o lá até a data do débito.
     const diaUtilN=(ym,n)=>{ let d=ym+"-01", k=0; for(let i=0;i<40;i++,d=somaDias(d,1)) if(diaUtil(d)&&++k===n) return d; return d; };
     const ymSeg=ym=>{ let [a,m]=ym.split("-").map(Number); if(++m>12){ m=1; a++; } return a+"-"+String(m).padStart(2,"0"); };
     const MESES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"], iofDeb={};
     fases.forEach(f=>{ if(!f.iof) return; const m=f.iofM||{}, tot=Object.values(m).reduce((a,b)=>a+b,0);
       if(tot>0) Object.keys(m).forEach(ym=>{ const k=f.o+"|"+ym; iofDeb[k]=(iofDeb[k]||0)+f.iof*m[ym]/tot; });
       else { const k=f.o+"|"+somaDias(f.ate,-1).slice(0,7); iofDeb[k]=(iofDeb[k]||0)+f.iof; } });
-    Object.keys(iofDeb).forEach(k=>{ const [o,ym]=k.split("|"), v=cent(iofDeb[k]); if(v<0.01) return; const d=diaUtilN(ymSeg(ym),2);
-      tr.push({d:d, de:"iof", para:o, v:v, iof:0, obs:"IOF de "+MESES[+ym.slice(5)-1]+" debitado no 2º dia útil"+(o==="itau"?" (contrato Itaú)":" (estimado)")+
+    Object.keys(iofDeb).forEach(k=>{ const [o,ym]=k.split("|"), v=cent(iofDeb[k]); if(v<0.01) return; const nDU=o==="bb"?1:2, d=diaUtilN(ymSeg(ym),nDU);
+      tr.push({d:d, de:"iof", para:o, v:v, iof:0, obs:"IOF de "+MESES[+ym.slice(5)-1]+" debitado no "+nDU+"º dia útil"+
         " · já vai no Pix; deixe R$ "+brl(v)+" no "+NOME[o]+" até "+diaMes(d)+" para não ficar negativo"}); });
     tr.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
     const jurosTot=fases.reduce((t,f)=>t+(f.juros||0),0), jurosR$=cent(fases.reduce((t,f)=>t+(f.custoJ||0),0));
@@ -2174,7 +2183,7 @@
       if(cu){
         const o=cu.dataset.cqUsados, k=o+"|"+cicloCheque(o).ini, n=String(cu.value).trim();
         dados.chequeUsados=dados.chequeUsados||{};
-        if(n==="") delete dados.chequeUsados[k]; else dados.chequeUsados[k]=Math.max(0,Math.min(DIAS_CHEQUE,Math.round(+n)||0));
+        gravaUsados(k,n);
         salvar(); render(); avisar("Santander: "+(dados.chequeUsados[k]||0)+" de "+DIAS_CHEQUE+" dias usados no ciclo — a estratégia foi refeita.");
         return;
       }
@@ -2914,7 +2923,34 @@
     const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
     const txt=textoLinhas(linhas);
     if(ehFaturaItauXlsx(linhas)){ importarFaturaItauXlsx(linhas,nomeArq); return; }
+    if(ehExtratoSantander(linhas)){ importarExtratoSantander(linhas); return; }
     const o=await resolverOrigem(origem,txt); if(o) concluirImport(linhasParaItens(linhas),o,txt);
+  }
+
+  /* Extrato do Santander (Excel do internet banking): "Data | Descrição | Detalhe | Valor | Saldo", do mais novo para o mais antigo.
+     Grava os saldos de fim de dia (saldosDia.santander): o app passa a saber o saldo e os dias de cheque especial do Santander.
+     Os lançamentos não entram: os Pix entre contas já estão no Itaú, e os encargos (juros/IOF) aparecem no saldo. */
+  function ehExtratoSantander(linhas){
+    const t=textoLinhas(linhas).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+    const cab=linhas.findIndex(r=>{ const c=(r||[]).map(x=>celTexto(x).toLowerCase()); return c.includes("data")&&c.includes("detalhe")&&c.includes("saldo")&&c.some(x=>/^descri/.test(x)); });
+    return cab>=0 && /EXTRATO DE CONTA CORRENTE/.test(t) && (/SANTANDER|JUROS SALDO UTILIZ|IOF ADICIONAL - AUTOMATICO/.test(t)) && !bancoDoArquivo(t);
+  }
+  function importarExtratoSantander(linhas){
+    const cab=linhas.findIndex(r=>{ const c=(r||[]).map(x=>celTexto(x).toLowerCase()); return c.includes("data")&&c.includes("saldo"); });
+    const c=linhas[cab].map(x=>celTexto(x).toLowerCase()), iD=c.indexOf("data"), iS=c.indexOf("saldo"), iV=c.findIndex(x=>/^valor/.test(x));
+    const rows=linhas.slice(cab+1).map(r=>({iso:celData(r[iD]), s:celTexto(r[iS])!==""?celNum(r[iS]):null, v:celNum(r[iV])})).filter(x=>x.iso&&x.s!=null&&!isNaN(x.s));
+    if(!rows.length){ avisar("Não encontrei saldos nesse extrato do Santander.",true); return; }
+    // saldo do fim do dia = o da última movimentação do dia (arquivo do mais novo para o mais antigo: a 1ª linha de cada dia)
+    const desc=rows[0].iso>=rows[rows.length-1].iso, fim={};
+    (desc?rows:rows.slice().reverse()).forEach(x=>{ if(fim[x.iso]==null) fim[x.iso]=x.s; });
+    const dias=Object.keys(fim).sort(), mapa=((dados.saldosDia=dados.saldosDia||{}).santander=dados.saldosDia.santander||{});
+    dias.forEach(d=>{ mapa[d]=cent(fim[d]); });
+    // saldo antes do 1º lançamento do extrato (dia anterior): saldo da linha mais antiga menos o valor dela
+    const velho=desc?rows[rows.length-1]:rows[0], dAnt=somaDias(velho.iso,-1);
+    if(mapa[dAnt]==null) mapa[dAnt]=cent(velho.s-velho.v);
+    syncChequePrev(); salvar(); render();
+    const u=dias[dias.length-1];
+    avisar("Santander: "+dias.length+" saldo"+(dias.length===1?"":"s")+" de fim de dia gravado"+(dias.length===1?"":"s")+" · saldo em "+diaMes(u)+": R$ "+brl(mapa[u]));
   }
 
   /* ---- planilha "Orçamento Solano": aba LANÇAMENTOS (histórico) e MÊS CORRENTE (previsto) ---- */
@@ -7389,7 +7425,7 @@
       if(ev){ dados.estValor=dados.estValor||{}; const t=String(ev.value).trim(), k=ev.dataset.estV;
         if(t==="") delete dados.estValor[k]; else dados.estValor[k]=cent(Math.abs(numero(t))); }
       else { const o=cq.dataset.cqUsados, k=o+"|"+cicloCheque(o).ini, n=String(cq.value).trim(); dados.chequeUsados=dados.chequeUsados||{};
-        if(n==="") delete dados.chequeUsados[k]; else dados.chequeUsados[k]=Math.max(0,Math.min(DIAS_CHEQUE,Math.round(+n)||0)); }
+        gravaUsados(k,n); }
       salvar(); render(); const cx=$("#modalCaixa"); if(cx) cx.innerHTML=detalheEstrategia();
       avisar(ev?"Valor do Pix atualizado — IOF recalculado.":"Dias do Santander atualizados — estratégia refeita."); return;
     }
