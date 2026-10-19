@@ -728,6 +728,8 @@
   .fx-tab tr.fx-t td:first-child{font-family:var(--sans);font-size:13px}
   .fx-tab tr.fx-r td{text-align:right;font-family:var(--serif);font-size:14.5px;padding:7px 6px;color:var(--cinza)}
   .fx-tab tr.fx-r td:first-child{font-family:var(--sans);font-size:12.5px}
+  .fx-tab td.fx-calc{text-align:right;font-family:var(--serif);font-size:14.5px;padding:7px 6px}
+  .fx-tab td.fx-calc[data-ir]:hover{background:var(--marfim)}
   .fx-tab td.fx-tt{font-weight:600;font-family:var(--serif);font-size:14.5px;text-align:right;padding-right:8px}
   @media (max-width:900px){.pv-grid{grid-template-columns:1fr}.pv-lado{position:static}}
   /* ---- dívidas mês a mês ---- */
@@ -973,7 +975,8 @@
     <button class="conta-tab ativa" data-conta="dash">Visão geral</button>
     <button class="conta-tab" data-conta="cpf">Lançamentos</button>
     <button class="conta-tab" data-conta="prev">Previsão do mês</button>
-    <button class="conta-tab" data-conta="fluxo">Fluxo anual</button>
+    <button class="conta-tab" data-conta="fluxo">Fluxo anual projetado</button>
+    <button class="conta-tab" data-conta="fluxoreal" title="Valores reais recebidos e gastos, mês a mês">Fluxo anual realizado</button>
     <button class="conta-tab" data-conta="dividas">Dívidas e parcelas</button>
     <button class="conta-tab" data-conta="metas">Metas e caixinhas</button>
     <button class="conta-tab" data-conta="viagens">Viagens</button>
@@ -2085,7 +2088,7 @@
         '<tr class="orc-t forte"><td>Resultado</td><td style="color:'+corDif(pR-pD)+'">'+brl(pR-pD)+'</td>'+(futuro?tr:'<td style="color:'+corDif(rR-rD)+'">'+brl(rR-rD)+'</td>')+cel((rR-rD)-(pR-pD))+'</tr>';
       return {alertas:alertas, html:
         '<div class="tit-secao" style="margin-top:36px"><h3>Previsto × realizado · '+rotuloMes(ui.mes)+'</h3></div>'+
-        '<p class="sub" style="margin:-8px 0 12px">'+(doFluxo?'O previsto vem do <b>Fluxo anual</b> — altere lá. ':'Clique no previsto para alterar. ')+'Na diferença, verde é sobra e vermelho é estouro.</p>'+
+        '<p class="sub" style="margin:-8px 0 12px">'+(doFluxo?'O previsto vem do <b>Fluxo anual projetado</b> — altere lá. ':'Clique no previsto para alterar. ')+'Na diferença, verde é sobra e vermelho é estouro.</p>'+
         '<div class="rolagem"><table class="dash-mes orc-tab"><thead><tr><th>Categoria</th><th>Previsto</th><th>Realizado</th><th>Diferença</th></tr></thead>'+
         '<tbody>'+linhas+'</tbody></table></div>'+
         '<button class="ver-mais" data-orctodas="1">'+(ui.orcTodas?"Mostrar só as categorias com valor":"Mostrar todas as categorias (para definir previsto)")+'</button>'};
@@ -2109,7 +2112,7 @@
           '<div class="g-num clic-card"'+ir({conta:"prev",mes:ui.mes,alvo:"#pv-itens",dica:"Ver as contas a pagar"})+'><span class="rot">A pagar</span><div class="v">R$ '+brl(-t.aPagar)+'</div>'+
             '<span class="kpi-sub">'+p.itens.filter(x=>x.aPagar!=null&&x.aPagar<0).length+' contas em aberto</span></div>'+
           '<div class="g-num clic-card"'+ir({conta:"prev",mes:ui.mes,alvo:"#pv-receitas",dica:"Ver as receitas esperadas"})+'><span class="rot">A receber</span><div class="v" style="color:#1E8A5F">R$ '+brl(t.receber)+'</div>'+
-            '<span class="kpi-sub">'+esc((receitasFluxo(ui.mes)?"Fluxo anual: ":"")+(receitasPrev(p,ui.mes).filter(r=>r.v).map(r=>r.d).join(" + ")||"—"))+'</span></div>'+
+            '<span class="kpi-sub">'+esc((receitasFluxo(ui.mes)?"Fluxo anual projetado: ":"")+(receitasPrev(p,ui.mes).filter(r=>r.v).map(r=>r.d).join(" + ")||"—"))+'</span></div>'+
           '<div class="g-num clic-card"'+ir({conta:"prev",mes:ui.mes,alvo:"#pv-resumo",dica:"Ver o cálculo na previsão do mês"})+'><span class="rot">'+(t.resultado<0?"Déficit":"Superávit")+'</span><div class="v" style="color:'+corDif(t.resultado)+'">R$ '+brl(t.resultado)+'</div>'+
             '<span class="kpi-sub">saldo + a receber + anotações − a pagar</span></div>'+
         '</section>'+
@@ -2122,7 +2125,7 @@
       const val=dados.lancamentos.filter(valido);
       const comPrev=!!dados.fluxo||Object.keys(dados.orcamentoMes||{}).length>0;
       let acP=0;
-      tabelaMes='<div class="tit-secao" style="margin-top:40px"><h3>'+(comPrev?"Fluxo anual — previsto × realizado":"Mês a mês")+'</h3></div>'+
+      tabelaMes='<div class="tit-secao" style="margin-top:40px"><h3>'+(comPrev?"Fluxo anual — projetado × realizado":"Mês a mês")+'</h3></div>'+
         '<div class="rolagem"><table class="dash-mes"><thead>'+
         (comPrev?'<tr><th></th><th class="grp" colspan="4">Previsto</th><th class="grp" colspan="3">Realizado</th></tr>':'')+
         '<tr><th>Mês</th>'+(comPrev?'<th>Receitas</th><th>Despesas</th><th>Resultado</th><th>Acumulado</th>':'')+
@@ -4378,8 +4381,8 @@
     const t=totaisPrev(p,ui.prevMes), recFx=receitasFluxo(ui.prevMes);
     const receitasHTML = recFx
       ? '<div class="tit-secao" id="pv-receitas" style="margin:26px 0 6px"><h3>Receitas esperadas</h3></div>'+
-        '<p class="sub" style="margin:0 0 8px">Vêm do <b>Fluxo anual</b> ('+esc(rotuloMes(ui.prevMes))+'). '+
-          '<button class="ver-mais" data-pfluxo="1" style="padding:0">Alterar no Fluxo anual →</button></p>'+
+        '<p class="sub" style="margin:0 0 8px">Vêm do <b>Fluxo anual projetado</b> ('+esc(rotuloMes(ui.prevMes))+'). '+
+          '<button class="ver-mais" data-pfluxo="1" style="padding:0">Alterar no Fluxo anual projetado →</button></p>'+
         '<table class="pv-tab"><colgroup><col><col class="c-val"><col style="width:34px"></colgroup><tbody>'+
         (recFx.length?recFx.map(x=>{ const r=recebida(p,x,true);
           return '<tr'+(r?' class="riscado" title="Recebido — fora da soma"':'')+'><td style="padding:7px 6px">'+esc(x.d)+'</td><td style="padding:7px 6px;text-align:right;font-family:var(--serif);font-size:16px;color:#1E8A5F">'+brl(x.v)+'</td>'+
@@ -4500,7 +4503,7 @@
       (fx?'<div class="fx-nav"><button data-fxnav="-1" title="Meses anteriores">◀</button><button data-fxnav="0">Mês atual</button>'+
         '<button data-fxnav="1" title="Próximos meses">▶</button></div>':'');
     if(!fx){
-      corpo.innerHTML='<div class="vazio"><p class="num">Sem fluxo anual ainda</p><p>Importe a planilha de orçamento (aba FLUXO ANUAL) '+
+      corpo.innerHTML='<div class="vazio"><p class="num">Sem fluxo anual projetado ainda</p><p>Importe a planilha de orçamento (aba FLUXO ANUAL) '+
         'ou <button class="ver-mais" data-fxzero="1" style="padding:0">comece um fluxo a partir das categorias</button>.</p></div>';
       corpo.onclick=e=>{ if(e.target.closest("[data-fxzero]")) fluxoDoZero(); };
       return;
@@ -4541,7 +4544,7 @@
     corpo.innerHTML='<div class="fx-caixa" style="margin-top:14px"><table class="fx-tab"><thead><tr><th>Item</th><th style="text-align:left">Categoria</th>'+
       ms.map(m=>'<th>'+abrevMes(m)+'</th>').join("")+'<th>Total ano</th></tr></thead><tbody>'+h+'</tbody></table></div>'+
       '<p class="nota-linha">Despesas: digite o valor normal (vira saída). Para lançar um valor positivo numa despesa, use +. '+
-      'Importar a planilha de novo substitui o fluxo anual. Para andar pelos meses use ◀ ▶, a barra de rolagem ou Shift + roda do mouse.</p>';
+      'Importar a planilha de novo substitui o fluxo anual projetado. Para andar pelos meses use ◀ ▶, a barra de rolagem ou Shift + roda do mouse.</p>';
 
     // caixa do tamanho da tela: as duas barras de rolagem ficam sempre visíveis, sem rolar a página
     const cx=corpo.querySelector(".fx-caixa");
@@ -4584,10 +4587,119 @@
       const del=e.target.closest("[data-fxdel]");
       if(del){
         const l=fx.linhas[+del.dataset.fxdel];
-        confirmar("Apagar a linha?", esc(l.rot||"(sem nome)")+" sai do fluxo anual.", "Apagar").then(ok=>{
+        confirmar("Apagar a linha?", esc(l.rot||"(sem nome)")+" sai do fluxo anual projetado.", "Apagar").then(ok=>{
           if(!ok) return; fx.linhas.splice(+del.dataset.fxdel,1); salvar(); renderFluxo(); });
       }
     };
+  }
+
+  /* ================= fluxo anual realizado (lançamentos já ocorridos) ================= */
+  // Mesmas regras do Entrou/Gastou da Visão geral: só lançamentos realizados, fora cartão-pagamento,
+  // aplicações e transferências entre contas; empréstimo recebido fica fora; estorno abate a própria categoria.
+  function renderFluxoReal(){
+    const corpo=$("#corpo");
+    const cxAnt=document.querySelector("#corpo .fx-caixa");
+    if(cxAnt) ui.fxScroll={l:cxAnt.scrollLeft, t:cxAnt.scrollTop};
+    const val=dados.lancamentos.filter(l=>!l.ignorado&&ehMov(l)&&realizado(l));
+    const anos=[...new Set(val.map(l=>l.data.slice(0,4)).concat([mesAtual().slice(0,4)]))].sort();
+    if(!ui.fxrAno||!anos.includes(ui.fxrAno)) ui.fxrAno=mesAtual().slice(0,4);
+    const ano=ui.fxrAno, ms=[];
+    for(let m=1;m<=12;m++) ms.push(ano+"-"+String(m).padStart(2,"0"));
+    $("#abas").innerHTML='<div class="periodo"><span class="sub" style="margin:0">Valores reais recebidos e gastos, mês a mês (lançamentos já ocorridos). '+
+      'Clique num valor para ver os lançamentos.</span></div>'+
+      '<div class="fx-nav">'+(anos.length>1?'<select class="campo" id="fxrAno" aria-label="Ano">'+anos.map(a=>'<option'+(a===ano?" selected":"")+'>'+a+'</option>').join("")+'</select>':'')+
+      '<button data-fxnav="-1" title="Meses anteriores">◀</button><button data-fxnav="0">Mês atual</button>'+
+      '<button data-fxnav="1" title="Próximos meses">▶</button></div>';
+    // valor líquido por categoria e mês (receita +, despesa −)
+    const porMes={}, temMes={};
+    ms.forEach(m=>{
+      const ls=val.filter(l=>l.data.slice(0,7)===m); if(!ls.length) return;
+      temMes[m]=true;
+      const x=entSai(ls), o={};
+      Object.keys(x.ent).forEach(c=>{ o[c]=(o[c]||0)+x.ent[c]; });
+      Object.keys(x.sai).forEach(c=>{ o[c]=(o[c]||0)-x.sai[c]; });
+      porMes[m]=o;
+    });
+    const v=(c,m)=>porMes[m]?(porMes[m][c]||0):0;
+    // "Sem categoria" pode ter entrada e saída no mesmo mês: separa em duas linhas
+    const semE={}, semS={};
+    ms.forEach(m=>{ if(!porMes[m]) return; const ls=val.filter(l=>l.data.slice(0,7)===m&&l.categoria==="Sem categoria");
+      semE[m]=ls.filter(l=>l.valor>0).reduce((s,l)=>s+l.valor,0); semS[m]=ls.filter(l=>l.valor<0).reduce((s,l)=>s+l.valor,0); });
+    const nC=ms.length+2, tot={rec:{},desp:{}};
+    const cel=(n,m,c,tipo)=>{
+      if(!temMes[m]) return '<td class="fx-calc" style="color:var(--linha)">—</td>';
+      if(Math.abs(n)<0.005) return '<td class="fx-calc" style="color:var(--linha)">·</td>';
+      return '<td class="fx-calc"'+ir({conta:"cpf",mes:m,tipo:tipo||"",cat:c,mov:1,dica:"Ver os lançamentos de "+c+" em "+abrevMes(m)})+
+        ' style="cursor:pointer;color:'+(n<-0.004?"var(--tinta)":"#1E8A5F")+'">'+brl(n)+'</td>';
+    };
+    let h='';
+    const bloco=(rot,lado,itens)=>{
+      // itens: [{rot, cat, f(m), tipo}]
+      const vis=itens.filter(it=>ms.some(m=>Math.abs(it.f(m))>=0.005));
+      if(!vis.length) return;
+      const sub={};
+      h+='<tr class="fx-g"><td>'+(lado==="rec"?"📥 ":"📤 ")+esc(rot.toUpperCase())+'</td><td colspan="'+(nC-1)+'"></td></tr>';
+      vis.forEach(it=>{
+        ms.forEach(m=>{ const n=it.f(m); sub[m]=(sub[m]||0)+n; tot[lado][m]=(tot[lado][m]||0)+n; });
+        h+='<tr><td style="padding:7px 8px">'+ponto(it.cat)+esc(it.rot)+'</td>'+ms.map(m=>cel(it.f(m),m,it.cat,it.tipo)).join("")+
+          '<td class="fx-tt">'+brl(ms.reduce((s,m)=>s+it.f(m),0))+'</td></tr>';
+      });
+      h+='<tr class="fx-sub"><td>▸ Subtotal '+esc(rot.toLowerCase())+'</td>'+
+        ms.map(m=>'<td>'+(temMes[m]?brl(sub[m]||0):"—")+'</td>').join("")+'<td>'+brl(ms.reduce((s,m)=>s+(sub[m]||0),0))+'</td></tr>';
+    };
+    GRUPOS.forEach(gr=>{
+      if(!gr.g||gr.g==="Fora dos cálculos") return;
+      const lado=gr.g==="Receitas"?"rec":"desp";
+      bloco(gr.g, lado, gr.cats.filter(c=>c!==CAT_EMPREST).map(c=>({rot:c, cat:c, f:m=>v(c,m)})));
+    });
+    // categorias que não estão nos grupos (nomes antigos) + sem categoria
+    const conhecidas=new Set(CATEGORIAS);
+    const outras=[...new Set(Object.keys(porMes).reduce((a,m)=>a.concat(Object.keys(porMes[m])),[]))]
+      .filter(c=>!conhecidas.has(c));
+    bloco("Outras / sem categoria","desp",
+      outras.map(c=>({rot:c, cat:c, f:m=>v(c,m)})).concat([
+        {rot:"Entradas sem categoria", cat:"Sem categoria", tipo:"e", f:m=>semE[m]||0},
+        {rot:"Saídas sem categoria", cat:"Sem categoria", tipo:"s", f:m=>semS[m]||0}]));
+    const linhaT=(rot,f,cls)=>{ let t=0, alg=false;
+      const tds=ms.map(m=>{ const n=f(m); if(n==null) return '<td style="color:var(--linha)">—</td>'; t+=n; alg=true;
+        return '<td style="color:'+(cls==="fx-r"?"var(--cinza)":n<-0.004?"#C0392B":"inherit")+'">'+brl(n)+'</td>'; }).join("");
+      return '<tr class="'+(cls||"fx-t")+'"><td>'+rot+'</td>'+tds+'<td>'+(alg?brl(t):"")+'</td></tr>'; };
+    const res=m=>temMes[m]?(tot.rec[m]||0)+(tot.desp[m]||0):null;
+    let ac=0; const acum={}; ms.forEach(m=>{ if(temMes[m]){ ac+=res(m); acum[m]=ac; } });
+    // comparação com o projetado
+    const fx=dados.fluxo, proj={};
+    if(fx) ms.forEach(m=>{ if(!fx.meses.includes(m)) return; let t=0;
+      fx.linhas.forEach(l=>{ if(l.tipo!=="g") t+=+l.v[m]||0; }); proj[m]=Math.round(t*100)/100; });
+    h+=linhaT("Total de receitas",m=>temMes[m]?(tot.rec[m]||0):null)+
+       linhaT("Total de despesas",m=>temMes[m]?(tot.desp[m]||0):null)+
+       linhaT("Resultado do mês",res)+
+       '<tr class="fx-t"><td>Resultado acumulado</td>'+ms.map(m=>'<td style="color:'+(acum[m]<-0.004?"#C0392B":"inherit")+'">'+(acum[m]!=null?brl(acum[m]):"—")+'</td>').join("")+'<td>'+brl(ac)+'</td></tr>'+
+       (fx?linhaT("Resultado projetado (Fluxo anual projetado)",m=>proj[m]!=null?proj[m]:null,"fx-r")+
+           linhaT("Diferença (realizado − projetado)",m=>temMes[m]&&proj[m]!=null?Math.round((res(m)-proj[m])*100)/100:null):"");
+    const mA=mesAtual();
+    const vazio=!Object.keys(temMes).length;
+    corpo.innerHTML=(vazio?'<div class="vazio"><p class="num">Sem lançamentos em '+ano+'</p><p>Importe os extratos e faturas para montar o fluxo realizado.</p></div>':'')+
+      '<div class="fx-caixa" style="margin-top:14px"><table class="fx-tab"><thead><tr><th>Item</th>'+
+      ms.map(m=>'<th'+(m===mA?' title="Mês em andamento: até hoje"':'')+'>'+abrevMes(m)+(m===mA?" *":"")+'</th>').join("")+'<th>Total ano</th></tr></thead><tbody>'+h+'</tbody></table></div>'+
+      '<p class="nota-linha">Mesmas regras do Entrou/Gastou da Visão geral: compras do cartão contam na data da compra; pagamento de fatura, aplicações, '+
+      'transferências entre suas contas e empréstimo recebido ficam fora; estornos abatem a própria categoria; agendados ainda não entram. '+
+      (ms.includes(mA)?'* mês em andamento (até hoje). ':'')+'— = mês sem lançamentos.</p>';
+    const cx=corpo.querySelector(".fx-caixa");
+    const ajustar=c=>{ c.style.maxHeight=Math.max(320, window.innerHeight-Math.max(c.getBoundingClientRect().top,0)-16)+"px"; };
+    ajustar(cx);
+    if(!window._fxResize){ window._fxResize=true;
+      window.addEventListener("resize",()=>{ const c=document.querySelector("#corpo .fx-caixa"); if(c) ajustar(c); }); }
+    const larguraCol=()=>{ const th=cx.querySelectorAll("thead th"); return th[1]?th[1].offsetWidth:100; };
+    const fixa=()=>{ const th=cx.querySelectorAll("thead th"); return th[0]?th[0].offsetWidth:0; };
+    const irMesAtual=suave=>{ const k=ms.indexOf(mA); const th=cx.querySelectorAll("thead th")[1+Math.max(k,0)];
+      if(th) cx.scrollTo({left:Math.max(0,th.offsetLeft-fixa()-3*larguraCol()), behavior:suave?"smooth":"auto"}); };
+    if(ui.fxScroll){ cx.scrollLeft=ui.fxScroll.l; cx.scrollTop=ui.fxScroll.t; } else irMesAtual(false);
+    $("#abas").onclick=e=>{
+      const b=e.target.closest("[data-fxnav]"); if(!b) return;
+      const d=+b.dataset.fxnav;
+      if(!d) irMesAtual(true); else cx.scrollBy({left:d*3*larguraCol(), behavior:"smooth"});
+    };
+    const sel=$("#fxrAno"); if(sel) sel.onchange=e=>{ ui.fxrAno=e.target.value; ui.fxScroll=null; renderFluxoReal(); };
   }
 
   /* ================= dívidas e parcelas (mês a mês, editável) ================= */
@@ -5116,11 +5228,11 @@
       comPrazo.map(o=>'<tr><td style="padding:7px 6px">'+esc(o.x.nome||"(sem nome)")+'</td>'+
         ms.map(m=>'<td class="fx-calc">'+(noMes(o.x,m)?brl(porMesMeta(o.x)):"")+'</td>').join("")+'</tr>').join("")+
       '<tr class="fx-t"><td>Guardar no mês</td>'+ms.map(m=>td(guardarEm(m))).join("")+'</tr>'+
-      (temFluxo?'<tr class="fx-r"><td>Sobra prevista no Fluxo anual</td>'+ms.map(m=>td(sobraFluxo(m),true)).join("")+'</tr>'+
+      (temFluxo?'<tr class="fx-r"><td>Sobra prevista no Fluxo anual projetado</td>'+ms.map(m=>td(sobraFluxo(m),true)).join("")+'</tr>'+
         '<tr class="fx-t"><td>Sobra depois das caixinhas</td>'+ms.map(m=>{ const s=sobraFluxo(m); return td(s==null?null:cent(s-guardarEm(m)),true); }).join("")+'</tr>':'')+
       '</tbody></table></div>'+
       (temFluxo?'<p class="sub">Se a sobra depois das caixinhas fica negativa, o plano não cabe no mês: estique o prazo ou baixe a prioridade de algum desejo.</p>':
-        '<p class="sub">Monte o Fluxo anual para ver se o que guardar cabe na sobra de cada mês.</p>');
+        '<p class="sub">Monte o Fluxo anual projetado para ver se o que guardar cabe na sobra de cada mês.</p>');
 
     const feitasHTML=feitas.length?'<div class="tit-secao" style="margin-top:38px"><h3>Realizadas</h3></div>'+
       '<table class="pv-tab"><colgroup><col style="width:110px"><col><col class="c-val"><col style="width:90px"></colgroup><tbody>'+
@@ -5184,7 +5296,7 @@
   // o: {conta, mes, tipo ("e"/"s"/""), mov (só o que conta no total), alvo (seletor para rolar), dica}
   function ir(o){
     let a=' data-ir="1" role="button" tabindex="0" title="'+esc(o.dica||"Ver detalhes")+'"';
-    ["conta","mes","tipo","alvo"].forEach(k=>{ if(o[k]!=null) a+=' data-ir-'+k+'="'+esc(o[k])+'"'; });
+    ["conta","mes","tipo","alvo","cat"].forEach(k=>{ if(o[k]!=null) a+=' data-ir-'+k+'="'+esc(o[k])+'"'; });
     if(o.mov) a+=' data-ir-mov="1"';
     return a;
   }
@@ -5195,6 +5307,7 @@
     if(lanc && d.irTipo!=null){
       ui.busca=""; ui.cat=""; ui.origem=""; ui.fat=""; ui.errada=""; ui.vinculo="";
       ui.tipo=d.irTipo; ui.soMov=d.irMov==="1";
+      if(d.irCat) ui.cat=d.irCat;
     }
     render();
     const alvo=d.irAlvo||(lanc?"#tabelaLanc":null);
@@ -6759,14 +6872,15 @@
 
   function render(){
     const corpo=$("#corpo"); corpo.onclick=null; corpo.onkeydown=null; corpo.onchange=null; $("#abas").onclick=null;
-    corpo.classList.toggle("largo", ui.conta==="fluxo");
-    if(ui.conta!=="fluxo") ui.fxScroll=null;
+    corpo.classList.toggle("largo", ui.conta==="fluxo"||ui.conta==="fluxoreal");
+    if(ui.conta!=="fluxo"&&ui.conta!=="fluxoreal") ui.fxScroll=null;
     marcarConta();
     if(syncChequePrev()) salvar();
     if(ui.conta==="dash"){ renderDashboard(); return; }
     if(ui.conta==="dividas"){ renderDividas(); return; }
     if(ui.conta==="prev"){ renderPrevisao(); return; }
     if(ui.conta==="fluxo"){ renderFluxo(); return; }
+    if(ui.conta==="fluxoreal"){ renderFluxoReal(); return; }
     if(ui.conta==="metas"){ renderMetas(); return; }
     if(ui.conta==="viagens"){ renderViagens(); return; }
     if(ui.conta==="ir"){ renderIR(); return; }
