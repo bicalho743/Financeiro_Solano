@@ -4997,9 +4997,11 @@
   }
   const somaMes = (lista,m) => lista.reduce((s,x)=>s+(+x.vals[m]||0),0);
   // meses a mostrar: do mês atual até o último com valor (mínimo e máximo de colunas)
-  function janelaMeses(ini, listaVals, min, max){
+  // extra: meses vazios depois do último preenchido, para dar para estender um parcelamento
+  function janelaMeses(ini, listaVals, min, max, extra){
     let ult=ini;
     listaVals.forEach(v=>Object.keys(v||{}).forEach(m=>{ if(m>ult && v[m]) ult=m; }));
+    for(let k=0;k<(extra||0);k++) ult=proxMes(ult);
     const ms=[]; let m=ini;
     while((ms.length<min||m<=ult) && ms.length<max){ ms.push(m); m=proxMes(m); }
     return ms;
@@ -5284,7 +5286,7 @@
     // 2) parcelamentos no cartão
     const ativos=[], quitados=[];
     dv.parcelas.forEach((p,i)=>{ const k=Object.keys(p.vals); (k.length===0||k.some(m=>m>=hoje&&p.vals[m])?ativos:quitados).push(i); });
-    const msP=janelaMeses(hoje, ativos.map(i=>dv.parcelas[i].vals), 12, 36);
+    const msP=janelaMeses(hoje, ativos.map(i=>dv.parcelas[i].vals), 12, 40, 3);
     const totP=m=>ativos.reduce((s,i)=>s+(dv.parcelas[i].foraTotal?0:(+dv.parcelas[i].vals[m]||0)),0);
     h+='<div class="tit-secao" id="dv-parcelas" style="margin-top:40px"><h3>Parcelamentos no cartão — mês a mês</h3></div>'+
       '<div class="rolagem"><table class="fx-tab dv-tab"><thead><tr><th>Descrição</th><th style="text-align:left">Cartão</th><th style="text-align:left">Categoria</th>'+
