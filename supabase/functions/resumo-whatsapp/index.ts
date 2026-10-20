@@ -14,6 +14,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 
+type Pix = { data: string; de: string; para: string; tipo: string; valor: number; iof: number; total: number; obs?: string };
 type Lanc = { data: string; hist: string; valor: number; categoria: string; origem?: string; doc?: string;
               tipo?: string; ignorado?: boolean };
 
@@ -139,7 +140,32 @@ function mesDoResumo(hoje: string) {
   const p = new Date(Date.UTC(a, m - 2, 1)); return p.toISOString().slice(0, 7);
 }
 
-function montarTexto(ls: Lanc[], ym: string, hoje: string, link: string | null, nLinhas: number): string {
+// ---- estratégia "10 dias sem juros" (plano salvo pelo app em dados.planoPix) ----
+const SEM = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const diaSem = (d: string) => SEM[new Date(d + "T12:00:00Z").getUTCDay()] + " " + dm(d);
+const reaisC = (v: number) => "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const amanhaDe = (d: string) => new Date(Date.parse(d + "T12:00:00Z") + 864e5).toISOString().slice(0, 10);
+function linhaPix(p: Pix): string {
+  if (p.tipo === "iof") return "Deixe " + reaisC(p.valor) + " no " + p.para + ": IOF debitado nesse dia";
+  if (p.tipo === "entra") return p.para + " entra no cheque especial (" + reaisC(p.valor) + "), sem Pix";
+  if (p.tipo === "salario") return "Salário: " + (p.para === "BB" ? "zera o negativo do BB" : "Pix do BB para zerar o " + p.para) + " — " + reaisC(p.total);
+  return "*Pix " + p.de + " → " + p.para + ": " + reaisC(p.total) + "*" + (p.iof ? " (inclui IOF " + reaisC(p.iof) + ")" : "");
+}
+function blocoCheque(plano: Pix[] | undefined, planoEm: string | undefined, hoje: string): string[] {
+  if (!plano || !plano.length) return [];
+  const amanha = amanhaDe(hoje);
+  const hojeL = plano.filter((p) => p.data === hoje), amL = plano.filter((p) => p.data === amanha);
+  const prox = plano.find((p) => p.data > amanha && (p.tipo === "pix" || p.tipo === "iof"));
+  if (!hojeL.length && !amL.length && !prox) return [];
+  const out = ["*Cheque especial · 10 dias*"];
+  if (hojeL.length) { out.push("🔔 *HOJE (" + diaSem(hoje) + ")*"); hojeL.forEach((p) => out.push("• " + linhaPix(p) + (p.obs ? "\n  _" + p.obs + "_" : ""))); }
+  if (amL.length) { out.push("Amanhã (" + diaSem(amanha) + ")"); amL.forEach((p) => out.push("• " + linhaPix(p))); }
+  if (!hojeL.some((p) => p.tipo === "pix") && prox) out.push("Próximo: " + diaSem(prox.data) + " · " + linhaPix(prox).replace(/\*/g, ""));
+  if (planoEm && planoEm < hoje) out.push("_plano de " + dm(planoEm) + ": abra o app para atualizar_");
+  return out;
+}
+
+function montarTexto(ls: Lanc[], ym: string, hoje: string, link: string | null, nLinhas: number, cheque: string[] = []): string {
   const [a, m] = ym.split("-").map(Number);
   const diasMes = new Date(a, m, 0).getDate();
   const dia = ym === hoje.slice(0, 7) ? +hoje.slice(8, 10) : diasMes;
@@ -147,6 +173,8 @@ function montarTexto(ls: Lanc[], ym: string, hoje: string, link: string | null, 
   const doMes = val.filter((l) => l.data.slice(0, 7) === ym);
   const r = entSai(doMes);
   const linhas = ["*Financeiro · " + dm(hoje) + "*"];
+  // Pix da estratégia do cheque especial vem primeiro: é o que precisa ser feito hoje
+  if (cheque.length) linhas.push("", ...cheque);
   const ult = ls.reduce((mx, l) => (l.data <= hoje && l.data > mx ? l.data : mx), "");
   if (ult) {
     const x = entSai(val.filter((l) => l.data === ult));
@@ -173,11 +201,15 @@ async function chaveLink(ym: string): Promise<string> {
   return [...sig.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function lerDados(sb: any) {
+async function lerValor(sb: any) {
   const { data, error } = await sb.from("livro_caixa").select("valor")
     .eq("user_id", Deno.env.get("LC_USER_ID")!).eq("chave", CHAVE).maybeSingle();
   if (error) throw error;
-  return data ? (data.valor.lancamentos || []) as Lanc[] : null;
+  return data ? data.valor : null;
+}
+async function lerDados(sb: any) {
+  const v = await lerValor(sb);
+  return v ? (v.lancamentos || []) as Lanc[] : null;
 }
 
 // O CallMeBot responde HTTP 200 mesmo quando falha (apikey inválida, número não ativado etc.):
@@ -217,13 +249,17 @@ Deno.serve(async (req) => {
 
     // resumo diário (agendamento)
     if (req.headers.get("x-cron-secret") !== Deno.env.get("CRON_SECRET")) return new Response("não autorizado", { status: 401 });
-    const ls = await lerDados(sb);
-    if (!ls) return new Response("sem dados", { status: 404 });
+    const valor = await lerValor(sb);
+    if (!valor) return new Response("sem dados", { status: 404 });
+    const ls = (valor.lancamentos || []) as Lanc[];
     const hoje = hojeSP(), ym = mesDoResumo(hoje);
     const nLinhas = ls.filter((l) => !l.ignorado && l.data.slice(0, 7) === ym).length;
     const link = nLinhas ? Deno.env.get("SUPABASE_URL") + "/functions/v1/resumo-whatsapp?planilha=" + ym + "&k=" + await chaveLink(ym) : null;
 
-    const texto = q.get("curto") === "1" ? "Teste do Financeiro: envio funcionando." : montarTexto(ls, ym, hoje, link, nLinhas);
+    // ?hoje=AAAA-MM-DD simula outro dia só para o bloco do cheque (teste)
+    const hojeCq = /^\d{4}-\d{2}-\d{2}$/.test(q.get("hoje") || "") ? q.get("hoje")! : hoje;
+    const cheque = blocoCheque(valor.planoPix as Pix[] | undefined, valor.planoPixEm, hojeCq);
+    const texto = q.get("curto") === "1" ? "Teste do Financeiro: envio funcionando." : montarTexto(ls, ym, hoje, link, nLinhas, cheque);
     if (q.get("teste") === "1") return new Response(texto, { headers: { "content-type": "text/plain; charset=utf-8" } });
     // envio síncrono: a resposta mostra o que o CallMeBot disse (e o cron grava isso em net._http_response)
     const resp = await enviarWhatsApp(texto);
