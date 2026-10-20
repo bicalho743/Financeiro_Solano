@@ -173,13 +173,13 @@ function montarTexto(ls: Lanc[], ym: string, hoje: string, link: string | null, 
   const doMes = val.filter((l) => l.data.slice(0, 7) === ym);
   const r = entSai(doMes);
   const linhas = ["*Financeiro · " + dm(hoje) + "*"];
-  // Pix da estratégia do cheque especial vem primeiro: é o que precisa ser feito hoje
-  if (cheque.length) linhas.push("", ...cheque);
   const ult = ls.reduce((mx, l) => (l.data <= hoje && l.data > mx ? l.data : mx), "");
   if (ult) {
     const x = entSai(val.filter((l) => l.data === ult));
     linhas.push("Último dia com lançamentos: " + dm(ult) + " — entrou " + reais(x.tE) + ", gastou " + reais(x.tS));
   }
+  // Pix da estratégia do cheque especial logo no topo: é o que precisa ser feito hoje
+  if (cheque.length) linhas.push("", ...cheque);
   const nome = MESES[m - 1].charAt(0).toUpperCase() + MESES[m - 1].slice(1);
   linhas.push("", "*" + nome + "*" + (dia < diasMes ? " (dia " + dia + " de " + diasMes + ")" : ""));
   linhas.push("Entrou " + reais(r.tE));
@@ -223,12 +223,14 @@ async function enviarWhatsApp(texto: string): Promise<string> {
   const r = await fetch(url);
   const bruto = await r.text();
   const limpo = bruto.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ").trim().slice(0, 600);
-  console.log("CallMeBot", r.status, limpo);
+    .replace(/\s+/g, " ").trim();
+  // o CallMeBot repete o texto enviado na resposta: tira esse eco para mostrar só o que ele disse
+  const fala = limpo.replace(/Text to send:[\s\S]*?(?=Message queued|Message sent|You will|ERROR|APIKey|Your Account|Your phone|$)/i, "").slice(0, 600);
+  console.log("CallMeBot", r.status, fala);
   // sucesso = "Message queued"; qualquer outra resposta é recusa
   if (!r.ok || !/queued|message sent/i.test(limpo))
-    throw new Error("CallMeBot " + r.status + ": " + limpo);
-  return limpo;
+    throw new Error("CallMeBot " + r.status + ": " + fala);
+  return fala;
 }
 
 Deno.serve(async (req) => {
