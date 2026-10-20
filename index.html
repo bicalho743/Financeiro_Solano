@@ -631,6 +631,22 @@
   .pv-tab input[type=date].campo{font-size:12.5px;color:var(--cinza);padding:4px 2px}
   .pv-tab .campo.pos{color:#1E8A5F}
   .pv-tab td.acao{text-align:right;white-space:nowrap}
+  /* blocos por grupo (mesmas cores no Fluxo anual) */
+  .pv-tab tr.pv-bloco td{background:var(--gcl);border-bottom:1px solid var(--gc);padding:8px 6px;font-size:12px}
+  .pv-tab tr.pv-bloco td:first-child{box-shadow:inset 4px 0 0 var(--gc)}
+  .pv-tab tr.pv-bloco .pv-bn{color:var(--gc);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:11.5px}
+  .pv-tab tr.pv-bloco .pv-bq{color:var(--cinza);margin-left:8px;font-size:11.5px}
+  .pv-tab tr.pv-bloco td.n{text-align:right;font-family:var(--serif);font-size:15px;font-weight:600;color:var(--gc)}
+  .pv-tab tr.pv-gl td:first-child{box-shadow:inset 4px 0 0 var(--gc)}
+  .pv-tab tr.pv-gl:hover td{background:var(--gcl)}
+  .pv-tab select.pv-gsel{display:block;font-size:10.5px;color:var(--gc);border:0;background:transparent;max-width:100%;padding:0 2px;cursor:pointer;
+    height:0;opacity:0;overflow:hidden;transition:opacity .12s}
+  .pv-tab tr.pv-gl:hover select.pv-gsel,.pv-tab tr.pv-gl:focus-within select.pv-gsel{height:auto;opacity:1}
+  .pv-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+  .pv-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--gc);background:var(--gcl);color:var(--tinta);
+    border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+  .pv-chip i{width:9px;height:9px;border-radius:50%;background:var(--gc);display:inline-block}
+  .pv-chip b{font-family:var(--serif);font-weight:600;color:var(--gc)}
   .pv-tab .apagar{opacity:.35}.pv-tab tr:hover .apagar{opacity:1}
   .pv-pagar{border:1px solid var(--linha);background:#fff;color:#1E8A5F;border-radius:50%;width:24px;height:24px;font-size:12px;line-height:1}
   .pv-pagar:hover{background:#1E8A5F;color:#fff;border-color:#1E8A5F}
@@ -726,6 +742,11 @@
   .fx-tab td.valor .campo{width:94px;text-align:right;font-family:var(--serif);font-size:14.5px}
   .fx-tab .fx-cat select{width:128px;font-size:11.5px;color:var(--cinza);padding:3px 2px}
   .fx-tab tr.fx-g td{background:var(--marfim);font-weight:600;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;padding:9px 8px}
+  .fx-tab tr.fx-g[style*="--gc"] td{background:var(--gcl);color:var(--gc);border-bottom:1px solid var(--gc)}
+  .fx-tab tr.fx-g[style*="--gc"] td:first-child{box-shadow:inset 4px 0 0 var(--gc);background:linear-gradient(var(--gcl),var(--gcl)),#fff}
+  .fx-tab tr.fx-gl td:first-child{box-shadow:inset 4px 0 0 var(--gc)}
+  .fx-tab tr.fx-sub[style*="--gc"] td{color:var(--gc)}
+  .fx-tab tr.fx-sub[style*="--gc"] td:first-child{box-shadow:inset 4px 0 0 var(--gc)}
   .fx-tab tr.fx-sub td{font-weight:600;border-bottom:1px solid var(--linha);text-align:right;font-family:var(--serif);font-size:14.5px;padding:7px 6px}
   .fx-tab tr.fx-sub td:first-child{font-family:var(--sans);font-size:12.5px;color:var(--cinza)}
   .fx-tab tr.fx-t td{font-weight:600;border-top:1px solid var(--verde);text-align:right;font-family:var(--serif);font-size:15.5px;padding:8px 6px}
@@ -1151,6 +1172,30 @@
     return "rgba("+parseInt(h.slice(0,2),16)+","+parseInt(h.slice(2,4),16)+","+parseInt(h.slice(4,6),16)+","+a+")";
   };
   const ponto = c => '<span class="ponto" style="background:'+cor(c)+'"></span>';
+  // blocos por grupo, com a cor do grupo: Previsão do mês e Fluxo anual (projetado e realizado) usam as mesmas cores
+  const COR_GRUPO = {}; GRUPOS.forEach(x=>{ if(x.g) COR_GRUPO[x.g]=x.cor; });
+  const BLOCO_OUTROS = "Outros";
+  const corGrupo = g => COR_GRUPO[g] || "#8C8579";
+  const estiloBloco = g => '--gc:'+corGrupo(g)+';--gcl:'+rgba(corGrupo(g),.10);
+  // grupo de uma linha da previsão: categoria gravada, "(categoria)" no fim do nome, nome igual a uma categoria, ou pelo texto
+  function grupoPrev(x){
+    if(x.grupo&&(COR_GRUPO[x.grupo]||x.grupo===BLOCO_OUTROS)) return x.grupo;
+    const d=String(x.d||"").trim(), par=d.match(/\(([^()]+)\)\s*$/);
+    const c=x.cat&&GRUPO_DE[x.cat]!=null?x.cat:par&&GRUPO_DE[par[1].trim()]!=null?par[1].trim():GRUPO_DE[d]!=null?d:catRotulo(d);
+    const g=c?GRUPO_DE[c]:null;
+    if(g==="Fora dos cálculos"&&/cheque/i.test(c)) return "Financiamento e dívidas";
+    return g||(/cheque especial|empr[ée]stimo|parcela/i.test(d)?"Financiamento e dívidas":BLOCO_OUTROS);
+  }
+  // grupo de um bloco do Fluxo anual projetado (linha "g" vinda da planilha): pelo nome; senão pela maioria das categorias das linhas
+  function grupoFluxo(linhas,i){
+    const n=normTxt(linhas[i].rot).replace(/[^A-Z ]/g," ").trim();
+    const porNome=GRUPOS.find(x=>x.g&&x.g!=="Fora dos cálculos"&&(normTxt(x.g)===n||n.includes(normTxt(x.g).split(" ")[0])));
+    if(porNome) return porNome.g;
+    const cont={};
+    for(let k=i+1;k<linhas.length&&linhas[k].tipo!=="g";k++){ const g=GRUPO_DE[linhas[k].cat]; if(g) cont[g]=(cont[g]||0)+1; }
+    const melhor=Object.keys(cont).sort((a,b)=>cont[b]-cont[a])[0];
+    return melhor||(linhas[i].lado==="rec"?"Receitas":BLOCO_OUTROS);
+  }
 
   // Regras iniciais, tiradas do histórico da aba LANÇAMENTOS. A primeira que bater vale,
   // então as mais específicas vêm antes. Novas regras são aprendidas quando você corrige.
@@ -4444,8 +4489,29 @@
         const o=ordPrev(lista), on=o.k===k;
         return '<th class="pv-ord'+(c?" "+c:"")+(on?" on":"")+'" data-pvsort="'+lista+':'+k+'" title="Ordenar por '+r.toLowerCase()+'">'+r+
           '<span class="seta">'+(on?(o.dir>0?" ↑":" ↓"):" ↕")+'</span></th>'; }).join("")+'<th></th></tr></thead><tbody>'+
-      idxOrdenados(lista).map(i=>linha(lista,p[lista][i],i)).join("")+'</tbody></table></div>'+
+      blocosPrev(lista)+'</tbody></table></div>'+
       '<button class="ver-mais" data-padd="'+lista+'">+ Adicionar linha</button>';
+    // linhas agrupadas por bloco (grupo de categoria), na ordem dos grupos; dentro do bloco vale a ordenação escolhida
+    const ORD_G=GRUPOS.map(x=>x.g).filter(Boolean).concat([BLOCO_OUTROS]);
+    function separaBlocos(lista){
+      const por={}; idxOrdenados(lista).forEach(i=>{ const g=grupoPrev(p[lista][i]); (por[g]=por[g]||[]).push(i); });
+      return ORD_G.filter(g=>por[g]).map(g=>({g:g, is:por[g],
+        aPagar:cent(por[g].reduce((a,i)=>a+(p[lista][i].aPagar<0?-p[lista][i].aPagar:0),0)),
+        pago:cent(por[g].reduce((a,i)=>a+(+p[lista][i].pago||0),0))}));
+    }
+    const opGrupo=(lista,i,g)=>'<select class="pv-gsel" data-pgrupo="'+lista+':'+i+'" title="Mudar o bloco desta linha" aria-label="Bloco">'+
+      ORD_G.map(x=>'<option'+(x===g?" selected":"")+'>'+esc(x)+'</option>').join("")+'</select>';
+    function blocosPrev(lista){
+      return separaBlocos(lista).map(b=>
+        '<tr class="pv-bloco" id="pvb-'+lista+'-'+ORD_G.indexOf(b.g)+'" style="'+estiloBloco(b.g)+'"><td colspan="3"><span class="pv-bn">'+esc(b.g)+'</span>'+
+          '<span class="pv-bq">'+b.is.length+' conta'+(b.is.length===1?'':'s')+'</span></td>'+
+          '<td class="n" title="A pagar no bloco">'+(b.aPagar?brl(b.aPagar):'—')+'</td><td class="n" title="Pago no bloco" style="opacity:.75">'+(b.pago?brl(b.pago):'—')+'</td><td></td></tr>'+
+        b.is.map(i=>linha(lista,p[lista][i],i).replace(/^<tr/,'<tr style="'+estiloBloco(b.g)+'"').replace(/^(<tr[^>]*?)( class="([^"]*)")/,'$1 class="pv-gl $3"').replace(/^(<tr(?![^>]*class=)[^>]*)>/,'$1 class="pv-gl">')
+          .replace('placeholder="Detalhes" aria-label="Detalhes"></td>','placeholder="Detalhes" aria-label="Detalhes">'+opGrupo(lista,i,b.g)+'</td>')).join("")).join("");
+    }
+    const chipsPrev=lista=>{ const bs=separaBlocos(lista); if(bs.length<2) return "";
+      return '<div class="pv-chips">'+bs.map(b=>'<button class="pv-chip" data-pchip="pvb-'+lista+'-'+ORD_G.indexOf(b.g)+'" style="'+estiloBloco(b.g)+'" title="Ir para o bloco">'+
+        '<i></i>'+esc(b.g)+' <b>'+(b.aPagar?brl(b.aPagar):'—')+'</b></button>').join("")+'</div>'; };
     const lista2=(lista,titulo,rot)=>
       '<div class="tit-secao" id="pv-'+lista+'" style="margin:26px 0 6px"><h3>'+titulo+'</h3></div>'+
       '<table class="pv-tab"><colgroup><col><col class="c-val"><col style="width:64px"></colgroup><tbody>'+
@@ -4474,7 +4540,7 @@
         ' Tudo aqui é editável e fica salvo. <b>A pagar</b>: digite o valor normal (vira saída); para entrada use +. '+
         'O ✓ move o valor para <b>Pago</b>. Importar a planilha de novo substitui os meses que estiverem nela.</p>'+
       '<div class="pv-grid"><div>'+
-        tabela("itens","Contas a pagar")+
+        tabela("itens","Contas a pagar").replace('<div class="rolagem">',chipsPrev("itens")+'<div class="rolagem">')+
         (p.itens.some(x=>x.media!=null)?'<p class="sub" style="margin:4px 0 0;font-size:12px"><span class="pv-leg-media"></span>Linhas em azul: gastos que se repetem todo mês e não estavam na previsão, pela média dos 3 últimos meses (conta e dinheiro; o cartão já está na fatura). '+
           'Digite em <b>A pagar</b> quanto ainda falta gastar; no mês atual o <b>Pago</b> acompanha o gasto real. O × tira a sugestão deste mês.</p>':'')+
         '<div style="height:30px"></div>'+
@@ -4508,6 +4574,8 @@
       $("#pvPago").textContent="Já pago no mês: R$ "+brl(t.pago);
     };
     corpo.onchange=e=>{
+      const gs=e.target.closest("[data-pgrupo]");
+      if(gs){ const [l,i]=gs.dataset.pgrupo.split(":"), x=p[l][+i]; x.grupo=gs.value; salvar(); manterFoco(renderPrevisao); return; }
       const el=e.target.closest("[data-pv]"); if(!el) return;
       const lista=el.dataset.pv, k=el.dataset.k, txt=String(el.value||"").trim();
       const n=txt===""?null:numero(txt.replace("−","-"));
@@ -4528,6 +4596,8 @@
       if(k==="aPagar") manterFoco(renderPrevisao);
     };
     corpo.onclick=e=>{
+      const ch=e.target.closest("[data-pchip]");
+      if(ch){ const r=document.getElementById(ch.dataset.pchip); if(r) r.scrollIntoView({behavior:"smooth",block:"center"}); return; }
       if(e.target.closest("[data-pfluxo]")){ ui.conta="fluxo"; render(); window.scrollTo(0,0); return; }
       const va=e.target.closest("[data-pverant]");
       if(va){ ui.prevMes=va.dataset.pverant; render(); window.scrollTo(0,0); return; }
@@ -4601,17 +4671,17 @@
     let h='', grupo=null;
     const fecha=()=>{
       if(!grupo) return;
-      h+='<tr class="fx-sub"><td>▸ Subtotal '+esc(grupo.rot.toLowerCase())+
+      h+='<tr class="fx-sub" style="'+(grupo.est||"")+'"><td>▸ Subtotal '+esc(grupo.rot.toLowerCase())+
         ' <button class="ver-mais" data-fxadd="'+grupo.ult+'" style="padding:0 0 0 8px">+ linha</button></td><td></td>'+
         ms.map(m=>'<td>'+brl(grupo.s[m]||0)+'</td>').join("")+'<td>'+brl(ms.reduce((s,m)=>s+(grupo.s[m]||0),0))+'</td></tr>';
     };
     fx.linhas.forEach((l,i)=>{
-      if(l.tipo==="g"){ fecha(); grupo={rot:l.rot, lado:l.lado, s:{}, ult:i};
-        h+='<tr class="fx-g"><td colspan="'+nC+'">'+(l.lado==="rec"?"📥 ":"📤 ")+esc(l.rot)+'</td></tr>'; return; }
-      if(!grupo) grupo={rot:"", lado:l.lado||"desp", s:{}, ult:i};
+      if(l.tipo==="g"){ fecha(); const gg=grupoFluxo(fx.linhas,i); grupo={rot:l.rot, lado:l.lado, s:{}, ult:i, est:estiloBloco(gg)};
+        h+='<tr class="fx-g" style="'+grupo.est+'"><td>'+(l.lado==="rec"?"📥 ":"📤 ")+esc(l.rot)+'</td><td colspan="'+(nC-1)+'"></td></tr>'; return; }
+      if(!grupo) grupo={rot:"", lado:l.lado||"desp", s:{}, ult:i, est:estiloBloco(GRUPO_DE[l.cat]||BLOCO_OUTROS)};
       grupo.ult=i;
       ms.forEach(m=>{ const v=soma(l.v,m); grupo.s[m]=(grupo.s[m]||0)+v; tot[l.lado==="rec"?"rec":"desp"][m]=(tot[l.lado==="rec"?"rec":"desp"][m]||0)+v; });
-      h+='<tr><td><div class="fx-rot"><input class="campo" data-fx="rot" data-i="'+i+'" value="'+esc(l.rot)+'" aria-label="Item">'+
+      h+='<tr class="fx-gl" style="'+grupo.est+'"><td><div class="fx-rot"><input class="campo" data-fx="rot" data-i="'+i+'" value="'+esc(l.rot)+'" aria-label="Item">'+
           '<button class="apagar" data-fxdel="'+i+'" title="Apagar linha" aria-label="Apagar linha">×</button></div></td>'+
         '<td class="fx-cat"><select class="campo" data-fx="cat" data-i="'+i+'" title="Categoria usada no previsto × realizado">'+opcoesCat(l.cat||"","—")+'</select></td>'+
         ms.map(m=>'<td class="valor"><input class="campo" data-fx="v" data-i="'+i+'" data-m="'+m+'" data-foco="fx:'+i+':'+m+'" value="'+(l.v[m]?brl(l.v[m]):"")+
@@ -4727,13 +4797,14 @@
       const vis=itens.filter(it=>ms.some(m=>Math.abs(it.f(m))>=0.005));
       if(!vis.length) return;
       const sub={};
-      h+='<tr class="fx-g"><td>'+(lado==="rec"?"📥 ":"📤 ")+esc(rot.toUpperCase())+'</td><td colspan="'+(nC-1)+'"></td></tr>';
+      const est=estiloBloco(COR_GRUPO[rot]?rot:BLOCO_OUTROS);
+      h+='<tr class="fx-g" style="'+est+'"><td>'+(lado==="rec"?"📥 ":"📤 ")+esc(rot.toUpperCase())+'</td><td colspan="'+(nC-1)+'"></td></tr>';
       vis.forEach(it=>{
         ms.forEach(m=>{ const n=it.f(m); sub[m]=(sub[m]||0)+n; tot[lado][m]=(tot[lado][m]||0)+n; });
-        h+='<tr><td style="padding:7px 8px">'+ponto(it.cat)+esc(it.rot)+'</td>'+ms.map(m=>cel(it.f(m),m,it.cat,it.tipo)).join("")+
+        h+='<tr class="fx-gl" style="'+est+'"><td style="padding:7px 8px">'+ponto(it.cat)+esc(it.rot)+'</td>'+ms.map(m=>cel(it.f(m),m,it.cat,it.tipo)).join("")+
           '<td class="fx-tt">'+brl(ms.reduce((s,m)=>s+it.f(m),0))+'</td></tr>';
       });
-      h+='<tr class="fx-sub"><td>▸ Subtotal '+esc(rot.toLowerCase())+'</td>'+
+      h+='<tr class="fx-sub" style="'+est+'"><td>▸ Subtotal '+esc(rot.toLowerCase())+'</td>'+
         ms.map(m=>'<td>'+(temMes[m]?brl(sub[m]||0):"—")+'</td>').join("")+'<td>'+brl(ms.reduce((s,m)=>s+(sub[m]||0),0))+'</td></tr>';
     };
     GRUPOS.forEach(gr=>{
