@@ -3494,10 +3494,12 @@
     lancamentos.forEach(l=>{
       const k = l.data+"|"+l.valor.toFixed(2);
       const cand = livres.get(k)||[];
-      let i = cand.findIndex(x=>!usadosF.has(x)&&parecido(x.hist,l.hist)&&(!opts.fatura||!x.fatura||x.fatura===opts.fatura));
+      // fatura que não existiu (pulada pela mudança de vencimento): o que estava nela passa para esta
+      const mesmaF=x=>!opts.fatura||!x.fatura||x.fatura===opts.fatura||(opts.aceita||[]).includes(x.fatura);
+      let i = cand.findIndex(x=>!usadosF.has(x)&&parecido(x.hist,l.hist)&&mesmaF(x));
       // reimportação: a mesma compra já gravada nesta fatura com outra data (regra de data mudou) — atualiza a data
-      if(i<0&&opts.fatura){ const ja=dados.lancamentos.find(x=>x.origem==="cartao"&&x.fatura===opts.fatura&&!usadosF.has(x)&&Math.abs(x.valor-l.valor)<0.005&&parecido(x.hist,l.hist));
-        if(ja){ usadosF.add(ja); ja.data=l.data; ja.confFatura=true; const jx=digitados.indexOf(ja); if(jx>=0) digitados.splice(jx,1); repetidos++; return; } }
+      if(i<0&&opts.fatura){ const ja=dados.lancamentos.find(x=>x.origem==="cartao"&&x.fatura&&mesmaF(x)&&!usadosF.has(x)&&Math.abs(x.valor-l.valor)<0.005&&parecido(x.hist,l.hist));
+        if(ja){ usadosF.add(ja); ja.data=l.data; ja.confFatura=true; ja.fatura=opts.fatura; const jx=digitados.indexOf(ja); if(jx>=0) digitados.splice(jx,1); repetidos++; return; } }
       if(i>=0){ const x=cand.splice(i,1)[0]; usadosF.add(x); x.confFatura=true; if(opts.fatura) x.fatura=opts.fatura;
         // já usado por esta fatura: não pode ser "conferido" de novo por outra compra de mesmo valor
         const jx=digitados.indexOf(x); if(jx>=0) digitados.splice(jx,1);
@@ -3681,16 +3683,24 @@
     // parcela: o dia da compra, no mês que cai dentro do período desta fatura (do fechamento anterior a este)
     // Se a fatura anterior foi pulada (mudança do dia de vencimento: out → dez), o período começa no fechamento
     // da última fatura que existiu (dia 5 − 7, o vencimento antigo do Infinite), não um mês antes deste vencimento.
-    let fechAnt=somaDias(somaMeses(venc,-1),-7);
+    let fechAnt=somaDias(somaMeses(venc,-1),-7); const aceita=[];
     { const ymV=venc.slice(0,7), ymAnt=somaMeses(venc,-1).slice(0,7);
-      const ants=dados.lancamentos.filter(x=>x.origem==="cartao"&&x.confFatura&&x.fatura&&x.fatura<ymV&&/infinite|5548/i.test(x.doc||"")).map(x=>x.fatura).sort();
-      const ult=ants[ants.length-1];
-      if(ult&&ult<ymAnt){ const fc=(dados.faturasCartao||{})["itau:"+ult]; fechAnt=fc&&fc.fechamento?fc.fechamento:somaDias(ult+"-05",-7); } }
+      // última fatura que existiu antes desta: a que tem a parcela anterior de alguma compra ("Parcela 6 de 10" antes da 7)
+      const pg=x=>{ const m=String(x.p||"").match(/(\d+)\s*de\s*(\d+)/i); return m?{k:+m[1],n:+m[2]}:null; };
+      const ants=[...new Set(dados.lancamentos.filter(x=>x.origem==="cartao"&&x.confFatura&&x.fatura&&x.fatura<ymV&&/infinite|5548/i.test(x.doc||"")).map(x=>x.fatura))].sort();
+      // a fatura logo antes desta (pelo mês) pode ser a que foi pulada: vale a última que tem a parcela anterior
+      const temAnterior=f=>itens.some(x=>{ const p=pg(x); if(!p||p.k<2) return false; const ant=" PARC "+String(p.k-1).padStart(2,"0")+"/"+String(p.n).padStart(2,"0");
+        return dados.lancamentos.some(y=>y.fatura===f&&/infinite|5548/i.test(y.doc||"")&&Math.abs(-y.valor-x.v)<0.005&&String(y.hist).endsWith(ant)); });
+      const ult=[...ants].reverse().find(temAnterior)||ants[ants.length-1];
+      if(ult&&ult<ymAnt){ const fc=(dados.faturasCartao||{})["itau:"+ult]; fechAnt=fc&&fc.fechamento?fc.fechamento:somaDias(ult+"-05",-7);
+        ants.filter(f=>f>ult).forEach(f=>aceita.push(f)); } }
     const lancs=itens.map(x=>{ const pm=x.p.match(/(\d+)\s*de\s*(\d+)/i); let data=x.iso, hist=x.d;
       if(pm){ const k=+pm[1], n=+pm[2]; for(let g=0; data<=fechAnt&&g<40; g++) data=somaMeses(x.iso,g+1); hist+=" PARC "+String(k).padStart(2,"0")+"/"+String(n).padStart(2,"0"); }
       if(data>fech) data=fech;
       return {data:data, hist:hist, valor:-Math.round(x.v*100)/100, doc:doc}; });
-    const rc=conciliarCartao(lancs,"itau",{largo:true, de:somaDias(fechAnt,-5), ate:somaDias(fech,5), fatura:venc.slice(0,7)});
+    const rc=conciliarCartao(lancs,"itau",{largo:true, de:somaDias(fechAnt,-5), ate:somaDias(fech,5), fatura:venc.slice(0,7), aceita:aceita});
+    // a fatura pulada deixa de existir no app
+    aceita.forEach(f=>{ if(dados.faturasCartao) delete dados.faturasCartao["itau:"+f]; });
     // resumo da fatura por cartão
     dados.faturasCartao=dados.faturasCartao||{};
     const fa=dados.faturasCartao.itau;
