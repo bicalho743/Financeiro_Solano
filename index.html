@@ -978,6 +978,8 @@
   #contaTabs .conta-tab.banco.ativa{color:#111827!important}
   @media (max-width:700px){.nav-grupos{padding:0 8px}.nav-grupo{padding:13px 12px 10px;font-size:13.5px}.nav-grupo span{display:none}
     #contaTabs.conta-tabs{padding:6px 8px;overflow-x:auto}}
+  button.tag-cartao{background:none;border:0;padding:2px 4px;cursor:pointer;border-radius:6px;font-size:inherit}
+  button.tag-cartao:hover{background:#EEF2FF;outline:1px solid #C7D2FE}
 </style>
 
 <div id="telaLogin">
@@ -7520,7 +7522,7 @@
         '</select></td>'+
         '<td class="valor '+(l.valor<0?"neg":"pos")+'"><input class="campo" data-c="valor" value="'+brl(l.valor)+'"></td>'+
         '<td class="obs"><input class="campo" data-c="obs" placeholder="—" value="'+esc(l.obs||"")+'"></td>'+
-        '<td class="acao">'+(l.origem==="cartao"?'<span class="tag-cartao" title="'+esc(l.doc||"Cartão")+'">💳</span>'
+        '<td class="acao">'+(l.origem==="cartao"?'<button class="tag-cartao" data-c="trocacartao" title="'+esc((l.doc||NOMES_CARTAO[famCartao(l)])+" · clique para mover para o "+NOMES_CARTAO[famCartao(l)==="bb"?"itau":"bb"])+'">💳</button>'
           :'<span class="tag-conta '+esc(l.origem||"manual")+'" title="'+esc(nomeOrigem(l)+(l.doc?" · "+l.doc:""))+'">'+esc(TAG_ORIGEM[l.origem]||"OUTRO")+'</span>')+
           (l.ignorado
           ? '<button class="voltar" data-c="riscar" title="Trazer de volta aos cálculos">↺</button>'+
@@ -7645,6 +7647,12 @@
     $("#corpoTabela").addEventListener("click",e=>{
       const bt=e.target.closest("button"); if(!bt) return;
       const tr=e.target.closest("tr"); const l=acharLanc(tr.dataset.id); if(!l) return;
+      // compra lançada no cartão errado: troca entre Azul Infinite e BB Altus (sai da fatura em que estava)
+      if(bt.dataset.c==="trocacartao"){
+        const para=famCartao(l)==="bb"?"itau":"bb";
+        l.doc=para==="bb"?"Altus final "+FINAL_CARTAO.bb:"Infinite final "+FINAL_CARTAO.itau; delete l.fatura; delete l.confFatura;
+        salvar(); render(); avisar(esc(l.hist)+" movido para o "+NOMES_CARTAO[para]+"."); return;
+      }
       if(bt.dataset.c==="riscar"){
         l.ignorado = !l.ignorado; salvar(); render();
         avisar(l.ignorado?"Lançamento riscado. Está fora dos cálculos, mas continua no histórico."
