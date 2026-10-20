@@ -1785,7 +1785,7 @@
       ["itau","bb","santander"].map(o=>usoCheque(o,o==="itau"?saldoContaApp(mesAtual()):saldoBanco(o)).usados)]);
     if(cacheEst.k!==kc){ cacheEst={k:kc,r:montaEstrategia(hj,sal,pj)};
       // o plano fica salvo para o resumo do WhatsApp avisar no dia de cada Pix
-      const pl=JSON.stringify(cacheEst.r.pix||[]); if(JSON.stringify(dados.planoPix||[])!==pl){ dados.planoPix=cacheEst.r.pix||[]; salvar(); } }
+      const pl=JSON.stringify(cacheEst.r.pix||[]); if(JSON.stringify(dados.planoPix||[])!==pl||dados.planoPixEm!==hj){ dados.planoPix=cacheEst.r.pix||[]; dados.planoPixEm=hj; salvar(); } }
     return cacheEst.r.card;
   }
   function detalheEstrategia(){ estrategiaCheque(); return cacheEst.r.detalhe; }
