@@ -1807,7 +1807,8 @@
     const NOME={itau:"Itaú",bb:"BB",santander:"Santander",emp:"Empréstimo"};
     // empréstimo sem juros e sem IOF por alguns dias corridos (dados.emprestimo.dias): entra no plano como uma "conta" a mais,
     // usada uma vez; pega e devolve em dia útil. Dias contados como o credor conta: do dia em que pega ao dia em que devolve, inclusive. Não gera IOF ao entrar; quem paga o empréstimo gera o IOF de 0,38% ao entrar no cheque.
-    const EMP=dados.emprestimo&&+dados.emprestimo.dias>0?Math.round(+dados.emprestimo.dias):0;
+    // vale só até a data "ate" (o salário do mês em que foi informado): não é todo mês
+    const EMP=dados.emprestimo&&+dados.emprestimo.dias>0&&!(dados.emprestimo.ate&&hj>dados.emprestimo.ate)?Math.round(+dados.emprestimo.dias):0;
     // hoje já conta nos dias usados (usoCheque): quem está negativo hoje segue a partir de amanhã
     const ini0=(dono||pj.hoje<0)?hj:negs[0].d;
     // desde quando o banco que carrega a dívida está negativo
