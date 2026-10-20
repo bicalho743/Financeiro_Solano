@@ -7736,26 +7736,11 @@
         await salvarImediato();
         avisar("Dados migrados para a nuvem. Agora sincronizados em qualquer dispositivo.");
       } else if(remoto){
-        // carregar dados do Supabase (podem ser mais recentes)
-        dados.lancamentos = remoto.lancamentos||[];
-        dados.saldos      = remoto.saldos||{};
-        dados.regras      = (remoto.regras&&remoto.regras.length)?remoto.regras:REGRAS_PADRAO.slice();
-        dados.prolabore   = remoto.prolabore||0;
-        dados.faturaAberta = remoto.faturaAberta||null;
-        dados.faturaFechada= remoto.faturaFechada||null;
-        dados.orcamento   = remoto.orcamento||null;
-        dados.orcamentoMes= remoto.orcamentoMes||{};
-        dados.contas      = remoto.contas||{};
-        dados.previsoes   = remoto.previsoes||{};
-        dados.fluxo       = remoto.fluxo||null;
-        dados.dividas     = remoto.dividas||null;
-        dados.metas       = remoto.metas||[];
-        dados.viagens     = remoto.viagens||[];
-        dados.ir          = remoto.ir||null;
-        dados.conferencia = remoto.conferencia||{};
-        dados.saldosDia   = remoto.saldosDia||{};
-        dados.invest      = remoto.invest||null;
-        dados.versao      = remoto.versao||0;
+        // carregar dados do Supabase (podem ser mais recentes). Usa o mesmo aplicarDados do carregar(): antes a lista era
+        // copiada à mão e faltavam campos (empréstimo, dias do cheque, saldo livre do BB, Pix digitados…) — o próximo
+        // salvar gravava a nuvem sem eles
+        if(+remoto.build>BUILD){ recarregarVersaoNova(); return; }
+        aplicarDados(remoto);
         migrar();
         if(dados._migrou){ delete dados._migrou; salvar(); }
         render();
