@@ -1648,7 +1648,6 @@
   function saldoItauEm(D){ const ym=D.slice(0,7); return cent(saldoInicio("itau",ym).v+movConta("itau",ym+"-01",somaDias(D,1))); }
   // data em que o gasto aconteceu. O Itaú lança no dia útil seguinte o que foi feito no fim de semana/feriado e anota a
   // data verdadeira no histórico ("PAY REFUG 11/10", "PIX WHATS JOSE AL10/10", "RSCSS MP CABANAS 1310").
-  // O cheque especial conta por essa data: compras de sáb/dom/feriado já deixam o saldo negativo naquele dia.
   function dataReal(l){
     const h=String(l.hist||"").trim(), r=h.match(/(\d{2})\/(\d{2})$/)||(/^RSC/i.test(h)&&h.match(/(\d{2})(\d{2})$/));
     if(!r) return l.data;
@@ -1656,11 +1655,13 @@
     const iso=(mm>m?a-1:a)+"-"+String(mm).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
     return iso<l.data&&difDias(l.data,iso)<=7?iso:l.data;
   }
-  // saldo do Itaú no fim do dia D como o banco apura o cheque especial (pela data real de cada gasto)
+  // saldo do Itaú no fim do dia D como o banco apura o cheque especial (extrato "histórico de utilização do Limite da Conta"):
+  // em dia útil, o saldo do dia; em sábado/domingo/feriado, o saldo do último dia útil — o que foi gasto no fim de semana
+  // só conta no próximo dia útil. Ex.: out/2026, compras de 10–12/10 (sáb, dom, feriado) com o saldo positivo na sexta:
+  // o banco começa a contar em 13/10; já 17 e 18/10 contam porque a sexta 16/10 fechou negativa.
   function saldoItauRealEm(D){
-    let v=saldoItauEm(D); const fim=somaDias(D,8);
-    for(const l of dados.lancamentos){ if(l.origem==="itau"&&!l.ignorado&&l.data>D&&l.data<=fim&&dataReal(l)<=D) v+=l.valor; }
-    return cent(v);
+    let d=D; for(let i=0;i<10&&!diaUtil(d);i++) d=somaDias(d,-1);
+    return saldoItauEm(d);
   }
   // início do ciclo atual e data da próxima renovação. O ciclo sempre começa em dia útil:
   // se o dia de renovação cai em fim de semana/feriado, o ciclo novo começa no próximo dia útil (o anterior vai até a véspera)
@@ -1678,7 +1679,7 @@
   function usoCheque(o,s){
     const hj=hojeISO(), c=cicloCheque(o), sd=(dados.saldosDia||{})[o]||{}, ks=Object.keys(sd).sort();
     // saldo no fim do dia: Itaú pelos lançamentos; BB/Santander o último saldo registrado até o dia
-    const saldoEm = d => d===hj&&s ? s.v : o==="itau" ? saldoItauRealEm(d) : (()=>{ let k=null; for(const x of ks){ if(x<=d) k=x; else break; } return k?+sd[k]:null; })();
+    const saldoEm = d => d===hj&&s&&(o!=="itau"||diaUtil(d)) ? s.v : o==="itau" ? saldoItauRealEm(d) : (()=>{ let k=null; for(const x of ks){ if(x<=d) k=x; else break; } return k?+sd[k]:null; })();
     let usados=0, ultimo=null;
     for(let d=c.ini; d<=hj; d=somaDias(d,1)){ const v=saldoEm(d); if(v!=null&&v<0){ usados++; ultimo=d; } }
     // dias usados informados à mão (Santander: o app só conhece o saldo digitado)
