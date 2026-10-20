@@ -180,15 +180,23 @@ async function lerDados(sb: any) {
   return data ? (data.valor.lancamentos || []) as Lanc[] : null;
 }
 
-async function enviarWhatsApp(texto: string) {
-  let fone = (Deno.env.get("WA_TELEFONE") || "").replace(/[^\d+]/g, "");
-  if (!fone.startsWith("+")) fone = "+" + fone;
-  const url = "https://api.callmebot.com/whatsapp.php?phone=" + encodeURIComponent(fone) +
-    "&text=" + encodeURIComponent(texto) + "&apikey=" + encodeURIComponent((Deno.env.get("CALLMEBOT_APIKEY") || "").trim());
+// O CallMeBot responde HTTP 200 mesmo quando falha (apikey inválida, número não ativado etc.):
+// o erro vem só no corpo HTML. Por isso o corpo é conferido e devolvido.
+async function enviarWhatsApp(texto: string): Promise<string> {
+  const fone = (Deno.env.get("WA_TELEFONE") || "").replace(/\D/g, "");
+  const apikey = (Deno.env.get("CALLMEBOT_APIKEY") || "").trim();
+  if (!fone || !apikey) throw new Error("faltam os secrets WA_TELEFONE e/ou CALLMEBOT_APIKEY");
+  const url = "https://api.callmebot.com/whatsapp.php?phone=" + fone +
+    "&text=" + encodeURIComponent(texto) + "&apikey=" + encodeURIComponent(apikey);
   const r = await fetch(url);
   const bruto = await r.text();
-  console.log("CallMeBot", r.status, bruto.slice(0, 2000));
-  if (!r.ok) throw new Error("CallMeBot " + r.status);
+  const limpo = bruto.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ").trim().slice(0, 600);
+  console.log("CallMeBot", r.status, limpo);
+  // sucesso = "Message queued"; qualquer outra resposta é recusa
+  if (!r.ok || !/queued|message sent/i.test(limpo))
+    throw new Error("CallMeBot " + r.status + ": " + limpo);
+  return limpo;
 }
 
 Deno.serve(async (req) => {
@@ -217,9 +225,9 @@ Deno.serve(async (req) => {
 
     const texto = q.get("curto") === "1" ? "Teste do Financeiro: envio funcionando." : montarTexto(ls, ym, hoje, link, nLinhas);
     if (q.get("teste") === "1") return new Response(texto, { headers: { "content-type": "text/plain; charset=utf-8" } });
-    // @ts-ignore EdgeRuntime existe nas Edge Functions
-    EdgeRuntime.waitUntil(enviarWhatsApp(texto).catch((e) => console.error("falha no envio", e)));
-    return new Response("Enviando.\n\n" + texto, { headers: { "content-type": "text/plain; charset=utf-8" } });
+    // envio síncrono: a resposta mostra o que o CallMeBot disse (e o cron grava isso em net._http_response)
+    const resp = await enviarWhatsApp(texto);
+    return new Response("Enviado. CallMeBot: " + resp + "\n\n" + texto, { headers: { "content-type": "text/plain; charset=utf-8" } });
   } catch (e) {
     console.error(e);
     return new Response("erro: " + (e as Error).message, { status: 500 });
