@@ -4445,12 +4445,17 @@
     const velho=dados.previsoes[ym];
     const [a,m]=ym.split("-").map(Number), dias=new Date(a,m,0).getDate();
     const mover=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||"")?ym+"-"+String(Math.min(+d.slice(8),dias)).padStart(2,"0"):"";
-    // copia as linhas do último mês: o que foi pago vira previsto; nada marcado como pago
-    const copia=l=>(l||[]).map(x=>x.media!=null
-      ? {data:mover(x.data), d:x.d, cat:x.cat, media:x.mediaBase!=null?x.mediaBase:x.media, mediaBase:x.mediaBase, mediaRef:x.mediaRef, aPagar:-(x.mediaBase!=null?x.mediaBase:x.media), pago:null}
-      : {data:mover(x.data), d:x.d, ...(x.tipo?{tipo:x.tipo}:{}), aPagar:x.aPagar!=null?x.aPagar:(x.pago?-x.pago:null), pago:null});
+    // copia as linhas do mês de origem com o valor que está lá: o que foi pago vira previsto; nada marcado como pago.
+    // Linhas pela média: vale o valor ajustado no mês (x.media), não a média original; encerrada (0) continua encerrada.
+    // Conta paga em parte: previsto = pago + o que faltava.
+    const copia=l=>(l||[]).map(x=>{
+      if(x.media!=null){ const mv=cent(+x.media||0);
+        return {data:mover(x.data), d:x.d, cat:x.cat, media:mv, mediaBase:x.mediaBase, mediaRef:x.mediaRef, aPagar:mv>0.005?-mv:null, pago:null}; }
+      const tot=x.aPagar!=null&&x.aPagar>0?x.aPagar:(x.aPagar!=null||x.pago?-cent(Math.abs(x.aPagar||0)+(+x.pago||0)):null);
+      return {data:mover(x.data), d:x.d, ...(x.tipo?{tipo:x.tipo}:{}), ...(x.grupo?{grupo:x.grupo}:{}), aPagar:tot, pago:null}; });
     const novo={aba:"criado no app", saldo:0, fixos:copia(base&&base.fixos), itens:copia(base&&base.itens),
-      receitas:(base?base.receitas:[]).map(r=>({d:r.d, v:r.v})), notas:[]};
+      receitas:(base?base.receitas:[]).map(r=>({d:r.d, v:r.v})), notas:[],
+      ...(base&&base.mediaIgnorar&&base.mediaIgnorar.length?{mediaIgnorar:base.mediaIgnorar.slice()}:{})};
     // agendamentos que o extrato já trouxe para o mês de destino continuam (ligam à linha de mesmo valor)
     if(velho) velho.itens.concat(velho.fixos).filter(x=>x.ext).forEach(x=>{
       const y=novo.itens.concat(novo.fixos).find(i=>!i.ext&&i.pago==null&&i.aPagar!=null&&Math.abs(Math.abs(i.aPagar)-Math.abs(x.aPagar||x.pago||0))<0.005);
