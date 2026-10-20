@@ -3679,7 +3679,13 @@
     const somaMeses=(iso,k)=>{ let [a,m,d]=iso.split("-").map(Number); m+=k; a+=Math.floor((m-1)/12); m=(((m-1)%12)+12)%12+1;
       const ult=new Date(a,m,0).getDate(); return a+"-"+String(m).padStart(2,"0")+"-"+String(Math.min(d,ult)).padStart(2,"0"); };
     // parcela: o dia da compra, no mês que cai dentro do período desta fatura (do fechamento anterior a este)
-    const fechAnt=somaDias(somaMeses(venc,-1),-7);
+    // Se a fatura anterior foi pulada (mudança do dia de vencimento: out → dez), o período começa no fechamento
+    // da última fatura que existiu (dia 5 − 7, o vencimento antigo do Infinite), não um mês antes deste vencimento.
+    let fechAnt=somaDias(somaMeses(venc,-1),-7);
+    { const ymV=venc.slice(0,7), ymAnt=somaMeses(venc,-1).slice(0,7);
+      const ants=dados.lancamentos.filter(x=>x.origem==="cartao"&&x.confFatura&&x.fatura&&x.fatura<ymV&&/infinite|5548/i.test(x.doc||"")).map(x=>x.fatura).sort();
+      const ult=ants[ants.length-1];
+      if(ult&&ult<ymAnt){ const fc=(dados.faturasCartao||{})["itau:"+ult]; fechAnt=fc&&fc.fechamento?fc.fechamento:somaDias(ult+"-05",-7); } }
     const lancs=itens.map(x=>{ const pm=x.p.match(/(\d+)\s*de\s*(\d+)/i); let data=x.iso, hist=x.d;
       if(pm){ const k=+pm[1], n=+pm[2]; for(let g=0; data<=fechAnt&&g<40; g++) data=somaMeses(x.iso,g+1); hist+=" PARC "+String(k).padStart(2,"0")+"/"+String(n).padStart(2,"0"); }
       if(data>fech) data=fech;
