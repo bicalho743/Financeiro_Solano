@@ -956,6 +956,28 @@
   .dash-hoje .v,.dash-geral .v,.bc-l b,.num{white-space:nowrap}
   @media (max-width:700px){.dash-hoje .v{font-size:19px}.bc-l b{font-size:17px}.dash-hoje .g-num,.dash-hoje .g-num.clic-card{padding:10px 11px}
     .conta-tab{padding:7px 12px;font-size:13px}}
+
+  /* ================= navegação em 2 níveis (2026-10) =================
+     1ª linha: 5 seções fixas. 2ª linha: as telas da seção, como abas menores. Cor de destaque única (verde). */
+  .nav-grupos{display:flex;gap:2px;background:#fff;padding:0 28px;border-bottom:1px solid #E5E7EB;overflow-x:auto;scrollbar-width:none}
+  .nav-grupos::-webkit-scrollbar{display:none}
+  .nav-grupo{display:inline-flex;align-items:center;gap:8px;font:500 14.5px/1 var(--sans);color:#4B5563;background:none;border:0;
+    border-bottom:3px solid transparent;padding:16px 18px 13px;cursor:pointer;white-space:nowrap}
+  .nav-grupo span{font-size:13px;opacity:.55}
+  .nav-grupo:hover{color:#111827;background:#F9FAFB}
+  .nav-grupo.ativa{color:var(--verde);border-bottom-color:var(--verde);font-weight:600}
+  .nav-grupo.ativa span{opacity:1}
+  .nav-grupo:focus-visible,.conta-tab:focus-visible{outline:2px solid var(--verde);outline-offset:-2px}
+  #contaTabs.conta-tabs{display:flex;gap:6px;background:#F3F4F6;box-shadow:none;border-bottom:1px solid #E5E7EB;padding:8px 28px}
+  #contaTabs.conta-tabs[hidden],#contaTabs .conta-tab[hidden]{display:none}
+  #contaTabs .conta-tab,#contaTabs .conta-tab[data-conta=cpf],#contaTabs .conta-tab[data-conta=dash]{margin:0;padding:7px 14px;font-size:13px;font-weight:500;
+    color:#4B5563;background:transparent;border:1px solid transparent;border-radius:8px;letter-spacing:0}
+  #contaTabs .conta-tab:hover{background:#E5E7EB;color:#111827}
+  #contaTabs .conta-tab.ativa,#contaTabs .conta-tab[data-conta].ativa{background:#fff;color:var(--verde)!important;border-color:#D1D5DB;
+    box-shadow:0 1px 2px rgba(0,0,0,.08);font-weight:600}
+  #contaTabs .conta-tab.banco.ativa{color:#111827!important}
+  @media (max-width:700px){.nav-grupos{padding:0 8px}.nav-grupo{padding:13px 12px 10px;font-size:13.5px}.nav-grupo span{display:none}
+    #contaTabs.conta-tabs{padding:6px 8px;overflow-x:auto}}
 </style>
 
 <div id="telaLogin">
@@ -1001,22 +1023,29 @@
     </div>
   </header>
 
-  <nav class="conta-tabs" id="contaTabs">
-    <button class="conta-tab ativa" data-conta="dash">Visão geral</button>
-    <button class="conta-tab" data-conta="cpf">Lançamentos</button>
-    <button class="conta-tab" data-conta="prev">Previsão do mês</button>
-    <button class="conta-tab" data-conta="fluxo">Fluxo anual projetado</button>
-    <button class="conta-tab" data-conta="fluxoreal" title="Valores reais recebidos e gastos, mês a mês">Fluxo anual realizado</button>
-    <button class="conta-tab" data-conta="dividas">Dívidas e parcelas</button>
-    <button class="conta-tab" data-conta="metas">Metas e caixinhas</button>
-    <button class="conta-tab" data-conta="viagens">Viagens</button>
-    <button class="conta-tab" data-conta="ir" title="Despesas de escola e saúde para a declaração do IR">Imposto de renda</button>
-    <button class="conta-tab" data-conta="invest">Investimentos</button>
-    <span class="conta-sep">Conferir:</span>
-    <button class="conta-tab banco" data-conta="itau">Itaú</button>
-    <button class="conta-tab banco" data-conta="bb">BB</button>
-    <button class="conta-tab banco cartao-tab" data-conta="cartao" data-cartao="itau" title="Cartão Azul Itaú Infinite (final 5548)"><span class="mini-cartao mc-infinite" aria-hidden="true"><i></i><b>5548</b></span>Infinite</button>
-    <button class="conta-tab banco cartao-tab" data-conta="cartao" data-cartao="bb" title="Cartão BB Altus (final 5698)"><span class="mini-cartao mc-altus" aria-hidden="true"><i></i><b>5698</b></span>Altus</button>
+  <!-- navegação em 2 níveis: 5 seções (sempre visíveis) e as telas da seção escolhida -->
+  <nav class="nav-grupos" id="navGrupos" aria-label="Seções">
+    <button class="nav-grupo ativa" data-grupo="geral"><span aria-hidden="true">◎</span>Visão geral</button>
+    <button class="nav-grupo" data-grupo="dia"><span aria-hidden="true">☰</span>Dia a dia</button>
+    <button class="nav-grupo" data-grupo="plan"><span aria-hidden="true">↗</span>Planejamento</button>
+    <button class="nav-grupo" data-grupo="patri"><span aria-hidden="true">◆</span>Patrimônio e IR</button>
+    <button class="nav-grupo" data-grupo="contas"><span aria-hidden="true">✓</span>Conferir contas</button>
+  </nav>
+  <nav class="conta-tabs" id="contaTabs" aria-label="Telas da seção" hidden>
+    <button class="conta-tab ativa" data-g="geral" data-conta="dash">Visão geral</button>
+    <button class="conta-tab" data-g="dia" data-conta="cpf">Lançamentos</button>
+    <button class="conta-tab" data-g="dia" data-conta="prev">Previsão do mês</button>
+    <button class="conta-tab" data-g="plan" data-conta="fluxo" title="Expectativa de receitas e gastos, mês a mês">Fluxo projetado</button>
+    <button class="conta-tab" data-g="plan" data-conta="fluxoreal" title="Valores reais recebidos e gastos, mês a mês">Fluxo realizado</button>
+    <button class="conta-tab" data-g="plan" data-conta="metas">Metas e caixinhas</button>
+    <button class="conta-tab" data-g="plan" data-conta="viagens">Viagens</button>
+    <button class="conta-tab" data-g="patri" data-conta="dividas">Dívidas e parcelas</button>
+    <button class="conta-tab" data-g="patri" data-conta="invest">Investimentos</button>
+    <button class="conta-tab" data-g="patri" data-conta="ir" title="Despesas de escola e saúde para a declaração do IR">Imposto de renda</button>
+    <button class="conta-tab banco" data-g="contas" data-conta="itau">Itaú</button>
+    <button class="conta-tab banco" data-g="contas" data-conta="bb">BB</button>
+    <button class="conta-tab banco cartao-tab" data-g="contas" data-conta="cartao" data-cartao="itau" title="Cartão Azul Itaú Infinite (final 5548)"><span class="mini-cartao mc-infinite" aria-hidden="true"><i></i><b>5548</b></span>Infinite</button>
+    <button class="conta-tab banco cartao-tab" data-g="contas" data-conta="cartao" data-cartao="bb" title="Cartão BB Altus (final 5698)"><span class="mini-cartao mc-altus" aria-hidden="true"><i></i><b>5698</b></span>Altus</button>
   </nav>
   <div class="barra-periodo" id="abas"></div>
   <div class="corpo" id="corpo"></div>
@@ -4305,7 +4334,14 @@
   /* ================= navegação ================= */
   const cap = t => t.charAt(0).toUpperCase()+t.slice(1);
   function marcarConta(){
-    document.querySelectorAll("#contaTabs .conta-tab").forEach(b=>b.classList.toggle("ativa",b.dataset.conta===ui.conta&&(!b.dataset.cartao||b.dataset.cartao===(ui.cartao||"itau"))));
+    let g="geral";
+    document.querySelectorAll("#contaTabs .conta-tab").forEach(b=>{ const on=b.dataset.conta===ui.conta&&(!b.dataset.cartao||b.dataset.cartao===(ui.cartao||"itau"));
+      b.classList.toggle("ativa",on); if(on){ g=b.dataset.g; b.setAttribute("aria-current","page"); } else b.removeAttribute("aria-current"); });
+    // seção da tela atual: só as telas dela aparecem na 2ª linha; a Visão geral não tem 2ª linha
+    (ui.ultG=ui.ultG||{})[g]=ui.conta+(ui.conta==="cartao"?"|"+(ui.cartao||"itau"):"");
+    document.querySelectorAll("#navGrupos .nav-grupo").forEach(b=>{ const on=b.dataset.grupo===g; b.classList.toggle("ativa",on); b.setAttribute("aria-expanded",on); });
+    document.querySelectorAll("#contaTabs .conta-tab").forEach(b=>{ b.hidden=b.dataset.g!==g; });
+    $("#contaTabs").hidden=g==="geral";
   }
   function mesPadrao(meses){
     const ok=meses.filter(m=>m<=mesAtual()), l=ok.length?ok:meses;
@@ -7643,6 +7679,14 @@
       const linha=e.target.closest("[data-filtrar]"); if(!linha) return;
       linha.click(); e.preventDefault();
     }
+  });
+  // seções: abre a última tela usada na seção (ou a primeira)
+  document.getElementById("navGrupos").addEventListener("click",e=>{
+    const bg=e.target.closest(".nav-grupo"); if(!bg) return;
+    const g=bg.dataset.grupo, ult=(ui.ultG||{})[g], [c,ct]=(ult||"").split("|");
+    const alvo=(ult&&document.querySelector('#contaTabs .conta-tab[data-g="'+g+'"][data-conta="'+c+'"]'+(ct?'[data-cartao="'+ct+'"]':'')))||
+      document.querySelector('#contaTabs .conta-tab[data-g="'+g+'"]');
+    if(alvo) alvo.click();
   });
   // seletor de conta
   document.getElementById("contaTabs").addEventListener("click",e=>{
