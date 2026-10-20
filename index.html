@@ -980,6 +980,15 @@
     #contaTabs.conta-tabs{padding:6px 8px;overflow-x:auto}}
   button.tag-cartao{background:none;border:0;padding:2px 4px;cursor:pointer;border-radius:6px;font-size:inherit}
   button.tag-cartao:hover{background:#EEF2FF;outline:1px solid #C7D2FE}
+  /* filtro Fixos / Variáveis da Previsão do mês */
+  .pv-filtro{display:inline-flex;gap:4px;background:#F3F4F6;border:1px solid #E5E7EB;border-radius:10px;padding:3px;margin:0 0 10px}
+  .pv-filtro button{border:0;background:transparent;border-radius:8px;padding:6px 12px;font:500 13px var(--sans);color:#4B5563;cursor:pointer;white-space:nowrap}
+  .pv-filtro button small{color:#9CA3AF;font-size:11px;margin-left:2px}
+  .pv-filtro button b{font-family:var(--serif);font-weight:600;margin-left:4px}
+  .pv-filtro button:hover{background:#E5E7EB}
+  .pv-filtro button.on{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.1);color:var(--verde)}
+  .pv-filtro button.var.on{color:#1F4E8C}
+  @media (max-width:700px){.pv-filtro{display:flex;overflow-x:auto}.pv-filtro button{padding:6px 9px}}
 </style>
 
 <div id="telaLogin">
@@ -4557,7 +4566,8 @@
     // linhas agrupadas por bloco (grupo de categoria), na ordem dos grupos; dentro do bloco vale a ordenação escolhida
     const ORD_G=GRUPOS.map(x=>x.g).filter(Boolean).concat([BLOCO_OUTROS]);
     function separaBlocos(lista){
-      const por={}; idxOrdenados(lista).forEach(i=>{ const g=grupoPrev(p[lista][i]); (por[g]=por[g]||[]).push(i); });
+      // filtro Fixos / Variáveis (ui.pvTipo): vale para as duas tabelas, os blocos e os totais dos blocos
+      const por={}; idxOrdenados(lista).filter(i=>!ui.pvTipo||tipoPrev(p[lista][i])===ui.pvTipo).forEach(i=>{ const g=grupoPrev(p[lista][i]); (por[g]=por[g]||[]).push(i); });
       return ORD_G.filter(g=>por[g]).map(g=>({g:g, is:por[g],
         aPagar:cent(por[g].reduce((a,i)=>a+(p[lista][i].aPagar<0?-p[lista][i].aPagar:0),0)),
         pago:cent(por[g].reduce((a,i)=>a+(+p[lista][i].pago||0),0))}));
@@ -4572,6 +4582,12 @@
         b.is.map(i=>linha(lista,p[lista][i],i).replace(/^<tr/,'<tr style="'+estiloBloco(b.g)+'"').replace(/^(<tr[^>]*?)( class="([^"]*)")/,'$1 class="pv-gl $3"').replace(/^(<tr(?![^>]*class=)[^>]*)>/,'$1 class="pv-gl">')
           .replace('placeholder="Detalhes" aria-label="Detalhes"></td>','placeholder="Detalhes" aria-label="Detalhes">'+opGrupo(lista,i,b.g)+'</td>')).join("")).join("");
     }
+    // totais do filtro: só as contas a pagar (como o "fixos · variáveis" do resumo ao lado)
+    const filtroTipo=()=>{ const sm=tp=>cent(p.itens.reduce((a,x)=>a+((!tp||tipoPrev(x)===tp)&&x.aPagar<0?-x.aPagar:0),0)),
+        n=tp=>p.itens.filter(x=>!tp||tipoPrev(x)===tp).length;
+      return '<div class="pv-filtro" role="radiogroup" aria-label="Filtrar por tipo">'+[["","Todos"],["fixo","Fixos"],["var","Variáveis"]].map(([k,r])=>
+        '<button role="radio" aria-checked="'+((ui.pvTipo||"")===k)+'" class="'+((ui.pvTipo||"")===k?"on ":"")+(k||"todos")+'" data-pvtipo="'+k+'">'+r+
+        ' <small>'+n(k)+'</small> <b>'+brl(sm(k))+'</b></button>').join("")+'</div>'; };
     const chipsPrev=lista=>{ const bs=separaBlocos(lista); if(bs.length<2) return "";
       return '<div class="pv-chips">'+bs.map(b=>'<button class="pv-chip" data-pchip="pvb-'+lista+'-'+ORD_G.indexOf(b.g)+'" style="'+estiloBloco(b.g)+'" title="Ir para o bloco">'+
         '<i></i>'+esc(b.g)+' <b>'+(b.aPagar?brl(b.aPagar):'—')+'</b></button>').join("")+'</div>'; };
@@ -4603,7 +4619,8 @@
         ' Tudo aqui é editável e fica salvo. <b>A pagar</b>: digite o valor normal (vira saída); para entrada use +. '+
         'O ✓ move o valor para <b>Pago</b>. Importar a planilha de novo substitui os meses que estiverem nela.</p>'+
       '<div class="pv-grid"><div>'+
-        tabela("itens","Contas a pagar").replace('<div class="rolagem">',chipsPrev("itens")+'<div class="rolagem">')+
+        tabela("itens","Contas a pagar").replace('<div class="rolagem">',filtroTipo()+chipsPrev("itens")+'<div class="rolagem">')+
+        (ui.pvTipo&&!separaBlocos("itens").length?'<p class="sub" style="margin:4px 0 0">Nenhuma conta '+(ui.pvTipo==="fixo"?"fixa":"variável")+' neste mês.</p>':'')+
         (p.itens.some(x=>x.media!=null)?'<p class="sub" style="margin:4px 0 0;font-size:12px"><span class="pv-leg-media"></span>Linhas em azul: gastos que se repetem todo mês e não estavam na previsão, pela média dos 3 últimos meses (conta e dinheiro; o cartão já está na fatura). '+
           'Digite em <b>A pagar</b> quanto ainda falta gastar; no mês atual o <b>Pago</b> acompanha o gasto real. O × tira a sugestão deste mês.</p>':'')+
         '<div style="height:30px"></div>'+
@@ -4659,6 +4676,8 @@
       if(k==="aPagar") manterFoco(renderPrevisao);
     };
     corpo.onclick=e=>{
+      const ft=e.target.closest("[data-pvtipo]");
+      if(ft){ ui.pvTipo=ft.dataset.pvtipo||""; renderPrevisao(); return; }
       const ch=e.target.closest("[data-pchip]");
       if(ch){ const r=document.getElementById(ch.dataset.pchip); if(r) r.scrollIntoView({behavior:"smooth",block:"center"}); return; }
       if(e.target.closest("[data-pfluxo]")){ ui.conta="fluxo"; render(); window.scrollTo(0,0); return; }
