@@ -1184,7 +1184,11 @@
     const c=x.cat&&GRUPO_DE[x.cat]!=null?x.cat:par&&GRUPO_DE[par[1].trim()]!=null?par[1].trim():GRUPO_DE[d]!=null?d:catRotulo(d);
     const g=c?GRUPO_DE[c]:null;
     if(g==="Fora dos cálculos"&&/cheque/i.test(c)) return "Financiamento e dívidas";
-    return g||(/cheque especial|empr[ée]stimo|parcela/i.test(d)?"Financiamento e dívidas":BLOCO_OUTROS);
+    if(g) return g;
+    const extra=[[/cheque especial|empr[ée]stimo|parcela|acordo/i,"Financiamento e dívidas"],[/dom[ée]stic/i,"Serviço doméstico"],
+      [/almo[çc]o|jantar|padaria|a[çc]ougue/i,"Alimentação"],[/t[êe]nis|roupa|cal[çc]ado|presente|inscri[çc][ãa]o/i,"Lazer e pessoal"],
+      [/particular|aula|curso|col[ée]gio/i,"Educação"],[/m[ée]dic|dentist|exame|consulta/i,"Saúde"]].find(r=>r[0].test(d));
+    return extra?extra[1]:BLOCO_OUTROS;
   }
   // grupo de um bloco do Fluxo anual projetado (linha "g" vinda da planilha): pelo nome; senão pela maioria das categorias das linhas
   function grupoFluxo(linhas,i){
