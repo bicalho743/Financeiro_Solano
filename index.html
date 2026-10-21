@@ -1124,6 +1124,18 @@
     #lc #contaTabs .conta-tab:focus:not(:focus-visible){outline:none}
     #lc .nav-sec{cursor:default;user-select:none;font-size:10.5px;color:#98A2B3;margin-top:10px;padding:12px 12px 6px;border-top:1px solid var(--bd2)}
   }
+  /* Investimentos › Posição: por instituição e todos os ativos */
+  .ib-gen{color:#fff;font-size:8px}
+  .ds-inst{display:grid;grid-template-columns:minmax(150px,220px) 1fr 110px 56px;gap:10px;align-items:center;font-size:13px;padding:6px 0}
+  .ds-inst-n{display:flex;align-items:center;min-width:0}
+  .ds-inst-n small{color:var(--tx3);margin-left:6px;font-size:11.5px;white-space:nowrap}
+  .ds-inst b{text-align:right;white-space:nowrap}.ds-inst em{font-style:normal;color:var(--tx3);text-align:right}
+  .ds-sub{margin:6px 0 2px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3)}
+  .ds-topo{align-items:start}
+  .iv-todos th:nth-child(-n+3),.iv-todos td:nth-child(-n+3){text-align:left}
+  .iv-todos td:nth-child(2),.iv-todos td:nth-child(3){font-size:13px;white-space:nowrap}
+  .iv-todos .ic-banco{width:18px;height:18px;font-size:7.5px;vertical-align:middle;margin-right:6px}
+  @media (max-width:640px){.ds-inst{grid-template-columns:1fr 92px 44px}.ds-inst .ds-hb-b{display:none}.ds-inst-n small{display:none}}
   @media (min-width:1100px){
     #lc{display:grid;grid-template-columns:236px minmax(0,1fr);grid-template-rows:auto auto 1fr;align-items:start;min-height:100vh;padding-bottom:0}
     #lc>#corpo{padding-bottom:60px}
@@ -6573,10 +6585,39 @@
       const vencs=rf.filter(x=>x.vencimento).sort((a,b)=>a.vencimento<b.vencimento?-1:1).slice(0,5)
         .map(x=>'<div class="ds-li"><span>'+esc(x.ativo.replace(/^Tesouro /,"TD "))+'</span><b>'+x.vencimento.split("-").reverse().join("/")+'</b><em>R$ '+brl(x.valor)+'</em></div>').join("");
       const painel=(t,corpo,alvo,cls)=>'<section class="ds-card'+(cls?" "+cls:"")+'"><header><h4>'+t+'</h4>'+(alvo?'<button class="ver-mais" data-ivaba="'+alvo+'">ver ›</button>':'')+'</header>'+corpo+'</section>';
+      // por instituição (custodiante na B3): selo do banco, barra e % da carteira
+      const selo=k=>IC_BANCO[k]||'<span class="ic-banco ib-gen" aria-hidden="true" style="background:'+corBanco(k)+'">'+esc(nomeBanco(k).slice(0,3))+'</span>';
+      const insts=ordBancos.filter(k=>porBanco[k].inv.length).map(k=>({k, v:S(porBanco[k].inv,x=>x.valor), n:porBanco[k].inv.length})).sort((a,b)=>b.v-a.v);
+      const maxI=insts.length?insts[0].v:1;
+      const instH=insts.map(i=>'<div class="ds-inst"><span class="ds-inst-n">'+selo(i.k)+esc(nomeBanco(i.k))+'<small>'+i.n+' ativo'+(i.n===1?'':'s')+'</small></span>'+
+        '<span class="ds-hb-b"><i style="width:'+(i.v/maxI*100).toFixed(1)+'%;background:'+corBanco(i.k)+'"></i></span>'+
+        '<b>R$ '+brl(i.v)+'</b><em>'+pct(total?i.v/total:0)+'</em></div>').join("")||'<p class="sub">Sem instituição na posição da B3.</p>';
+      // proventos por data: a receber (só se o extrato da B3 trouxer datas futuras) e os últimos recebidos
+      const hjI=hojeISO(), ordP=provs.slice().sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+      const linhaProv=m=>'<div class="ds-li"><span>'+diaMes(m.data)+' · <b>'+esc(String(m.ativo).replace(/^Tesouro /,"TD "))+'</b></span><b>'+tipoProvento(m.mov)+'</b><em>R$ '+brl(cent(+m.valor||0))+'</em></div>';
+      const aReceber=ordP.filter(m=>m.data>hjI), recebidos=ordP.filter(m=>m.data<=hjI).slice(-6).reverse();
+      const provH=(aReceber.length?'<p class="ds-sub">A receber · R$ '+brl(S(aReceber,m=>m.valor))+'</p>'+aReceber.map(linhaProv).join(""):'')+
+        '<p class="ds-sub">Últimos recebidos</p>'+(recebidos.length?recebidos.map(linhaProv).join(""):'<p class="sub">Nenhum provento na movimentação.</p>');
+      // todos os ativos, como a posição consolidada da B3
+      const todos=cart.slice().sort((a,b)=>b.valor-a.valor), ctTodos=S(todos,x=>x.custo);
+      const ativosH='<div class="tit-secao" style="margin-top:28px"><h3>Todos os ativos · '+todos.length+'</h3></div>'+
+        '<div class="rolagem"><table class="dash-mes iv-tab iv-todos"><thead><tr><th>Ativo</th><th>Classe</th><th>Instituição</th><th>Qtde.</th><th>Valor</th><th>% da carteira</th><th>Resultado</th></tr></thead><tbody>'+
+        todos.map(x=>{ const res=cent(x.valor-x.custo), k=bancoDe(x.inst);
+          return '<tr><td><b>'+esc(x.ativo)+'</b><span class="kpi-sub">'+esc(String(x.nome||"").slice(0,40))+'</span></td>'+
+            '<td><i class="iv-ponto" style="background:'+(COR_CLASSE[x.classe]||"#999")+'"></i>'+esc(x.classe)+'</td>'+
+            '<td class="iv-inst">'+(k==="sem"?"—":selo(k)+esc(nomeBanco(k)))+'</td>'+
+            '<td>'+qtd(x.qt)+'</td><td>'+brl(x.valor)+'</td><td>'+(total?pct(x.valor/total):"—")+'</td>'+
+            '<td style="color:'+corV(res)+'">'+brl(res)+'<span class="kpi-sub">'+pctS(x.custo?res/x.custo:null)+'</span></td></tr>'; }).join("")+
+        '<tr class="iv-tot"><td>Total</td><td></td><td></td><td></td><td>'+brl(total)+'</td><td>100%</td><td style="color:'+corV(total-ctTodos)+'">'+brl(cent(total-ctTodos))+'</td></tr>'+
+        '</tbody></table></div>';
       html=tiles+
         '<div class="ds-grid ds-3">'+
           painel("Alocação da carteira",rosca,"rv")+
           painel("Evolução × meta",evoG,"meta","ds-span2")+
+        '</div>'+
+        '<div class="ds-grid ds-3 ds-topo">'+
+          painel("Por instituição",instH,"bancos","ds-span2")+
+          painel("Proventos",provH,"renda")+
         '</div>'+
         '<div class="ds-grid ds-3">'+
           painel("Proventos · 12 meses",provG,"renda","ds-span2")+
@@ -6585,7 +6626,7 @@
         '<div class="ds-grid ds-3">'+
           painel("Maiores posições",topH,"rv","ds-span2")+
           painel("Próximos vencimentos",vencs||'<p class="sub">Nenhum título com vencimento.</p>',"rf")+
-        '</div>'+
+        '</div>'+ativosH+
         '<div class="iv-cards">'+
         '<button class="iv-card iv-bancos" data-ivaba="bancos" style="--c:#2E86DE"><span class="rot">Bancos</span>'+
           '<div class="iv-card-v">R$ '+brl(cent(totContas+total))+'</div>'+
