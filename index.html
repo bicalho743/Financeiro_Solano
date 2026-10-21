@@ -1103,6 +1103,27 @@
   .dash-hoje:not(.um) .g-num.clic-card:last-child:hover{background:var(--ac-hover)}
   .dash-hoje:not(.um) .g-num:last-child .v{color:#fff!important}
   .dash-hoje:not(.um) .g-num:last-child .rot,.dash-hoje:not(.um) .g-num:last-child .kpi-sub{color:#DBE4F3}
+  /* selos dos bancos e menu lateral: o que é clicável tem ícone, fundo ao passar o mouse e seta; títulos de grupo não */
+  .ic-banco{display:inline-flex;align-items:center;justify-content:center;flex:none;width:22px;height:22px;border-radius:6px;
+    font:700 9px/1 var(--sans);letter-spacing:-.02em;text-transform:none;vertical-align:-6px;margin-right:8px}
+  .ib-itau{background:#EC7000;color:#fff;font-size:8.5px}
+  .ib-bb{background:#FCE300;color:#2B3990;font-size:10px}
+  .ib-sant{background:#EC0000}
+  .bc-l .bc-n:has(.ic-banco)::before{display:none}
+  .bc-l .bc-n{display:inline-flex;align-items:center}
+  .ic-nav{display:none}
+  @media (min-width:1100px){
+    #lc #contaTabs .ic-nav{display:block;flex:none;color:var(--tx3)}
+    #lc #contaTabs .conta-tab .ic-banco{margin-right:0}
+    #lc #contaTabs .conta-tab{position:relative;padding-right:28px}
+    #lc #contaTabs .conta-tab::after{content:"›";position:absolute;right:12px;top:50%;transform:translateY(-52%);font-size:16px;color:var(--tx3);opacity:0;transition:opacity .12s}
+    #lc #contaTabs .conta-tab:hover::after,#lc #contaTabs .conta-tab.ativa::after{opacity:1}
+    #lc #contaTabs .conta-tab:hover .ic-nav{color:var(--tx)}
+    #lc #contaTabs .conta-tab.ativa .ic-nav,#lc #contaTabs .conta-tab.ativa::after{color:var(--ac)}
+    #lc #contaTabs .conta-tab.ativa{box-shadow:inset 3px 0 0 var(--ac)}
+    #lc #contaTabs .conta-tab:focus:not(:focus-visible){outline:none}
+    #lc .nav-sec{cursor:default;user-select:none;font-size:10.5px;color:#98A2B3;margin-top:10px;padding:12px 12px 6px;border-top:1px solid var(--bd2)}
+  }
   @media (min-width:1100px){
     #lc{display:grid;grid-template-columns:236px minmax(0,1fr);grid-template-rows:auto auto 1fr;align-items:start;min-height:100vh;padding-bottom:0}
     #lc>#corpo{padding-bottom:60px}
@@ -1186,22 +1207,22 @@
     <button class="nav-grupo" data-grupo="contas"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg></span>Conferir contas</button>
   </nav>
   <nav class="conta-tabs" id="contaTabs" aria-label="Telas da seção" hidden>
-    <button class="conta-tab ativa" data-g="geral" data-conta="dash">Visão geral</button>
+    <button class="conta-tab ativa" data-g="geral" data-conta="dash"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Visão geral</button>
     <span class="nav-sec" aria-hidden="true">Dia a dia</span>
-    <button class="conta-tab" data-g="dia" data-conta="cpf">Lançamentos</button>
-    <button class="conta-tab" data-g="dia" data-conta="prev">Previsão do mês</button>
+    <button class="conta-tab" data-g="dia" data-conta="cpf"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Lançamentos</button>
+    <button class="conta-tab" data-g="dia" data-conta="prev"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Previsão do mês</button>
     <span class="nav-sec" aria-hidden="true">Planejamento</span>
-    <button class="conta-tab" data-g="plan" data-conta="fluxo" title="Expectativa de receitas e gastos, mês a mês">Fluxo projetado</button>
-    <button class="conta-tab" data-g="plan" data-conta="fluxoreal" title="Valores reais recebidos e gastos, mês a mês">Fluxo realizado</button>
-    <button class="conta-tab" data-g="plan" data-conta="metas">Metas e caixinhas</button>
-    <button class="conta-tab" data-g="plan" data-conta="viagens">Viagens</button>
+    <button class="conta-tab" data-g="plan" data-conta="fluxo" title="Expectativa de receitas e gastos, mês a mês"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Fluxo projetado</button>
+    <button class="conta-tab" data-g="plan" data-conta="fluxoreal" title="Valores reais recebidos e gastos, mês a mês"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Fluxo realizado</button>
+    <button class="conta-tab" data-g="plan" data-conta="metas"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>Metas e caixinhas</button>
+    <button class="conta-tab" data-g="plan" data-conta="viagens"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>Viagens</button>
     <span class="nav-sec" aria-hidden="true">Patrimônio e IR</span>
-    <button class="conta-tab" data-g="patri" data-conta="dividas">Dívidas e parcelas</button>
-    <button class="conta-tab" data-g="patri" data-conta="invest">Investimentos</button>
-    <button class="conta-tab" data-g="patri" data-conta="ir" title="Despesas de escola e saúde para a declaração do IR">Imposto de renda</button>
+    <button class="conta-tab" data-g="patri" data-conta="dividas"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg>Dívidas e parcelas</button>
+    <button class="conta-tab" data-g="patri" data-conta="invest"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 15.9A10 10 0 1 1 8 2.8"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>Investimentos</button>
+    <button class="conta-tab" data-g="patri" data-conta="ir" title="Despesas de escola e saúde para a declaração do IR"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>Imposto de renda</button>
     <span class="nav-sec" aria-hidden="true">Conferir contas</span>
-    <button class="conta-tab banco" data-g="contas" data-conta="itau">Itaú</button>
-    <button class="conta-tab banco" data-g="contas" data-conta="bb">BB</button>
+    <button class="conta-tab banco" data-g="contas" data-conta="itau"><span class="ic-banco ib-itau" aria-hidden="true">itaú</span>Itaú</button>
+    <button class="conta-tab banco" data-g="contas" data-conta="bb"><span class="ic-banco ib-bb" aria-hidden="true">BB</span>BB</button>
     <button class="conta-tab banco cartao-tab" data-g="contas" data-conta="cartao" data-cartao="itau" title="Cartão Azul Itaú Infinite (final 5548)"><span class="mini-cartao mc-infinite" aria-hidden="true"><i></i><b>5548</b></span>Infinite</button>
     <button class="conta-tab banco cartao-tab" data-g="contas" data-conta="cartao" data-cartao="bb" title="Cartão BB Altus (final 5698)"><span class="mini-cartao mc-altus" aria-hidden="true"><i></i><b>5698</b></span>Altus</button>
   </nav>
@@ -1951,6 +1972,9 @@
     return '<span class="bc-cq" style="color:'+cor+'" title="Ciclo de '+diaMes(u.ini)+' a '+diaMes(somaDias(u.renova,-1))+'">'+txt+'</span>';
   }
   // saldos nos bancos: o que você tem de verdade e quanto de cheque especial está em uso
+  // selo do banco (cores de cada marca), usado nos saldos da Visão geral e no menu
+  const IC_BANCO={itau:'<span class="ic-banco ib-itau" aria-hidden="true">itaú</span>', bb:'<span class="ic-banco ib-bb" aria-hidden="true">BB</span>',
+    santander:'<span class="ic-banco ib-sant" aria-hidden="true"><svg width="12" height="13" viewBox="0 0 12 13" fill="#fff"><path d="M6 0c.6 1.6 2.6 3 2.6 5 0 .9-.4 1.6-1 2.1.2-1.2-.6-2.2-1.6-3.2-1 1-1.8 2-1.6 3.2-.6-.5-1-1.2-1-2.1C3.4 3 5.4 1.6 6 0zM1 8.2c1.4.7 3 1.1 5 1.1s3.6-.4 5-1.1V10c-1.4.8-3 1.2-5 1.2S2.4 10.8 1 10z"/></svg></span>'};
   function painelBancos(){
     const it=saldoContaApp(ui.mes), bb=saldoBanco("bb"), st=saldoBanco("santander");
     const cor=v=>v<0?"var(--neg)":"var(--tinta)";
@@ -1958,9 +1982,9 @@
       (extra||'<b style="color:'+(s?cor(s.v):"var(--cinza)")+'">'+(s?'R$ '+brl(s.v):'—')+'</b>')+'<span class="kpi-sub">'+fonte+'</span></div>';
     const vals=[it.v, bb?bb.v:0, st?st.v:0], tot=cent(vals.reduce((a,b)=>a+b,0)), neg=cent(vals.filter(v=>v<0).reduce((a,b)=>a+b,0));
     return '<section class="bancos"><div class="tit-secao" style="margin:0 0 6px"><h3>Saldos nos bancos</h3></div><div class="bc-grid">'+
-      linha("Itaú",it,"pelos lançamentos, até "+diaMes(it.data)+tagCheque("itau",it),{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
-      linha("BB",bb,(bb?"extrato de "+diaMes(bb.data):"importe o extrato do BB")+tagCheque("bb",bb),{conta:"bb",mes:ui.mes,alvo:"#conf",dica:"Ver a conta do BB"})+
-      linha("Santander",st,(st?"digitado em "+diaMes(st.data):"digite o saldo quando usar")+tagCheque("santander",st)+
+      linha(IC_BANCO.itau+"Itaú",it,"pelos lançamentos, até "+diaMes(it.data)+tagCheque("itau",it),{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
+      linha(IC_BANCO.bb+"BB",bb,(bb?"extrato de "+diaMes(bb.data):"importe o extrato do BB")+tagCheque("bb",bb),{conta:"bb",mes:ui.mes,alvo:"#conf",dica:"Ver a conta do BB"})+
+      linha(IC_BANCO.santander+"Santander",st,(st?"digitado em "+diaMes(st.data):"digite o saldo quando usar")+tagCheque("santander",st)+
         '<label class="bc-aj">dias já usados neste ciclo <input class="campo" data-cq-usados="santander" type="number" min="0" max="10" value="'+
         esc(String((dados.chequeUsados||{})["santander|"+cicloCheque("santander").ini]??""))+'" placeholder="0"></label>',null,
         '<input class="campo bc-in" data-saldo-santander="1" value="'+(st?brl(st.v):"")+'" placeholder="0,00" inputmode="decimal" aria-label="Saldo do Santander" style="color:'+(st?cor(st.v):"inherit")+'">')+
