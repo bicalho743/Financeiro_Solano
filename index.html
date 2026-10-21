@@ -1136,6 +1136,10 @@
   .iv-todos td:nth-child(2),.iv-todos td:nth-child(3){font-size:13px;white-space:nowrap}
   .iv-todos .ic-banco{width:18px;height:18px;font-size:7.5px;vertical-align:middle;margin-right:6px}
   @media (max-width:640px){.ds-inst{grid-template-columns:1fr 92px 44px}.ds-inst .ds-hb-b{display:none}.ds-inst-n small{display:none}}
+  /* relatório anual (IR) dos investimentos e botão + da barra do celular */
+  .iv-ir th:nth-child(-n+3),.iv-ir td:nth-child(-n+3){text-align:left}
+  .iv-ir td.iv-ir-d{white-space:normal;min-width:260px;font-size:12.5px;color:var(--tx2)}
+  .nav-mais{display:none}
   @media (min-width:1100px){
     #lc{display:grid;grid-template-columns:236px minmax(0,1fr);grid-template-rows:auto auto 1fr;align-items:start;min-height:100vh;padding-bottom:0}
     #lc>#corpo{padding-bottom:60px}
@@ -1154,7 +1158,7 @@
   }
   @media (max-width:700px){
     #lc{padding-bottom:88px}
-    #lc #navGrupos{position:fixed;left:0;right:0;bottom:0;z-index:60;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;
+    #lc #navGrupos{position:fixed;left:0;right:0;bottom:0;z-index:60;display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) 64px repeat(3,minmax(0,1fr));gap:0;
       padding:4px 2px calc(4px + env(safe-area-inset-bottom));background:var(--sf);border-top:1px solid var(--bd);border-bottom:0;
       box-shadow:0 -2px 10px rgba(16,24,40,.06);overflow:visible}
     #lc .nav-grupo{flex-direction:column;justify-content:center;gap:3px;min-height:54px;padding:6px 2px;border:0;border-radius:10px;
@@ -1163,6 +1167,10 @@
     #lc .nav-grupo.ativa{color:var(--ac);background:var(--ac-bg)}
     #lc .nav-grupo.ativa span{opacity:1}
     .aviso{bottom:84px}
+    #lc .nav-mais{display:flex;align-items:center;justify-content:center;align-self:center;justify-self:center;width:52px;height:52px;border:0;border-radius:16px;
+      background:var(--ac);color:#fff;box-shadow:0 2px 6px rgba(29,59,110,.35);cursor:pointer}
+    #lc .nav-mais:active{background:var(--ac-hover)}
+    #lc .topo #btLancar{display:none}
   }
 </style>
 
@@ -1214,6 +1222,7 @@
   <nav class="nav-grupos" id="navGrupos" aria-label="Seções">
     <button class="nav-grupo ativa" data-grupo="geral"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span>Visão geral</button>
     <button class="nav-grupo" data-grupo="dia"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>Dia a dia</button>
+    <button class="nav-mais" id="btLancarNav" aria-label="Novo lançamento"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
     <button class="nav-grupo" data-grupo="plan"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>Planejamento</button>
     <button class="nav-grupo" data-grupo="patri"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg></span>Patrimônio e IR</button>
     <button class="nav-grupo" data-grupo="contas"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg></span>Conferir contas</button>
@@ -6270,7 +6279,7 @@
   document.addEventListener("visibilitychange",()=>{ if(ui.conta==="invest" && document.visibilityState==="visible") atualizarCotacoes(); });
 
   const RF_CLASSES = ["Tesouro Direto","Renda fixa"], RV_CLASSES = ["Ações","FIIs","ETF exterior","Cripto","Outros"];
-  const ABAS_INV = [["resumo","Posição"],["renda","Proventos"],["mov","Extrato unificado"],["rent","Rentabilidade"],["rf","Renda fixa"],["rv","Renda variável"],["bancos","Bancos"],["meta","Meta e projeção"],["conc","Conciliação"],["patr","Patrimônio"]];
+  const ABAS_INV = [["resumo","Posição"],["renda","Proventos"],["mov","Extrato unificado"],["rent","Rentabilidade"],["irinv","Relatório anual (IR)"],["rf","Renda fixa"],["rv","Renda variável"],["bancos","Bancos"],["meta","Meta e projeção"],["conc","Conciliação"],["patr","Patrimônio"]];
   const COR_CLASSE = {"Tesouro Direto":"#2F4A3C","Renda fixa":"#6E8A78","Ações":"#1F6FB2","FIIs":"#785E28","ETF exterior":"#7D3C98","Cripto":"#D35400","Outros":"#95A5A6"};
   /* meta refeita a partir do valor real de hoje: (meta + aporte) × (1 + taxa) a cada mês, por 25 anos */
   function refazerMeta(total, aporte, taxa){
@@ -6404,6 +6413,7 @@
       if(e.target.closest("[data-ivimp]")){ abrirImport("b3"); return; }
       if(e.target.closest("[data-ivcot]")){ atualizarCotacoes(true); render(); return; }
       const ra=e.target.closest("[data-rmano]"); if(ra){ ui.rmAno=ra.dataset.rmano; render(); return; }
+      const ia=e.target.closest("[data-irano]"); if(ia){ ui.irInvAno=ia.dataset.irano; render(); return; }
       const rc=e.target.closest("[data-rmcl]"); if(rc){ ui.rmCl=rc.dataset.rmcl; render(); return; }
       if(e.target.closest("[data-rmhist]")){ carregarHistorico(true); render(); return; }
       const ms=e.target.closest("[data-ivmovmes]"); if(ms){ ui.invMovMes=ms.dataset.ivmovmes; render(); return; }
@@ -6651,6 +6661,58 @@
         '</div>'+
         '<div class="iv-rodape">'+dataRef+' · custo R$ '+brl(custoTot)+' · '+
         'Patrimônio total (com previdência, bens e dívidas): <b>R$ '+brl(cent(total+prev+bens-dividas))+'</b> <button class="ver-mais" data-ivaba="patr">ver</button></div>';
+    }
+    else if(aba==="irinv"){
+      // relatório do ano para a declaração: bens em 31/12 (custo de aquisição), proventos por ficha e vendas por mês.
+      // Códigos só onde são certos (ações, FIIs, dividendos, rendimentos de FII, JCP); renda fixa e ETF: informe da instituição.
+      const anos=[...new Set(v.movs.map(m=>m.data.slice(0,4)))].sort(), anoH=hojeISO().slice(0,4);
+      const ano=anos.includes(ui.irInvAno)?ui.irInvAno:(anos.filter(a=>a<anoH).pop()||anos[anos.length-1]||anoH);
+      const fim=ano+"-12-31", fimAnt=(+ano-1)+"-12-31", parcial=ano>=anoH;
+      const pA=carteiraB3(fim), pAnt=carteiraB3(fimAnt);
+      const CODIGO={"Ações":"03 · 01","FIIs":"07 · 03"};
+      const bens=[...new Set(Object.keys(pA).concat(Object.keys(pAnt)))].map(k=>{ const a=pA[k]||{}, b=pAnt[k]||{};
+          return {ativo:k, nome:a.nome||b.nome||"", classe:a.classe||b.classe, inst:a.inst||b.inst||"", qt:a.qt||0, custo:cent(a.custo||0), custoAnt:cent(b.custo||0)}; })
+        .filter(x=>x.custo>0.004||x.custoAnt>0.004).sort((a,b)=>(a.classe||"").localeCompare(b.classe||"")||b.custo-a.custo);
+      const discr=x=>x.qt>1e-6?(qtd(x.qt)+" "+(x.classe==="FIIs"?"cotas":x.classe==="Ações"?"ações":"unid.")+" "+x.ativo+(x.nome?" ("+x.nome+")":"")+
+        (x.inst?", custódia "+x.inst.replace(/ (S\/?A\b|S\.A\.|CCTVM|DE VALORES|CORRETORA).*/i,""):"")+", custo médio R$ "+brl(cent(x.custo/x.qt))):"vendido/resgatado em "+ano;
+      const provAno=provs.filter(m=>m.data.slice(0,4)===ano);
+      const ficha=m=>{ const t=tipoProvento(m.mov), cl=(pA[m.ativo]||pAnt[m.ativo]||{}).classe||m.classe;   // classe pelo ativo na carteira
+        if(t==="JCP") return ["Tributação exclusiva","10","Juros sobre capital próprio"];
+        if(t==="Dividendo") return ["Isentos","09","Dividendos"];
+        if(t==="Rendimento"&&cl==="FIIs") return ["Isentos","26","Rendimentos de FII"];
+        return ["Ver informe","—",t+" ("+(cl||"renda fixa")+")"]; };
+      const gp={}; provAno.forEach(m=>{ const f=ficha(m), k=f.join("|")+"|"+m.ativo; (gp[k]=gp[k]||{f, ativo:m.ativo, v:0}).v+=(+m.valor||0); });
+      const provL=Object.values(gp).sort((a,b)=>a.f[1].localeCompare(b.f[1])||b.v-a.v);
+      const totF=c=>cent(provL.filter(x=>x.f[1]===c).reduce((t,x)=>t+x.v,0));
+      const vendas={}; v.movs.filter(m=>m.tipo==="venda"&&m.data.slice(0,4)===ano).forEach(m=>{ const k=m.data.slice(0,7), o=vendas[k]=vendas[k]||{acoes:0,fii:0,outros:0};
+        if(m.classe==="Ações") o.acoes+=(+m.valor||0); else if(m.classe==="FIIs") o.fii+=(+m.valor||0); else o.outros+=(+m.valor||0); });
+      const msV=Object.keys(vendas).sort();
+      html='<div class="rm-barra">'+anos.map(a=>'<button class="bt '+(a===ano?"":"vazado")+'" data-irano="'+a+'">'+a+'</button>').join("")+
+          '<span class="kpi-sub" style="margin:0">ano-base '+ano+(parcial?' · parcial, até '+diaMes(hojeISO()):'')+' · declaração '+(+ano+1)+'</span></div>'+
+        kpis([["Bens em 31/12/"+ano,"R$ "+brl(S(bens,x=>x.custo)),"custo de aquisição"+(parcial?" (até hoje)":"")],
+          ["Isentos","R$ "+brl(cent(totF("09")+totF("26"))),"dividendos e rendimentos de FII","var(--pos)"],
+          ["JCP","R$ "+brl(totF("10")),"tributação exclusiva (15% já retido)"],
+          ["Vendas no ano","R$ "+brl(cent(msV.reduce((t,k)=>t+vendas[k].acoes+vendas[k].fii+vendas[k].outros,0))),msV.length+" mês(es) com venda"]])+
+        secao("Bens e direitos · situação em 31/12")+
+        '<div class="rolagem"><table class="dash-mes iv-tab iv-ir"><thead><tr><th>Ativo</th><th>Grupo · código</th><th>Discriminação</th><th>31/12/'+(+ano-1)+'</th><th>31/12/'+ano+'</th></tr></thead><tbody>'+
+          (bens.length?bens.map(x=>'<tr><td><b>'+esc(x.ativo)+'</b><span class="kpi-sub"><i class="iv-ponto" style="background:'+(COR_CLASSE[x.classe]||"#999")+'"></i>'+esc(x.classe||"")+'</span></td>'+
+            '<td>'+(CODIGO[x.classe]||'<span class="kpi-sub" style="margin:0">ver informe</span>')+'</td><td class="iv-ir-d">'+esc(discr(x))+'</td>'+
+            '<td>'+brl(x.custoAnt)+'</td><td><b>'+brl(x.custo)+'</b></td></tr>').join("")
+            :'<tr><td colspan="5" class="sub">Nenhum ativo com custo neste período.</td></tr>')+
+          '<tr class="iv-tot"><td>Total</td><td></td><td></td><td>'+brl(S(bens,x=>x.custoAnt))+'</td><td>'+brl(S(bens,x=>x.custo))+'</td></tr></tbody></table></div>'+
+        secao("Rendimentos recebidos em "+ano)+
+        '<div class="rolagem"><table class="dash-mes iv-tab iv-ir"><thead><tr><th>Ficha</th><th>Código</th><th>Tipo</th><th>Ativo</th><th>Valor</th></tr></thead><tbody>'+
+          (provL.length?provL.map(x=>'<tr><td>'+x.f[0]+'</td><td>'+x.f[1]+'</td><td>'+x.f[2]+'</td><td><b>'+esc(x.ativo)+'</b></td><td>'+brl(cent(x.v))+'</td></tr>').join("")
+            :'<tr><td colspan="5" class="sub">Nenhum provento na movimentação deste ano.</td></tr>')+
+        '</tbody></table></div>'+
+        secao("Vendas por mês (ganho de capital)")+
+        (msV.length?'<div class="rolagem"><table class="dash-mes iv-tab iv-ir"><thead><tr><th>Mês</th><th>Ações</th><th>FIIs</th><th>Outros</th><th>Situação</th></tr></thead><tbody>'+
+          msV.map(k=>{ const o=vendas[k], obs=(o.acoes>20000?"ações acima de R$ 20 mil: lucro tributável (15%), apure no ReVar":o.acoes>0?"ações até R$ 20 mil no mês: lucro isento":"")+
+            (o.fii>0?(o.acoes>0?" · ":"")+"FII: lucro tributável (20%)":""); return '<tr><td>'+cap(rotuloMes(k))+'</td><td>'+(o.acoes?brl(cent(o.acoes)):"—")+'</td><td>'+(o.fii?brl(cent(o.fii)):"—")+'</td><td>'+(o.outros?brl(cent(o.outros)):"—")+'</td><td class="iv-ir-d">'+(obs||"resgate de renda fixa: IR retido na fonte")+'</td></tr>'; }).join("")+
+          '</tbody></table></div>':'<p class="sub">Nenhuma venda ou resgate neste ano.</p>')+
+        nota("Relatório para conferência, como o Relatório Consolidado da B3: valores de custo e proventos vêm da Movimentação importada. "+
+          "Para a declaração valem os informes de rendimentos das corretoras e bancos. Tesouro, CDB e ETF: grupo e código conforme o informe da instituição. "+
+          "Lucro em vendas de ações acima de R$ 20 mil no mês e de FIIs é apurado e pago mês a mês (DARF); a calculadora ReVar, na Área do Investidor da B3, faz esse cálculo.");
     }
     else if(aba==="bancos"){
       html=kpis([["Total nos bancos","R$ "+brl(cent(totContas+total)),"contas + investimentos"],["Em conta","R$ "+brl(totContas),"saldo das contas correntes",totContas<0?"var(--neg)":""],["Investido","R$ "+brl(total),"bruto, a preço de mercado","#1D4ED8"]])+
@@ -8149,6 +8211,7 @@
   $("#btRestaurar").onclick=()=>$("#arqJson").click();
   $("#arqJson").onchange=e=>{ if(e.target.files[0]) restaurarBackup(e.target.files[0]); e.target.value=""; };
   $("#btLancar").onclick=()=>adicionarManual(NOMES_ORIGEM[ui.conta]?ui.conta:"manual");
+  $("#btLancarNav").onclick=()=>$("#btLancar").click();
 
   // listener de sessão — dispara quando Google redireciona de volta
   sb.auth.onAuthStateChange(async(event, session)=>{
