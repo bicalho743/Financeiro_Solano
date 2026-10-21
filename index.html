@@ -1048,6 +1048,7 @@
   /* atenção: âmbar/vermelho só no marcador, fundo neutro */
   .dash-atencao .it{border-color:var(--bd2)}
   .dash-atencao .it.clic:hover{background:var(--sf2)}
+  .dash-atencao .it.estouro>span:first-child::before{background:var(--neg)!important}
   .dash-atencao .it>span:first-child::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--alerta);margin-right:10px;vertical-align:2px}
   .alerta{background:var(--sf);border:1px solid var(--bd);border-left:3px solid var(--neg)}
   .alerta>div::before{color:var(--neg)}
@@ -1063,7 +1064,30 @@
   .dash-lin:hover{background:var(--sf2);box-shadow:inset 3px 0 0 var(--ac)}
   .ic-p{background:var(--ac-bg);color:var(--ac)}
   #lc a{color:var(--ac)}
-  @media (max-width:700px){.topo{padding:12px 16px}.dash-hoje.um{grid-template-columns:1fr}.dash-hoje.um .sub{padding:0 16px 14px}.dash-hoje .g-num,.dash-hoje .g-num.clic-card{border-right:none;border-bottom:1px solid var(--bd2);padding:12px 16px}}
+  .cmp-topo{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:28px 0 10px}
+  .cmp-topo .pv-filtro{margin:0}
+  .cmp-card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;box-shadow:var(--sombra);padding:18px 18px 14px}
+  .cmp-card .colunas{border-bottom:none}
+  .cmp-card .coluna{min-width:0;padding:0 2px 6px}
+  .cmp-card .coluna+.coluna{border-left:1px solid var(--bd2)}
+  .cmp-card .coluna:hover{background:var(--sf2)}
+  .cmp-card .par{height:150px;gap:4px}
+  .cmp-card .pilha{width:clamp(8px,1.6vw,18px)}
+  .cmp-card .pilha.ent i{background:var(--pos);opacity:.85}
+  .cmp-card .col-res{font-family:var(--sans);font-size:12.5px;font-weight:600;white-space:nowrap}
+  .cmp-card .col-mes{font-size:10.5px;letter-spacing:.06em;color:var(--tx3)}
+  .cmp-card .legenda{border-top:1px solid var(--bd2);padding-top:12px;margin-top:10px;color:var(--tx2)}
+  .cmp-tab th{background:var(--sf2);padding:10px 10px!important;border-bottom:1px solid var(--bd)!important}
+  table.matriz.cmp-tab td.n{font-family:var(--sans);font-size:13.5px}
+  .cmp-tab tr.cmp-g{cursor:pointer}.cmp-tab tr.cmp-g td{font-weight:600}
+  .cmp-tab tr.cmp-g td:first-child{white-space:nowrap}
+  .cmp-tab tr.cmp-c td{background:var(--sf2);font-size:12.5px;color:var(--tx2)}
+  .cmp-tab tr.cmp-c td:first-child{padding-left:38px}
+  .cmp-tab td:first-child{position:sticky;left:0;background:var(--sf);z-index:1}
+  .cmp-tab tr.cmp-c td:first-child{background:var(--sf2)}
+  .cmp-seta{display:inline-block;width:14px;color:var(--tx3);font-size:11px}
+  .cmp-tab .fraco{color:var(--tx3);font-weight:400;font-size:12px}
+  @media (max-width:700px){.topo{padding:12px 16px}.cmp-card .col-res{font-size:10px}.cmp-card{padding:12px 8px}.dash-hoje.um{grid-template-columns:1fr}.dash-hoje.um .sub{padding:0 16px 14px}.dash-hoje .g-num,.dash-hoje .g-num.clic-card{border-right:none;border-bottom:1px solid var(--bd2);padding:12px 16px}}
 </style>
 
 <div id="telaLogin">
@@ -1259,6 +1283,9 @@
     {g:"", cor:"#B0B7C3", cats:["Sem categoria"]}
   ];
   const CATEGORIAS = GRUPOS.reduce((a,x)=>a.concat(x.cats),[]);
+  // gastos do dia a dia (sem data fixa): usados no alerta de ritmo da visão geral
+  const VARIAVEIS = new Set(["Supermercado","Padaria","Açougue","Sacolão / feira","Bar / restaurante","Almoço","Lanche",
+    "Uber / Localiza","Gasolina","Farmácia","Passeios","Vestuário","Solano – pessoal","Tâmara – pessoal","Meninas","Pet","Corrida"]);
   const GRUPO_DE = {};
   GRUPOS.forEach(x=>x.cats.forEach(c=>{ GRUPO_DE[c]=x.g; }));
   // <option>s agrupadas por grupo da planilha
@@ -2230,6 +2257,9 @@
       const o=orcamento(), real={};
       base.forEach(l=>{ real[l.categoria]=(real[l.categoria]||0)+l.valor; });
       const alertas=[]; let linhas="", pR=0,rR=0,pD=0,rD=0;
+      // ritmo: no mês corrente, a partir do 7º dia, projeta o gasto das categorias variáveis até o fim do mês
+      const dHoje=+hojeISO().slice(8,10), dMes=+fimDoMes(ui.mes).slice(8,10);
+      const ritmoFr=(ui.mes===mesAtual()&&dHoje>=7&&dHoje<dMes)?dHoje/dMes:0;
       const futuro=!base.length;   // mês só com previsão: sem realizado para comparar
       const doFluxo=!!orcDoFluxo(ui.mes);
       const tr='<td style="color:var(--linha)">—</td>';
@@ -2248,6 +2278,9 @@
         linhas+='<tr class="orc-g"><td>'+esc(gr.g)+'</td><td>'+brl(gp)+'</td>'+rv(gr_)+cel(dif(gp,gr_))+'</tr>';
         itens.forEach(x=>{
           if(!rec&&x.p>0&&x.r>x.p*1.1&&x.r-x.p>50) alertas.push(x);
+          else if(!rec&&ritmoFr&&VARIAVEIS.has(x.c)&&x.p>0&&x.r<=x.p){
+            const proj=x.r/ritmoFr; if(proj>x.p*1.2&&proj-x.p>100) alertas.push(Object.assign({},x,{ritmo:true,proj:proj}));
+          }
           linhas+='<tr class="orc-c"><td><span class="orc-nome" data-dcat="'+esc(x.c)+'" title="Ver lançamentos">'+ponto(x.c)+esc(x.c)+'</span></td>'+
             (doFluxo?'<td>'+(x.p?brl(x.p):'<span style="color:var(--linha)">—</span>')+'</td>'
               :'<td><input class="orc-in" data-orc="'+esc(x.c)+'" value="'+(x.p?brl(x.p):"")+'" placeholder="—" inputmode="decimal" aria-label="Previsto de '+esc(x.c)+'"></td>')+
@@ -2275,11 +2308,15 @@
     }
 
     const pr=previstoRealizado();
-    const alertas=pr.alertas.sort((a,b)=>(b.r-b.p)-(a.r-a.p)).slice(0,5);
+    const exc=x=>x.ritmo?x.proj-x.p:x.r-x.p;
+    const alertas=pr.alertas.sort((a,b)=>(!!a.ritmo-!!b.ritmo)||exc(b)-exc(a)).slice(0,6);
     const atencao=(alertas.length||semCat)?
       '<div class="tit-secao" style="margin:26px 0 10px"><h3>Pontos de atenção</h3></div><div class="dash-atencao">'+
-      alertas.map(x=>'<div class="it clic" data-dcat="'+esc(x.c)+'"><span>'+esc(x.c)+' passou do previsto (R$ '+brl(x.p)+')</span>'+
-        '<span class="v" style="color:var(--neg)">+ R$ '+brl(x.r-x.p)+'</span></div>').join("")+
+      alertas.map(x=>x.ritmo
+        ? '<div class="it clic ritmo" data-dcat="'+esc(x.c)+'"><span>'+esc(x.c)+': no ritmo atual vai a R$ '+brl(x.proj)+' (previsto R$ '+brl(x.p)+', já gastou R$ '+brl(x.r)+')</span>'+
+          '<span class="v" style="color:var(--alerta)">~ + R$ '+brl(x.proj-x.p)+'</span></div>'
+        : '<div class="it clic estouro" data-dcat="'+esc(x.c)+'"><span>'+esc(x.c)+' passou do previsto (R$ '+brl(x.p)+')</span>'+
+          '<span class="v" style="color:var(--neg)">+ R$ '+brl(x.r-x.p)+'</span></div>').join("")+
       (semCat?'<div class="it clic" data-dcat="Sem categoria"><span>'+semCat+' lançamento'+(semCat>1?"s":"")+' sem categoria — clique para classificar</span><span class="v">→</span></div>':"")+
       '</div>':"";
 
@@ -2331,6 +2368,7 @@
 
     const hoje=faixaHoje();
     $("#corpo").innerHTML=
+      (dados.lancamentos.length?atencao.replace('style="margin:26px 0 10px"','style="margin:22px 0 10px"'):"")+
       hoje+barraFatura()+
       (dados.lancamentos.length
         ? faixa+
@@ -2339,7 +2377,7 @@
             'Pagamento de fatura, aplicações e transferências entre suas contas não entram.</p>'+
             '<button class="bt vazado" data-dadd="manual" style="font-size:12px;padding:6px 12px">+ Lançamento</button>'+
           '</div>'+
-          atencao+(hoje?"":contasHTML())+pr.html+
+          (hoje?"":contasHTML())+pr.html+
           '<div class="paineis">'+
             '<div><div class="tit-secao"><h3>Onde mais gastou</h3></div>'+lista(r.sai,r.tS,"s")+'</div>'+
             '<div><div class="tit-secao"><h3>De onde veio</h3></div>'+lista(r.ent,r.tE,"e")+'</div>'+
@@ -7391,7 +7429,11 @@
 
   /* ================= comparação entre meses ================= */
   function comparar(meses){
-    const cols = meses;
+    // parcelas futuras do cartão não entram; período padrão: últimos 6 meses até hoje
+    const passados = meses.filter(m=>m<=mesAtual());
+    const base = passados.length>=2 ? passados : meses;
+    const N = ui.cmpN===undefined ? 6 : ui.cmpN;
+    const cols = N ? base.slice(-N) : base;
     const nomes = cols.map(abrevMes);
     const ultimo = cols[cols.length-1], penultimo = cols[cols.length-2];
 
@@ -7445,36 +7487,55 @@
     const sumidos=fixos.filter(f=>!f.temUltimo);
 
     const maxTot=Math.max(...cols.map(m=>Math.max(totMes[m],entMes[m])),1);
+    // valores compactos no gráfico: 9,3 mil · −1,5 mil
+    const curto=v=>{ const a=Math.abs(v), sg=v<0?"−":"";
+      return a>=1000? sg+(a/1000).toLocaleString("pt-BR",{maximumFractionDigits:a>=100000?0:1})+" mil" : sg+Math.round(a); };
+    // por grupo (≈12 cores) em vez de ~50 categorias
+    const gOf=c=>GRUPO_DE[c]||"Outros";
+    const porG={};
+    linhas.forEach(l=>{ const g=gOf(l.cat); porG[g]=porG[g]||{g:g,v:cols.map(()=>0),cats:[]};
+      l.v.forEach((x,i)=>porG[g].v[i]+=x); porG[g].cats.push(l); });
+    const grupos=Object.values(porG).map(o=>{ const meds=o.v.filter(x=>x>0);
+      return Object.assign(o,{total:o.v.reduce((a,b)=>a+b,0),media:meds.length?meds.reduce((a,b)=>a+b,0)/meds.length:0}); })
+      .sort((a,b)=>b.total-a.total);
+    ui.cmpAb=ui.cmpAb||{};
+    const fmtN=x=>x?brl(x):'<span class="zero">·</span>';
+    const linhaT=(rot,v,media,cls,extra)=>'<tr class="'+cls+'"'+(extra||"")+'><td>'+rot+'</td>'+
+      v.map((x,i)=>'<td class="n'+(i===v.length-1&&x?" forte":"")+'">'+fmtN(x)+'</td>').join("")+
+      '<td class="n media">'+(media?brl(media):"—")+'</td><td class="n">'+varia(v[v.length-1],v[v.length-2])+'</td></tr>';
+    const per=[[6,"6 meses"],[12,"12 meses"],[0,"Tudo"]];
 
     $("#corpo").innerHTML =
-      '<div class="tit-secao" style="margin-top:30px"><h3>Entradas e gastos mês a mês</h3></div>'+
-      '<p class="nota-linha" style="margin:-6px 0 14px">Pagamento de fatura e aplicações ficam fora; as compras do cartão contam no mês da compra.</p>'+
-      '<div class="colunas">'+cols.map((m,i)=>
-        '<div class="coluna">'+
+      '<div class="cmp-topo"><div class="tit-secao" style="margin:0"><h3>Entradas e gastos mês a mês</h3></div>'+
+        '<div class="pv-filtro" role="group" aria-label="Período">'+per.map(([n,t])=>
+          '<button data-cmpn="'+n+'" class="'+(N===n?"on":"")+'">'+t+'</button>').join("")+'</div></div>'+
+      '<p class="nota-linha" style="margin:-4px 0 14px">Pagamento de fatura e aplicações ficam fora; as compras do cartão contam no mês da compra. Parcelas futuras não entram.</p>'+
+      '<div class="cmp-card"><div class="colunas">'+cols.map((m,i)=>{
+        const res=entMes[m]-totMes[m];
+        return '<div class="coluna" title="'+esc(cap(rotuloMes(m)))+' — entrou R$ '+brl(entMes[m])+' · gastou R$ '+brl(totMes[m])+'">'+
           '<div class="par">'+
-            '<span class="pilha" style="height:'+(entMes[m]/maxTot*100).toFixed(1)+'%">'+
-              '<i style="height:100%;background:var(--pos)" title="Entradas"></i></span>'+
+            '<span class="pilha ent" style="height:'+(entMes[m]/maxTot*100).toFixed(1)+'%"><i style="height:100%"></i></span>'+
             '<span class="pilha" style="height:'+(totMes[m]/maxTot*100).toFixed(1)+'%">'+
-              linhas.filter(l=>l.v[i]>0).map(l=>
-                '<i style="height:'+(l.v[i]/(totMes[m]||1)*100).toFixed(2)+'%;background:'+cor(l.cat)+'"'+
-                ' title="'+esc(l.cat)+': '+brl(l.v[i])+'"></i>').join("")+
+              grupos.filter(g=>g.v[i]>0).map(g=>
+                '<i style="height:'+(g.v[i]/(totMes[m]||1)*100).toFixed(2)+'%;background:'+corGrupo(g.g)+'" title="'+esc(g.g)+': R$ '+brl(g.v[i])+'"></i>').join("")+
             '</span>'+
           '</div>'+
-          '<div class="col-res '+((entMes[m]-totMes[m])<0?"neg":"pos")+'">'+brl(entMes[m]-totMes[m])+'</div>'+
+          '<div class="col-res '+(res<0?"neg":"pos")+'">'+curto(res)+'</div>'+
           '<div class="col-mes">'+nomes[i]+'</div>'+
-        '</div>').join("")+'</div>'+
-      '<div class="legenda">'+linhas.slice(0,9).map(l=>
-        '<span>'+ponto(l.cat)+esc(l.cat)+'</span>').join("")+
-        (linhas.length>9?'<span class="fraco">e mais '+(linhas.length-9)+'</span>':"")+'</div>'+
+        '</div>'; }).join("")+'</div>'+
+      '<div class="legenda"><span><span class="ponto" style="background:var(--pos)"></span>Entradas</span>'+
+        grupos.map(g=>'<span><span class="ponto" style="background:'+corGrupo(g.g)+'"></span>'+esc(g.g)+'</span>').join("")+'</div></div>'+
 
-      '<div class="tit-secao" style="margin-top:38px"><h3>Gastos por categoria</h3></div>'+
-      '<div class="rolagem"><table class="matriz"><thead><tr><th>Categoria</th>'+
+      '<div class="tit-secao" style="margin-top:34px"><h3>Gastos por grupo</h3></div>'+
+      '<p class="sub" style="margin:-8px 0 12px">Clique num grupo para ver as categorias.</p>'+
+      '<div class="rolagem cmp-card" style="padding:0"><table class="matriz cmp-tab"><thead><tr><th>Grupo</th>'+
         nomes.map(n=>'<th class="n">'+n+'</th>').join("")+
         '<th class="n">Média</th><th class="n">Variação</th></tr></thead><tbody>'+
-      linhas.map(l=>'<tr><td>'+ponto(l.cat)+esc(l.cat)+'</td>'+
-        l.v.map((x,i)=>'<td class="n'+(i===l.v.length-1&&x?" forte":"")+'">'+(x?brl(x):'<span class="zero">·</span>')+'</td>').join("")+
-        '<td class="n media">'+(l.media?brl(l.media):"—")+'</td>'+
-        '<td class="n">'+varia(l.v[l.v.length-1],l.v[l.v.length-2])+'</td></tr>').join("")+
+      grupos.map(g=>{ const ab=!!ui.cmpAb[g.g];
+        return linhaT('<span class="cmp-seta">'+(ab?"▾":"▸")+'</span><span class="ponto" style="background:'+corGrupo(g.g)+'"></span>'+esc(g.g)+
+            ' <span class="fraco">('+g.cats.length+')</span>', g.v, g.media, "cmp-g", ' data-cmpg="'+esc(g.g)+'" tabindex="0"')+
+          (ab?g.cats.map(l=>linhaT(ponto(l.cat)+esc(l.cat),l.v,l.media,"cmp-c")).join(""):"");
+      }).join("")+
       '<tr class="somatoria"><td>Total de gastos</td>'+
         cols.map(m=>'<td class="n">'+brl(totMes[m])+'</td>').join("")+
         '<td class="n media">'+brl(cols.reduce((a,m)=>a+totMes[m],0)/cols.length)+'</td>'+
@@ -7503,6 +7564,12 @@
         (function(n){return n+" regra"+(n===1?" aprendida":"s aprendidas")+" com as suas correções";})
         (dados.regras.filter(r=>r.aprendida).length)+'</span>'+
         '<span>Família Bicalho</span></div>';
+    const corpoC=$("#corpo");
+    corpoC.onclick=e=>{
+      const bn=e.target.closest("[data-cmpn]"); if(bn){ ui.cmpN=+bn.dataset.cmpn; comparar(meses); return; }
+      const bg=e.target.closest("[data-cmpg]"); if(bg){ const g=bg.dataset.cmpg; ui.cmpAb[g]=!ui.cmpAb[g]; comparar(meses); }
+    };
+    corpoC.onkeydown=e=>{ if((e.key==="Enter"||e.key===" ")&&e.target.closest("[data-cmpg]")){ e.preventDefault(); e.target.click(); } };
   }
 
   /* ================= aba de regras ================= */
