@@ -3311,7 +3311,7 @@
   function ehExtratoSantander(linhas){
     const t=textoLinhas(linhas).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
     const cab=linhas.findIndex(r=>{ const c=(r||[]).map(x=>celTexto(x).toLowerCase()); return c.includes("data")&&c.includes("detalhe")&&c.includes("saldo")&&c.some(x=>/^descri/.test(x)); });
-    return cab>=0 && /EXTRATO DE CONTA CORRENTE/.test(t) && (/SANTANDER|JUROS SALDO UTILIZ|IOF ADICIONAL - AUTOMATICO/.test(t)) && !bancoDoArquivo(t);
+    return cab>=0 && /EXTRATO DE CONTA CORRENTE/.test(t) && (/SANTANDER|JUROS SALDO UTILIZ|IOF ADICIONAL - AUTOMATICO|PERIODO DO EXTRATO/.test(t)) && !bancoDoArquivo(t);
   }
   function importarExtratoSantander(linhas){
     const cab=linhas.findIndex(r=>{ const c=(r||[]).map(x=>celTexto(x).toLowerCase()); return c.includes("data")&&c.includes("saldo"); });
