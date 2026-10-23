@@ -2068,7 +2068,7 @@
   function estrategiaCheque(){
     const hj=hojeISO(), sal=quintoDiaUtil(proxMes(mesAtual()));
     const pj=projecaoItau(sal);
-    const kc=JSON.stringify([hj,pj,saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.chequeUsadosEm,dados.emprestimo,dados.livreAte,dados.estValor,dados.pixFimSemana,
+    const kc=JSON.stringify([hj,pj,emprestimoAberto(),saldoBanco("bb"),saldoBanco("santander"),dados.chequeUsados,dados.chequeUsadosEm,dados.emprestimo,dados.livreAte,dados.estValor,dados.pixFimSemana,
       ["itau","bb","santander"].map(o=>usoCheque(o,o==="itau"?saldoContaApp(mesAtual()):saldoBanco(o)).usados)]);
     if(cacheEst.k!==kc){ cacheEst={k:kc,r:montaEstrategia(hj,sal,pj)};
       // o plano fica salvo para o resumo do WhatsApp avisar no dia de cada Pix
@@ -2083,8 +2083,8 @@
     const fimDeCiclo = (o,d) => { let n=somaDias(d,1); while(!diaUtil(n)) n=somaDias(n,1); return inicioCiclo(o,n)!==inicioCiclo(o,d); };
     // dívida que já está em outro banco (ex.: Pix do BB para o Itaú usando o limite do BB): faz parte do total a carregar até o salário
     const dev={bb:0,santander:0,emp:0}; ["bb","santander"].forEach(o=>{ const x=saldoBanco(o); if(x&&x.v<0) dev[o]=-x.v; });
-    // empréstimo já pego e ainda não devolvido (dados.emprestimo.aberto={v,de}): é dívida até ser devolvido, mesmo com as contas no positivo
-    const empAb=dados.emprestimo&&dados.emprestimo.aberto&&+dados.emprestimo.aberto.v>0&&dados.emprestimo.aberto.de&&dados.emprestimo.aberto.de<=hj?dados.emprestimo.aberto:null;
+    // empréstimo já pego e ainda não devolvido (achado no extrato do BB): é dívida até ser devolvido, mesmo com as contas no positivo
+    const empAb=emprestimoAberto();
     if(empAb) dev.emp=cent(+empAb.v);
     const devOut=cent(dev.bb+dev.santander+dev.emp);
     const falta=d=>{ const x=pj.serie.find(y=>y.d===d); return Math.max(0,cent(devOut-(x?x.s:pj.hoje))); };
@@ -2098,7 +2098,7 @@
     // empréstimo sem juros e sem IOF por alguns dias corridos (dados.emprestimo.dias): entra no plano como uma "conta" a mais,
     // usada uma vez; pega e devolve em dia útil. Dias contados como o credor conta: do dia em que pega ao dia em que devolve, inclusive. Não gera IOF ao entrar; quem paga o empréstimo gera o IOF de 0,38% ao entrar no cheque.
     // vale só até a data "ate" (o salário do mês em que foi informado): não é todo mês
-    const EMP=dados.emprestimo&&+dados.emprestimo.dias>0&&(empAb||!(dados.emprestimo.ate&&hj>dados.emprestimo.ate))?Math.round(+dados.emprestimo.dias):0;
+    const EMP=empAb?(dados.emprestimo&&+dados.emprestimo.dias>0?Math.round(+dados.emprestimo.dias):7):dados.emprestimo&&+dados.emprestimo.dias>0&&!(dados.emprestimo.ate&&hj>dados.emprestimo.ate)?Math.round(+dados.emprestimo.dias):0;
     // o empréstimo em aberto conta os dias desde o dia em que foi pego (não desde hoje)
     const empDe=ini=>empAb&&ini===hj?empAb.de:ini;
     // hoje já conta nos dias usados (usoCheque): quem está negativo hoje segue a partir de amanhã
@@ -2289,9 +2289,7 @@
         '<tr><td colspan="2"><b>Custo total estimado</b></td><td></td><td class="n"><b>'+brl(cent(si+jurosR$))+'</b></td><td></td><td class="o">plano escolhido pelo menor custo (IOF + juros)</td></tr></tfoot></table></div>'+
       '<div class="est-dias">Dias de cheque já usados no ciclo atual: '+
         ["itau","bb","santander"].map(o=>'<span>'+NOME[o]+' <b>'+usa(usado0,o,hj)+'</b> (renova '+diaMes(cicloCheque(o).renova)+')</span>').join("")+
-        '<span>Empréstimo sem juros <input class="campo" data-emp-dias="1" type="number" min="0" value="'+(EMP||"")+'" placeholder="0"> dias corridos</span>'+
-        '<span>em aberto R$ <input class="campo" data-emp-aberto="1" value="'+(empAb?brl(empAb.v):"")+'" placeholder="0,00" inputmode="decimal" style="width:100px"> pego em '+
-          '<input class="campo" data-emp-desde="1" type="date" value="'+esc((dados.emprestimo&&dados.emprestimo.aberto&&dados.emprestimo.aberto.de)||"")+'" style="width:auto"></span>'+
+        (EMP?'<span>Empréstimo sem juros <b>'+EMP+'</b> dias corridos'+(empAb?' · em aberto <b>R$ '+brl(empAb.v)+'</b> desde '+diaMes(empAb.de)+' (pelo extrato do BB)':'')+'</span>':'')+
         '</div>'+
       (bb&&bb.v>0?'<label class="bc-aj" style="margin-top:10px">Saldo do BB (R$ '+brl(bb.v)+') pode ser usado até <input class="campo" type="date" data-livre-ate="bb" value="'+esc(livreAte)+'" style="width:auto"> (vazio = não usar)</label>':'')+
       '<p class="sub" style="margin:8px 0 0;font-size:12px">O valor do Pix pode ser digitado (fundo amarelo = digitado; apague para voltar ao calculado). Estimativa com o saldo de hoje, agendamentos e contas em aberto da previsão deste mês. IOF: 0,0082% ao dia + 0,38% sobre o valor usado (já no Total). Cada troca de banco gera de novo o IOF adicional de 0,38%; passar dos 10 dias faz o banco cobrar juros do período inteiro. O plano é o de menor custo somando os dois. Confira o limite de cada banco.</p>'+
@@ -2660,7 +2658,21 @@
   // débito de consignado no extrato = adiantamento de parcela ou quitação (a parcela mensal é descontada em folha)
   const ehQuitacaoConsignado = (hist,valor) => valor<0 && /CR[EÉ]D(ITO)?\.?\s*CONSIG/i.test(String(hist));
   // dinheiro que entra emprestado (crediário, consignado, empréstimo): não é receita
-  const ehEmprestimoRecebido = (hist,valor) => valor>0 && /CREDIARIO|CR[EÉ]D(ITO)?\.?\s*CONSIG|EMPR[EÉ]STIMO|CR[EÉ]D(ITO)? PESSOAL/i.test(String(hist).normalize("NFD").replace(/[\u0300-\u036f]/g,""));
+  const ehEmprestimoRecebido = (hist,valor) => valor>0 && /CREDIARIO|CR[EÉ]D(ITO)?\.?\s*CONSIG|EMPR[EÉ]STIMO|CR[EÉ]D(ITO)? PESSOAL|\bCDC\b|BB CR[EÉ]DITO|CR[EÉ]D(ITO)?\.? AUTOM/i.test(String(hist).normalize("NFD").replace(/[\u0300-\u036f]/g,""));
+  /* Empréstimo sem juros em aberto (ex.: CDC do BB cancelado em até 7 dias), achado sozinho pelo extrato do BB:
+     o crédito do empréstimo abre a dívida; um débito de mesmo valor com CDC/empréstimo/cancelamento/estorno/liquidação a fecha.
+     Passado o prazo (dias do empréstimo), deixa de contar. */
+  function emprestimoAberto(){
+    const hj=hojeISO(), dias=dados.emprestimo&&+dados.emprestimo.dias>0?Math.round(+dados.emprestimo.dias):7, desde=somaDias(hj,-(dias-1));
+    const nrm=h=>String(h||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase();
+    const ls=dados.lancamentos.filter(l=>l.origem==="bb"&&!l.ignorado&&l.data>=desde&&l.data<=hj).sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+    let ab=null;
+    ls.forEach(l=>{
+      if(l.valor>0&&(l.categoria===CAT_EMPREST||ehEmprestimoRecebido(l.hist,l.valor))) ab={v:cent(l.valor), de:l.data};
+      else if(ab&&l.valor<0&&Math.abs(l.valor)>=ab.v-0.01&&/\bCDC\b|EMPRESTIMO|CANCEL|ESTORNO|LIQUID|DEVOLU/.test(nrm(l.hist))) ab=null;
+    });
+    return ab;
+  }
   const ehEncargoCheque = h => /JUROS|I\.?O\.?F/i.test(h) && /SALDO DEVEDOR|LIM(ITE)?[\s.-]*ESP|DIAS SEM JUROS/i.test(String(h).normalize("NFD").replace(/[\u0300-\u036f]/g,""));
   /* Cheque especial do BB: Pix do BB para você (Itaú) num dia em que o BB ficou negativo.
      As duas pontas (saída no BB, chegada no Itaú com o mesmo valor, até 3 dias) viram "Cheque especial BB". */
@@ -8140,13 +8152,6 @@
       avisar(pf.checked?"Pix em fim de semana liberado — estratégia refeita.":"Pix só em dia útil — estratégia refeita."); return; }
     const ev=e.target.closest&&e.target.closest("#modalCaixa [data-est-v]");
     const ed=e.target.closest&&e.target.closest("#modalCaixa [data-emp-dias]");
-    // empréstimo em aberto: valor e dia em que foi pego (vazio = já devolvido)
-    const ea=e.target.closest&&e.target.closest("#modalCaixa [data-emp-aberto],#modalCaixa [data-emp-desde]");
-    if(ea){ const cx=$("#modalCaixa"), tv=String(cx.querySelector("[data-emp-aberto]").value).trim(), dv=cx.querySelector("[data-emp-desde]").value;
-      dados.emprestimo=dados.emprestimo||{dias:6};
-      if(tv&&numero(tv)>0) dados.emprestimo.aberto={v:cent(Math.abs(numero(tv))), de:dv||hojeISO()}; else delete dados.emprestimo.aberto;
-      salvar(); render(); cx.innerHTML=detalheEstrategia();
-      avisar(dados.emprestimo.aberto?"Empréstimo em aberto registrado — estratégia refeita.":"Empréstimo marcado como devolvido."); return; }
     if(ed){ const n=Math.max(0,Math.round(+String(ed.value).trim()||0)); if(n) dados.emprestimo=Object.assign(dados.emprestimo||{},{dias:n}); else delete dados.emprestimo;
       salvar(); render(); const cx=$("#modalCaixa"); if(cx) cx.innerHTML=detalheEstrategia();
       avisar(n?"Empréstimo de "+n+" dias sem juros incluído — estratégia refeita.":"Empréstimo retirado da estratégia."); return; }
