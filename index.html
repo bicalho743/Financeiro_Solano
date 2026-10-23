@@ -1284,7 +1284,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 21;
+  const BUILD = 22;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -6056,12 +6056,27 @@
     if(up){
       const agr={};
       up.itens.forEach(x=>{ const a=agr[x.ativo]=agr[x.ativo]||{...x,valor:0,qt:0}; a.valor=cent(a.valor+x.valor); a.qt=(a.qt||0)+(+x.qt||0); });
-      return Object.values(agr).map(x=>{
+      // compras, vendas e resgates DEPOIS da data da Posição: a Posição não tem, então ajusta a quantidade e o valor
+      const ordM={compra:0,bonus:1,venda:2};
+      v.movs.filter(m=>m.data>up.data && m.tipo in ordM).sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:ordM[a.tipo]-ordM[b.tipo]).forEach(m=>{
+        const q=+m.qt||0, val=+m.valor||0; let a=agr[m.ativo];
+        if(m.tipo==="compra"){
+          if(!a) a=agr[m.ativo]={ativo:m.ativo, nome:m.prod, classe:m.classe, inst:m.inst, qt:0, preco:null, valor:0, aplicado:null, indexador:"", vencimento:"", emissor:"", emissao:""};
+          a.qt=(+a.qt||0)+q; a.valor=cent(a.valor+val); a.movDepois=true;
+        } else if(!a) return;
+        else if(m.tipo==="bonus"){ a.qt=(+a.qt||0)+q; a.movDepois=true; }
+        else {
+          const qa=+a.qt||0, sai=qa>0?Math.min(q,qa):0, frac=qa>0?sai/qa:(val>=a.valor?1:val/(a.valor||1));
+          a.valor=cent(a.valor*(1-frac)); a.qt=qa-sai; a.movDepois=true;
+          if(a.qt<1e-6 && qa>0){ a.qt=0; a.valor=0; }
+        }
+      });
+      return Object.values(agr).filter(x=>x.valor>0.005||(+x.qt||0)>1e-6).map(x=>{
         const p=pos[x.ativo];
         const custo = p&&p.custo>0.01 ? cent(p.custo) : (x.aplicado!=null ? cent(x.aplicado) : x.valor);
         return {ativo:x.ativo, nome:(p&&p.nome)||x.nome.split(" - ").slice(1).join(" - ")||x.nome, classe:x.classe, inst:x.inst, qt:x.qt,
           preco:x.preco, custo:custo, valor:x.valor, realizado:p?p.realizado:0, proventos:p?p.proventos:0,
-          indexador:x.indexador, vencimento:x.vencimento, emissor:x.emissor, emissao:x.emissao||"", fonte:"B3 "+diaMes(up.data), semCustoMov:!(p&&p.custo>0.01)};
+          indexador:x.indexador, vencimento:x.vencimento, emissor:x.emissor, emissao:x.emissao||"", fonte:"B3 "+diaMes(up.data)+(x.movDepois?" + movimentação":""), semCustoMov:!(p&&p.custo>0.01)};
       });
     }
     return Object.values(pos).filter(p=>p.qt>1e-6).map(p=>{
@@ -6493,7 +6508,7 @@
     const dividas=S(manuais.filter(x=>x.grupo==="divida"),x=>x.valor);
     const cotadas=cart.filter(x=>x.cotHora);
     const dataRef = (cotadas.length&&v.cotEm ? cotadas.length+" ativos a preço de "+diaMes(v.cotEm.slice(0,10))+" "+horaCot(v.cotEm)+" · quantidades da " : "")+
-      (up ? "posição B3 de "+diaMes(up.data)+"/"+up.data.slice(2,4) : "sem posição da B3 — cotações da planilha");
+      (up ? "posição B3 de "+diaMes(up.data)+"/"+up.data.slice(2,4)+(v.movs.some(m=>m.data>up.data&&["compra","venda","bonus"].includes(m.tipo))?" + movimentação até "+diaMes(v.movs[v.movs.length-1].data):"") : "sem posição da B3 — cotações da planilha");
     const comVar=cart.filter(x=>x.varDiaR!=null), varHoje=S(comVar,x=>x.varDiaR), baseHoje=S(comVar,x=>x.valor-x.varDiaR);
 
     // ---------- por banco ----------
