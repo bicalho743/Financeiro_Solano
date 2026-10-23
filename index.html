@@ -1924,6 +1924,8 @@
   /* Cheque especial: 10 dias sem juros por ciclo em cada banco. O ciclo zera no dia de renovação
      (Itaú dia 6, BB dia 1, Santander dia 15). Conta os dias do ciclo que terminaram com saldo negativo. */
   const DIAS_CHEQUE=10, RENOVA_CHEQUE={itau:6, bb:1, santander:15};
+  // bancos que renovam no dia exato, mesmo em fim de semana/feriado (o BB renova dia 1, sem esperar o dia útil)
+  const RENOVA_DIA_EXATO={bb:true};
   const _sd={};
   const somaDias=(iso,n)=>{ const ck=iso+"|"+n; if(_sd[ck]) return _sd[ck]; const d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return _sd[ck]=d.toISOString().slice(0,10); };
   const difDias=(a,b)=>Math.round((new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/864e5);
@@ -1945,10 +1947,10 @@
     let d=D; for(let i=0;i<10&&!diaUtil(d);i++) d=somaDias(d,-1);
     return saldoItauEm(d);
   }
-  // início do ciclo atual e data da próxima renovação. O ciclo sempre começa em dia útil:
-  // se o dia de renovação cai em fim de semana/feriado, o ciclo novo começa no próximo dia útil (o anterior vai até a véspera)
+  // início do ciclo atual e data da próxima renovação. Itaú e Santander: se o dia de renovação cai em fim de semana/feriado,
+  // o ciclo novo começa no próximo dia útil (o anterior vai até a véspera). BB: renova no dia 1 mesmo que não seja dia útil.
   function renovaEm(o,a,m){ if(m<1){m+=12;a--;} if(m>12){m-=12;a++;}
-    let d=a+"-"+String(m).padStart(2,"0")+"-"+String(RENOVA_CHEQUE[o]).padStart(2,"0"); while(!diaUtil(d)) d=somaDias(d,1); return d; }
+    let d=a+"-"+String(m).padStart(2,"0")+"-"+String(RENOVA_CHEQUE[o]).padStart(2,"0"); if(!RENOVA_DIA_EXATO[o]) while(!diaUtil(d)) d=somaDias(d,1); return d; }
   const _ic={};
   function inicioCiclo(o,iso){ const ck=o+iso; return _ic[ck]||(_ic[ck]=inicioCiclo0(o,iso)); }
   function inicioCiclo0(o,iso){ const [a,m]=iso.split("-").map(Number);
@@ -2014,7 +2016,7 @@
     '</div></section>';
   }
   /* ================= estratégia do cheque especial até o salário =================
-     Regras: 10 dias sem juros por ciclo em cada banco (Itaú renova dia 6, BB dia 1, Santander dia 15).
+     Regras: 10 dias sem juros por ciclo em cada banco (Itaú renova dia 6, BB dia 1 — mesmo em fim de semana/feriado —, Santander dia 15).
      O negativo é coberto NO 10º dia; se o 10º dia cair em fim de semana/feriado, cobre no dia útil anterior.
      Quem cobre é o banco que tem mais dias livres pela frente — ele passa a carregar a dívida.
      O salário cai no BB no 5º dia útil do mês seguinte e zera tudo. */
@@ -2148,7 +2150,8 @@
       if(mFim.juros>0||mFim.pen>0){
         // até quando vale a pena esperar para trocar: o 10º dia deste banco ou o 1º dia útil de renovação de outro banco
         let L=p.decimo; if(o!=="emp") CHEQ.forEach(x=>{ if(x!==o){ const r=proxRenova(x,de); if(r>L) L=r; } });
-        for(let c=somaDias(de,1); c<sal&&c<=L; c=somaDias(c,1)){
+        // quem já está negativo hoje pode ser coberto ainda hoje (ex.: 10º dia no domingo → Pix na sexta, que é hoje)
+        for(let c=(o===dono&&de===hj)?de:somaDias(de,1); c<sal&&c<=L; c=somaDias(c,1)){
           if(!pixOk(c)) continue;
           const m=marca(u,o,de,c);
           if(m.custoJ+m.pen>best.custo) break;
