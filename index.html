@@ -1284,7 +1284,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 22;
+  const BUILD = 23;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -2237,7 +2237,7 @@
     // transferências: data, de → para, valor do Pix, IOF, total
     const tr=[];
     // o Itaú entra no cheque especial pela previsão: mostra a data, o negativo e até quando os dias livres vão
-    if(fases[0]&&!fases[0].inicio&&!fases[0].desde){ const f0=fases[0], negDe0=(()=>{ let d=f0.de; while(d<f0.ate&&!conta(f0.o,d)) d=somaDias(d,1); return d; })();
+    if(fases[0]&&!fases[0].inicio&&!fases[0].desde&&fases[0].o!=="emp"){ const f0=fases[0], negDe0=(()=>{ let d=f0.de; while(d<f0.ate&&!conta(f0.o,d)) d=somaDias(d,1); return d; })();
       if(negDe0<f0.ate) tr.push({d:negDe0, de:"entra", para:f0.o, v:falta(negDe0), iof:0, obs:NOME[f0.o]+" negativo de "+diaMes(negDe0)+" a "+diaMes(somaDias(f0.ate,-1))+" ("+difDias(f0.ate,negDe0)+" dia"+(difDias(f0.ate,negDe0)===1?"":"s")+") · sem Pix: só acompanhar"}); }
     fases.forEach(f=>{
       if(f.inicio){ tr.push({d:f.de, de:f.prox, para:"itau", v:cent(f.zera+f.reforco), iof:0, obs:pj.hoje<0?"cobre o Itaú hoje":"Itaú não entra no cheque especial", k:f.chave, ed:f.editado}); return; }
@@ -3219,8 +3219,20 @@
     (r.saldosDia||[]).forEach(x=>{ if(ok(x)) pts.push(x); });
     if(ok(r.saldoFim)&&!pts.some(x=>x.iso===r.saldoFim.iso)) pts.push(r.saldoFim);
     if(!pts.length) return;
+    // extrato só com saldo inicial e final (ex.: CSV do BB): o saldo de fim de cada dia sai da soma dos lançamentos,
+    // se a conta fecha com o saldo final. Substitui saldos antigos do período (ex.: extrato baixado de manhã, antes de um crédito do dia)
+    let run=null;
+    if(ok(r.saldoAnt)&&ok(r.saldoFim)&&r.saldoFim.iso>r.saldoAnt.iso&&(r.itens||[]).length&&
+       !(r.saldosDia||[]).some(x=>ok(x)&&x.iso>r.saldoAnt.iso&&x.iso<r.saldoFim.iso)){
+      const mov={}; r.itens.forEach(x=>{ if(x.iso>r.saldoAnt.iso&&x.iso<=r.saldoFim.iso) mov[x.iso]=(mov[x.iso]||0)+(+x.valor||0); });
+      let s=+r.saldoAnt.valor; const rr={};
+      Object.keys(mov).sort().forEach(d=>{ s=cent(s+mov[d]); rr[d]=s; });
+      if(Math.abs(s-r.saldoFim.valor)<0.01){ run=rr; Object.keys(rr).forEach(d=>{ if(!pts.some(x=>x.iso===d)) pts.push({iso:d,valor:rr[d]}); }); }
+    }
     pts.sort((a,b)=>a.iso<b.iso?-1:a.iso>b.iso?1:0);
     const sd=(dados.saldosDia=dados.saldosDia||{}), mapa=(sd[origem]=sd[origem]||{});
+    if(run){ const ds=Object.keys(run).sort();
+      Object.keys(mapa).forEach(k=>{ if(k>r.saldoAnt.iso&&k<r.saldoFim.iso){ let v=+r.saldoAnt.valor; ds.forEach(d=>{ if(d<=k) v=run[d]; }); mapa[k]=cent(v); } }); }
     pts.forEach(x=>{ mapa[x.iso]=cent(x.valor); });
     // até onde o extrato vai: o período termina no último dia com saldo informado
     const ultimo=pts[pts.length-1].iso;
