@@ -1284,7 +1284,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 23;
+  const BUILD = 24;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -2046,7 +2046,7 @@
       // contas em aberto do mês (as "fixas" já pagas ficam fora, como no "A pagar"). Do mês seguinte, antes do salário,
       // só o que já está agendado no banco: o resto costuma ser pago com o salário
       p.itens.forEach(x=>{
-        if(x.pago!=null||x.aPagar==null||!(+x.aPagar)||ehLinhaCheque(x)||x.origem==="cartao") return;
+        if(x.pago!=null||x.aPagar==null||!(+x.aPagar)||ehLinhaCheque(x)||x.auto==="emprestimo"||x.origem==="cartao") return;
         if(i===1&&!x.ext) return;
         if(x.ext) exts.add(x.ext);
         // gasto médio (supermercado, padaria…): o que falta é distribuído pelos dias que restam no mês
@@ -2670,7 +2670,7 @@
     let ab=null;
     ls.forEach(l=>{
       if(l.valor>0&&(l.categoria===CAT_EMPREST||ehEmprestimoRecebido(l.hist,l.valor))) ab={v:cent(l.valor), de:l.data};
-      else if(ab&&l.valor<0&&Math.abs(l.valor)>=ab.v-0.01&&/\bCDC\b|EMPRESTIMO|CANCEL|ESTORNO|LIQUID|DEVOLU/.test(nrm(l.hist))) ab=null;
+      else if(ab&&l.valor<0&&(Math.abs(Math.abs(l.valor)-ab.v)<0.01||Math.abs(l.valor)>=ab.v-0.01&&/\bCDC\b|EMPRESTIMO|CR[EÉ]DITO|CANCEL|ESTORNO|LIQUID|DEVOLU/.test(nrm(l.hist)))) ab=null;   // devolução: débito do mesmo valor (ou maior, com CDC/empréstimo/crédito… no histórico)
     });
     return ab;
   }
@@ -2726,6 +2726,34 @@
         x.pago=cent((x.pago||0)+Math.abs(x.aPagar)); x.aPagar=null; x.saldoData=s?s.data:null; mudou=true;
       }
     });
+    if(syncEmprestimoPrev()) mudou=true;
+    return mudou;
+  }
+  /* Empréstimo em aberto (achado no extrato do BB): linha "a pagar" na previsão do mês do vencimento (último dia do prazo;
+     em fim de semana/feriado, o dia útil anterior). Só vira "pago" quando a devolução aparece no extrato do BB
+     (débito do mesmo valor depois do crédito) ou pelo ✓ — passar do prazo não dá baixa sozinho. */
+  function syncEmprestimoPrev(){
+    const ea=emprestimoAberto(), dias=dados.emprestimo&&+dados.emprestimo.dias>0?Math.round(+dados.emprestimo.dias):7;
+    const todas=()=>Object.keys(dados.previsoes||{}).map(ym=>dados.previsoes[ym]);
+    const acha=()=>{ for(const p of todas()){ const x=(p.itens||[]).find(y=>y.auto==="emprestimo"&&(!ea||y.empDe===ea.de)); if(x) return {p:p,x:x}; } return null; };
+    let mudou=false, f=acha();
+    if(ea){
+      let venc=somaDias(ea.de,dias-1); while(!diaUtil(venc)&&venc>ea.de) venc=somaDias(venc,-1);
+      const ym=venc.slice(0,7), pv=(dados.previsoes||{})[ym]||(dados.previsoes||{})[mesAtual()]; if(!pv) return false;
+      pv.itens=pv.itens||[];
+      if(f&&f.p!==pv){ f.p.itens.splice(f.p.itens.indexOf(f.x),1); pv.itens.push(f.x); mudou=true; }
+      let x=f?f.x:null;
+      if(!x){ // aproveita uma linha digitada à mão com o mesmo valor
+        x=pv.itens.find(y=>!y.auto&&!y.ext&&y.pago==null&&y.aPagar!=null&&Math.abs(Math.abs(y.aPagar)-ea.v)<0.01);
+        if(!x){ x={d:"Empréstimo BB (devolver)",grupo:"Financiamento e dívidas",pago:null}; pv.itens.push(x); }
+        x.auto="emprestimo"; x.tipo="var"; mudou=true;
+      }
+      if(x.pago==null&&(x.aPagar!==-ea.v||x.data!==venc||x.empDe!==ea.de)){ x.aPagar=-ea.v; x.data=venc; x.empDe=ea.de; mudou=true; }
+      if(mudou) ordenarPrev(pv);
+    } else if(f&&f.x.aPagar!=null){
+      const v=Math.abs(f.x.aPagar), dev=dados.lancamentos.find(l=>l.origem==="bb"&&!l.ignorado&&l.valor<0&&l.data>=(f.x.empDe||"")&&Math.abs(Math.abs(l.valor)-v)<0.01);
+      if(dev){ f.x.pago=cent((f.x.pago||0)+v); f.x.aPagar=null; f.x.data=dev.data; mudou=true; }
+    }
     return mudou;
   }
   /* Gastos que se repetem todo mês e não estão na previsão: entram como linha "média" (cor própria).
