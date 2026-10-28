@@ -1195,7 +1195,7 @@
       <p>Solano Bicalho · Família</p>
     </div>
     <div class="acoes">
-      <button class="bt" id="btImportarMenu" title="Extrato do Itaú ou BB, fatura do cartão, financiamento, B3, contracheques SEF ou planilha de orçamento — o app reconhece o arquivo">Importar</button>
+      <button class="bt" id="btImportarMenu" title="Extrato do Itaú ou BB, fatura do cartão, financiamento, B3, contracheque SEF (PDF ou planilha histórica) ou planilha de orçamento — o app reconhece o arquivo">Importar</button>
       <button class="bt vazado" id="btLancar">+ Lançamento</button>
       <div class="menu-wrap">
         <button class="bt vazado bt-icone" id="btMais" aria-haspopup="true" aria-expanded="false" aria-label="Mais opções">⋯</button>
@@ -1285,7 +1285,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 25;
+  const BUILD = 26;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -4090,6 +4090,11 @@
     const textoTotal = paginas.map(it=>agruparLinhas(it).map(l=>l.txt).join("\n")).join("\n");
     // demonstrativo do financiamento imobiliário (Itaú: "Demonstrativo Descritivo de Crédito")
     if(/Demonstrativo Descritivo de Cr[ée]dito|Evolu[çc][ãa]o de Saldo Devedor/i.test(textoTotal)){ importarFinanciamento(textoTotal); return; }
+    // contracheque da SEF-MG (Portal do Servidor: "DEMONSTRATIVO DE PAGAMENTO - MÊS/AAAA")
+    if(/DEMONSTRATIVO DE PAGAMENTO/i.test(textoTotal) && /Valor a receber/i.test(textoTotal)){
+      const ls=[]; paginas.forEach(it=>agruparLinhas(it).forEach(l=>ls.push(l.txt)));
+      importarContrachequePDF(ls,textoTotal); return;
+    }
     // fatura do cartão BB impressa pelo SISBB (mesmo layout do TXT)
     if(/SISBB/i.test(textoTotal)&&/Fatura do Cart/i.test(textoTotal)){
       const ls=[]; paginas.forEach(it=>agruparLinhas(it).forEach(l=>ls.push(l.txt)));
@@ -7528,18 +7533,83 @@
     salvar(); ui.conta="salario"; ui.salAno=ks.length?ks[ks.length-1].slice(0,4):null; render();
     avisar("Contracheques SEF: "+novos.size+" meses · "+nR+" rubricas ("+(ks.length?mesCurto(ks[0])+" a "+mesCurto(ks[ks.length-1]):"")+")");
   }
+
+  /* Contracheque mensal em PDF (Portal do Servidor MG). Linha: "1 Normal Quinq Adm lc 1 - 898,06" ou "1 Normal Banco Itau Emp.iv 0 22 de 120 260,24".
+     As rubricas recebem o mesmo nome da planilha histórica (a série continua); os empréstimos do banco somam em "Consignado".
+     Cada demonstrativo fica guardado (salarios.pdfs) e o mês é refeito a partir deles: reimportar o mesmo PDF não duplica,
+     e um demonstrativo extra do mesmo mês (ex.: 13º) soma ao mês. */
+  const SAL_NOMES = {"VENCIMENTOBASICO":"Vencimento Básico","GEPICARGOEFETIVO":"GEPI - Cargo Efetivo","IMPRENDARETFONTE":"IMP.RENDA RET.NA",
+    "CONTRIBPREVART28":"Cont. Prev. lc 64/02","SICOOBCOOPSEFCOTPL":"Coopsef/Sicoob - Diversos/Cot.","SINDIFISCOMENSCONT":"Sindifisco - Mensalidade/Contrib."};
+  const salChave = t => normTxt(t).replace(/[^A-Z0-9]/g,"");
+  function importarContrachequePDF(ls,txt){
+    const MES={JANEIRO:1,FEVEREIRO:2,MARCO:3,ABRIL:4,MAIO:5,JUNHO:6,JULHO:7,AGOSTO:8,SETEMBRO:9,OUTUBRO:10,NOVEMBRO:11,DEZEMBRO:12};
+    const tit=(ls.find(l=>/DEMONSTRATIVO DE PAGAMENTO/i.test(l))||"").trim();
+    const mm=normTxt(tit).match(/(JANEIRO|FEVEREIRO|MARCO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)\s*\/\s*(\d{4})/);
+    if(!mm){ avisar("Não encontrei o mês no contracheque.",true); return; }
+    const ym=mm[2]+"-"+String(MES[mm[1]]).padStart(2,"0");
+    const num=t=>parseFloat(String(t).replace(/\./g,"").replace(",","."));
+    const itens=[], tot={}; let bloco=null;
+    ls.forEach(l0=>{ const l=l0.trim(), n=normTxt(l);
+      if(/^VANTAGENS$/.test(n)){ bloco="v"; return; } if(/^DESCONTOS$/.test(n)){ bloco="d"; return; }
+      let m=l.match(/^Total:?\s*R\$\s*([\d.]+,\d{2})$/i); if(m&&bloco){ tot[bloco]=num(m[1]); return; }
+      m=l.match(/^Valor a receber\s*R\$\s*(-?[\d.]+,\d{2})$/i); if(m){ tot.liq=num(m[1]); return; }
+      m=l.match(/^\d+\s+(\S+)\s+(.+?)\s+(\S+)\s+(-|\d+\s+de\s+\d+)\s+([\d.]+,\d{2})$/);
+      if(!m||!bloco) return;
+      const ref=m[1], desc=m[2].trim(), parc=m[4]==="-"?"":m[4].replace(/\s+/g," ");
+      itens.push({tipo:bloco, ref, desc, parc, valor:num(m[5])});
+    });
+    if(!itens.length){ avisar("Não consegui ler as rubricas do contracheque.",true); return; }
+    const S=dados.salarios=dados.salarios||{rubricas:[],tot:{}}; S.pdfs=S.pdfs||{};
+    const chave=ym+"|"+salChave(tit);
+    S.pdfs[chave]={ym, titulo:tit, itens, tot, importadoEm:hojeISO()};
+    salRefazerMes(ym);
+    S.importadoEm=hojeISO();
+    salvar(); ui.conta="salario"; ui.salAno=ym.slice(0,4); render();
+    const T=S.tot[ym]||{};
+    avisar("Contracheque de "+rotuloMes(ym)+": "+itens.length+" rubricas · líquido R$ "+brl(T.liq||0)+
+      ((tot.v&&Math.abs(itens.filter(x=>x.tipo==="v").reduce((s,x)=>s+x.valor,0)-tot.v)>0.05)?" · ⚠ soma das vantagens não fecha com o total":""));
+  }
+  // nome da rubrica do PDF → nome da série (planilha); empréstimos do banco → "Consignado"
+  function salNomeSerie(x){
+    const k=salChave(x.desc);
+    if(x.tipo==="d" && /^BANCO.*EMP/.test(k)) return "Consignado";
+    let nome=SAL_NOMES[k];
+    if(!nome){ const ex=dados.salarios.rubricas.find(r=>r.tipo===x.tipo&&salChave(r.nome)===k); nome=ex?ex.nome:x.desc; }
+    if(normTxt(x.ref)!=="NORMAL" && !/ATRAS|ATR$|^REP/i.test(normTxt(nome))) nome+=" ("+x.ref.toLowerCase()+")";
+    return nome;
+  }
+  function salRefazerMes(ym){
+    const S=dados.salarios, docs=Object.values(S.pdfs||{}).filter(d=>d.ym===ym); if(!docs.length) return;
+    S.rubricas.forEach(r=>{ delete r.vals[ym]; });
+    const T={v:0,d:0,liq:0}, consig=[];
+    docs.forEach(d=>{
+      d.itens.forEach(x=>{
+        const nome=salNomeSerie(x);
+        let r=S.rubricas.find(y=>y.tipo===x.tipo&&normTxt(y.nome)===normTxt(nome));
+        if(!r){ r={nome,tipo:x.tipo,vals:{}}; S.rubricas.push(r); }
+        r.vals[ym]=cent((r.vals[ym]||0)+x.valor);
+        if(nome==="Consignado") consig.push({nome:x.desc,parc:x.parc,valor:x.valor});
+      });
+      const sv=cent(d.itens.filter(x=>x.tipo==="v").reduce((s,x)=>s+x.valor,0)), sd=cent(d.itens.filter(x=>x.tipo==="d").reduce((s,x)=>s+x.valor,0));
+      T.v+=d.tot.v||sv; T.d+=d.tot.d||sd; T.liq+=d.tot.liq!=null?d.tot.liq:cent((d.tot.v||sv)-(d.tot.d||sd));
+    });
+    S.tot[ym]={v:cent(T.v),d:cent(T.d),liq:cent(T.liq)};
+    (S.consig=S.consig||{})[ym]=consig;
+    S.rubricas=S.rubricas.filter(r=>Object.keys(r.vals).length);
+  }
   // classificação das rubricas para o IR (estimativa; o comprovante de rendimentos da SEF é que vale)
   const salTipo = r => { const n=normTxt(r.nome);
     if(r.tipo==="v"){
       if(/DECIMO TERCEIRO|13/.test(n)) return "13";
-      if(/AJ\.? ?CUSTO|AJUDA DE CUSTO|AUXILIO|ALIMENT/.test(n)) return "isento";
+      if(/AJ\.? ?CUST|AJUDA DE CUSTO|AUXILIO|ALIMENT/.test(n)) return "isento";
       return "trib";
     }
     const e13=/13/.test(n);
     if(/IMP\.? ?RENDA|I\.? ?RENDA|IMPOSTO DE RENDA/.test(n)) return e13?"ir13":"ir";
     if(/PREV/.test(n)) return e13?"prev13":"prev";
     if(/AJUSTE E\.? ?C/.test(n)) return "teto";
-    if(/CONSIGNADO/.test(n)) return "consig";
+    if(/CONSIGNADO|^BANCO.*EMP/.test(n)) return "consig";
+    if(/ALIMENT|AJ\.? ?CUST/.test(n)) return "isentoRep"; // devolução de ajuda de custo paga a mais
     return "outro";
   };
   function salMes(m){
@@ -7551,6 +7621,7 @@
     if(T.v) o.bruto=T.v; if(T.d) o.desc=T.d;
     o.liq=T.liq||cent(o.bruto-o.desc);
     o.trib=Math.max(0,o.trib-o.teto); // o abate-teto reduz o rendimento tributável
+    if(o.isentoRep){ o.isento=Math.max(0,o.isento-o.isentoRep); }
     Object.keys(o).forEach(k=>o[k]=cent(o[k]));
     return o;
   }
@@ -7568,7 +7639,7 @@
     const btImp='<button class="bt vazado" data-salimp="1" style="font-size:12px;padding:6px 12px">Importar contracheques</button>';
     if(!S||!Object.keys(S.tot||{}).length){
       $("#abas").innerHTML=btImp;
-      corpo.innerHTML='<div class="tit-secao"><h3>Salários SEF</h3></div><p class="sub">Importe a planilha <b>CONTRACHEQUES HISTÓRICO.xlsx</b> (aba “Contracheques”: rubricas nas linhas, meses nas colunas). '+
+      corpo.innerHTML='<div class="tit-secao"><h3>Salários SEF</h3></div><p class="sub">Importe o contracheque do mês em PDF (Portal do Servidor) ou a planilha <b>CONTRACHEQUES HISTÓRICO.xlsx</b> com o histórico. '+
         'O app reconhece o arquivo pelo botão Importar. Os valores ficam só na sua conta.</p><p style="margin-top:14px">'+btImp+'</p>';
       corpo.onclick=e=>{ if(e.target.closest("[data-salimp]")) abrirImport("auto"); };
       $("#abas").onclick=corpo.onclick; return;
@@ -7625,6 +7696,13 @@
         secao("Líquido e bruto mês a mês · "+ano)+
         grafLinhas([{nome:"Bruto",cor:"#9CA3AF",pts:ms.map(m=>({m,v:salMes(m).bruto}))},{nome:"Líquido",cor:"#1D4ED8",pts:ms.map(m=>({m,v:salMes(m).liq}))}],{h:240,rotulo:"Salário SEF em "+ano})+
         secao("Contracheque mês a mês · "+ano)+tabMes+
+        (()=>{ const cm=ms.filter(m=>(S.consig||{})[m]&&S.consig[m].length).pop(); if(!cm) return "";
+          const L=S.consig[cm], tt=cent(L.reduce((a,x)=>a+x.valor,0));
+          return secao("Consignados descontados em folha · "+mesCurto(cm))+'<div class="rolagem"><table class="dash-mes"><thead><tr><th>Contrato</th><th>Parcela</th><th>Faltam</th><th>Valor</th><th>Saldo (parcelas × valor)</th></tr></thead><tbody>'+
+            L.map(x=>{ const p=(x.parc||"").match(/(\d+) de (\d+)/), f=p?(+p[2]-+p[1]):null;
+              return '<tr><td>'+esc(x.nome)+'</td><td>'+esc(x.parc||"—")+'</td><td>'+(f!=null?f:"—")+'</td><td>'+brl(x.valor)+'</td><td>'+(f!=null?brl(cent(f*x.valor)):"—")+'</td></tr>'; }).join("")+
+            '<tr class="iv-tot"><td>Total</td><td></td><td></td><td>'+brl(tt)+'</td><td>'+brl(cent(L.reduce((a,x)=>{ const p=(x.parc||"").match(/(\d+) de (\d+)/); return a+(p?(+p[2]-+p[1])*x.valor:0); },0)))+'</td></tr></tbody></table></div>'+
+            nota("Saldo = parcelas que faltam × valor da parcela (sem desconto de juros na quitação antecipada)."); })()+
         secao("Para a declaração do IR · ano-base "+ano+" (estimativa)")+decl+
         nota("Estimativa a partir dos contracheques: confira com o comprovante de rendimentos da SEF-MG (Portal do Servidor). Férias (1/3) entram como tributáveis; ajuda de custo/alimentação como isenta; o 13º vai em tributação exclusiva.")+
         secao("Ano a ano")+tabAnos;
