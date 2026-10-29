@@ -1285,7 +1285,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 27;
+  const BUILD = 28;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -3142,27 +3142,40 @@
     dados.previsoes=dados.previsoes||{};
     return dados.previsoes[ym]||(dados.previsoes[ym]={aba:"criado no app", saldo:0, fixos:[], itens:[], receitas:[], notas:[]});
   }
+  // "DDA PAG TIT", "PAG TIT BANCO 237", "BOLETO": o histórico não diz de quem é o boleto (Unimed, clube, escola…)
+  const histGenerico = h => /^\s*(DDA\s*)?PAG(TO)?\s*TIT|BOLETO/i.test(String(h||""));
+  // valor praticamente igual ao previsto: até R$ 2 ou 1% de diferença (previsto 1.752, veio 1.752,28)
+  const quaseIgual = (a,b) => Math.abs(Math.abs(a)-Math.abs(b)) <= Math.max(2, Math.abs(b)*0.01);
   function gravarFuturos(futuros,origem){
     let novos=0, ligados=0; const meses=new Set();
     const livre=i=>!i.ext && i.pago==null && i.aPagar!=null;
-    const liga=(x,f,valor,k)=>{ x.data=f.iso; x.aPagar=valor; x.ext=k; x.origem=origem; ligados++; };
+    const liga=(x,f,valor,k)=>{ x.data=f.iso; x.aPagar=valor; x.ext=k; x.origem=origem; delete x.valorManual; ligados++; };
+    const maisPerto=(lista,valor)=>lista.filter(i=>livre(i)&&quaseIgual(i.aPagar,valor))
+      .sort((a,b)=>Math.abs(Math.abs(a.aPagar)-Math.abs(valor))-Math.abs(Math.abs(b.aPagar)-Math.abs(valor)))[0];
     const resto=[];
-    // 1º: já ligado antes, ou a previsão tem exatamente esse valor
+    // 1º: já ligado antes, ou a previsão tem essa conta com o mesmo valor (ou quase)
     (futuros||[]).forEach(f=>{
       const valor=Math.round(f.valor*100)/100, ym=f.iso.slice(0,7), k=chaveExt(f.hist,valor);
       const p=novaPrevVazia(ym), todas=p.itens.concat(p.fixos);
       meses.add(ym);
       let x=todas.find(i=>i.ext===k);
+      if(x && x.pago==null && histGenerico(f.hist)){
+        // ligação antiga feita pela categoria (boleto da Unimed caiu no Clube): se outra linha tem o valor do boleto, passa para ela
+        const certa=maisPerto(todas,valor);
+        if(certa && !quaseIgual(x.aPagar,valor)){ delete x.ext; delete x.origem; delete x.valorManual; liga(certa,f,valor,k); return; }
+      }
       // valor corrigido à mão na previsão (ex.: boleto agendado com valor errado) não volta a ser o do extrato
       if(x){ x.data=f.iso; if(x.pago==null && !x.valorManual) x.aPagar=valor; ligados++; return; }
-      x=todas.find(i=>livre(i) && Math.abs(Math.abs(i.aPagar)-Math.abs(valor))<0.005);
+      x=maisPerto(todas,valor);
       if(x){ liga(x,f,valor,k); return; }
       resto.push({f:f,valor:valor,k:k,p:p});
     });
-    // 2º: mesma categoria com valor diferente (previsto 1.830, veio 1.799,30) — só se houver uma única conta dessa categoria
+    // 2º: mesma categoria com valor diferente (previsto 1.830, veio 1.799,30) — só se houver uma única conta dessa categoria.
+    // Boleto genérico só liga se o valor for parecido (até 25%): a categoria dele vem de regra aprendida e pode ser de outra conta
     resto.forEach(({f,valor,k,p})=>{
       const cat=classificar(f.hist,valor).categoria;
-      const cands=cat==="Sem categoria"?[]:p.itens.concat(p.fixos).filter(i=>livre(i)&&catRotulo(i.d||"")===cat);
+      let cands=cat==="Sem categoria"?[]:p.itens.concat(p.fixos).filter(i=>livre(i)&&catRotulo(i.d||"")===cat);
+      if(histGenerico(f.hist)) cands=cands.filter(i=>Math.abs(Math.abs(i.aPagar)-Math.abs(valor))<=Math.abs(i.aPagar)*0.25);
       if(cands.length===1){ liga(cands[0],f,valor,k); return; }
       p.itens.push({data:f.iso, d:f.hist+(cat!=="Sem categoria"?" ("+cat+")":""), aPagar:valor, pago:null, ext:k, origem:origem});
       novos++;
