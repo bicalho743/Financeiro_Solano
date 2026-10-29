@@ -1285,7 +1285,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 26;
+  const BUILD = 27;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -3153,7 +3153,8 @@
       const p=novaPrevVazia(ym), todas=p.itens.concat(p.fixos);
       meses.add(ym);
       let x=todas.find(i=>i.ext===k);
-      if(x){ x.data=f.iso; if(x.pago==null) x.aPagar=valor; ligados++; return; }
+      // valor corrigido à mão na previsão (ex.: boleto agendado com valor errado) não volta a ser o do extrato
+      if(x){ x.data=f.iso; if(x.pago==null && !x.valorManual) x.aPagar=valor; ligados++; return; }
       x=todas.find(i=>livre(i) && Math.abs(Math.abs(i.aPagar)-Math.abs(valor))<0.005);
       if(x){ liga(x,f,valor,k); return; }
       resto.push({f:f,valor:valor,k:k,p:p});
@@ -4951,7 +4952,7 @@
         if(k==="tipo"){ if(x.media==null){ if(el.value==="var") x.tipo="var"; else delete x.tipo; } salvar(); renderPrevisao(); return; }
         if(k==="d"||k==="data") x[k]=el.value;
         else if(k==="aPagar"&&x.media!=null){ x.media=cent((x.pago||0)+(n==null?0:Math.abs(n))); x.aPagar=n==null||!Math.abs(n)?null:-Math.abs(n); }
-        else if(k==="aPagar"){ x.aPagar = n==null?null : (/^\+/.test(txt)?Math.abs(n):-Math.abs(n)); }
+        else if(k==="aPagar"){ x.aPagar = n==null?null : (/^\+/.test(txt)?Math.abs(n):-Math.abs(n)); if(x.ext) x.valorManual=true; }
         else if(k==="pago"){ x.pago = n==null?null:Math.abs(n); el.value=val(x.pago); }
         else if(k==="v"){ x.v=n; el.value=val(x.v); }
       }
