@@ -1285,7 +1285,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 28;
+  const BUILD = 29;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -2304,15 +2304,15 @@
   // faixa do topo da Visão geral (mês atual): saldo hoje + a receber − a pagar = sobra prevista
   function faixaHoje(){
     if(ui.mes!==mesAtual()) return "";
-    const p=dados.previsoes&&dados.previsoes[ui.mes], sc=saldoContaApp(ui.mes);
+    const p=dados.previsoes&&dados.previsoes[ui.mes], sc=saldoTotalContas(ui.mes);
     const card=(rot,v,sub,cor,irO)=>'<div class="g-num'+(irO?' clic-card"'+ir(irO):'"')+'><span class="rot">'+rot+'</span>'+
       '<div class="v" style="color:'+cor+'">R$ '+brl(v)+'</div><span class="kpi-sub">'+sub+'</span></div>';
     if(!p) return estrategiaCheque()+painelBancos()+'<section class="dash-geral dash-hoje um">'+
-      card("Saldo em conta hoje",sc.v,"Itaú, pelos lançamentos até "+diaMes(sc.data),sc.v<0?"var(--neg)":"var(--tinta)",{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
+      card("Saldo em conta hoje",sc.v,"total nas contas: "+rotSaldoTotal(sc),sc.v<0?"var(--neg)":"var(--tinta)",{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
       '<p class="sub" style="margin:0;align-self:center">Crie a <a href="#" data-abrirprev="'+ui.mes+'">previsão do mês</a> para ver quanto sobra até o fim do mês.</p></section>';
     const t=totaisPrev(p,ui.mes), nAb=p.itens.filter(x=>x.aPagar!=null&&x.aPagar<0).length;
     return estrategiaCheque()+'<section class="dash-geral dash-hoje">'+
-      card("Saldo em conta",t.saldo,p.saldoManual?"digitado na previsão":"Itaú hoje ("+diaMes(sc.data)+")",t.saldo<0?"var(--neg)":"var(--tinta)",{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
+      card("Saldo em conta",t.saldo,p.saldoManual?"digitado na previsão":"total nas contas ("+rotSaldoTotal(sc)+")",t.saldo<0?"var(--neg)":"var(--tinta)",{conta:"itau",mes:ui.mes,alvo:"#conf",dica:"Conferir com o banco"})+
       card("+ A receber",t.receber+t.outras,"receitas e anotações em aberto","var(--pos)",{conta:"prev",mes:ui.mes,alvo:"#pv-receitas",dica:"Ver as receitas esperadas"})+
       card("− A pagar",-t.aPagar,nAb+" conta"+(nAb===1?"":"s")+" em aberto até o fim do mês","var(--tinta)",{conta:"prev",mes:ui.mes,alvo:"#pv-itens",dica:"Ver as contas a pagar"})+
       card("= "+(t.resultado<0?"Falta no mês":"Sobra no mês"),t.resultado,"previsão para "+diaMes(fimDoMes(ui.mes)),t.resultado<0?"var(--neg)":"var(--pos)",{conta:"prev",mes:ui.mes,alvo:"#pv-resumo",dica:"Ver o cálculo na previsão do mês"})+
@@ -4727,6 +4727,20 @@
     const extra=jaDebitados("itau",D).reduce((s,l)=>s+l.valor,0);
     return {v:cent(ini.v+movConta("itau",ymD+"-01",dep.toISOString().slice(0,10))+extra), data:D, fonte:ini.fonte};
   }
+  // saldo em conta = total nas contas (Itaú pelos lançamentos + BB + Santander pelo último saldo até a data).
+  // Conta negativa do BB/Santander que já virou linha de cheque especial em aberto no "A pagar" fica fora (não conta duas vezes).
+  function saldoTotalContas(ym){
+    const it=saldoContaApp(ym), D=it.data, p=dados.previsoes&&dados.previsoes[ym];
+    const ate=o=>{ const sd=(dados.saldosDia||{})[o]||{}, d=Object.keys(sd).filter(x=>x<=D).sort().pop(); return d?{v:cent(+sd[d]),data:d}:null; };
+    let v=it.v; const partes=["Itaú"];
+    CHEQUES.forEach(cq=>{
+      const s=ate(cq.o); if(!s) return;
+      if(s.v<0&&p&&(p.itens||[]).some(x=>ehLinhaDe(cq,x)&&x.aPagar!=null)) return;
+      v+=s.v; partes.push(cq.o==="bb"?"BB":"Santander");
+    });
+    return {v:cent(v), data:D, partes:partes};
+  }
+  const rotSaldoTotal = sc => sc.partes.join(" + ")+" até "+diaMes(sc.data);
   // mês futuro: o saldo de partida é o déficit/superávit do mês anterior (se ele tem previsão)
   const mesAntPrev = ym => { const [a,m]=ym.split("-").map(Number); const k=m===1?(a-1)+"-12":a+"-"+String(m-1).padStart(2,"0");
     return ym>mesAtual() && dados.previsoes && dados.previsoes[k] ? k : null; };
@@ -4735,7 +4749,7 @@
     if(p.saldoManual&&p.saldo!=null) return +p.saldo;
     const ant=ym&&mesAntPrev(ym);
     if(ant) return totaisPrev(dados.previsoes[ant],ant).resultado;
-    return saldoContaApp(ym).v;
+    return saldoTotalContas(ym).v;
   }
   function totaisPrev(p,ym){
     ym=ym||ymDaPrev(p);
@@ -4928,7 +4942,7 @@
           '<p class="sub" id="pvSaldoF" style="margin:-4px 0 6px;text-align:right">'+(p.saldoManual?'digitado · <button class="ver-mais" data-psaldoapp="1" style="padding:0">usar o dos lançamentos</button>'
             :mesAntPrev(ui.prevMes)?(()=>{ const a=mesAntPrev(ui.prevMes), r=totaisPrev(dados.previsoes[a],a).resultado;
               return (r<0?'déficit':'superávit')+' de '+esc(rotuloMes(a))+' · <button class="ver-mais" data-pverant="'+a+'" style="padding:0">ver</button>'; })()
-            :(()=>{ const sc=saldoContaApp(ui.prevMes); return 'Itaú pelos lançamentos, até '+diaMes(sc.data); })())+'</p>'+
+            :(()=>{ const sc=saldoTotalContas(ui.prevMes); return 'total nas contas: '+rotSaldoTotal(sc); })())+'</p>'+
           '<div class="pv-l"><span>A receber</span><b id="pvReceber" style="color:var(--pos)">'+brlS(t.receber)+'</b></div>'+
           '<div class="pv-l"><span>Anotações</span><b id="pvOutras" style="color:'+(t.outras<0?"var(--neg)":"var(--pos)")+'">'+brlS(t.outras)+'</b></div>'+
           '<div class="pv-l"><span>A pagar</span><b id="pvAPagar">'+brl(t.aPagar)+'</b></div>'+
