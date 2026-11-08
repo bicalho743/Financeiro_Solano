@@ -1285,7 +1285,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 29;
+  const BUILD = 30;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -1740,6 +1740,25 @@
       l.vinculo="PF";
       if(!CATEGORIAS.includes(l.categoria)) l.categoria=MAPA_ANTIGO[l.categoria]||"Sem categoria";
       if(l.origem==="pf"||l.origem==="pj") l.origem="bb";   // o modelo antigo só importava extrato do BB
+    });
+    if(!dados.desfezPrev29){ desfazerPrevisao29(); dados.desfezPrev29=true; dados._migrou=true; }
+  }
+  /* A versão 29 (desfeita a pedido) mudou linhas da previsão ao abrir o app: linha variável digitada virava linha de
+     gasto real (medTipo "manual"), entravam linhas "(no mês)" e médias que as transferências fixas antes impediam
+     (Supermercado, Saúde, Tâmara – pessoal, Manutenção da casa). Volta tudo como era. */
+  function desfazerPrevisao29(){
+    Object.keys(dados.previsoes||{}).forEach(ym=>{
+      const p=dados.previsoes[ym]; if(!p||!Array.isArray(p.itens)) return;
+      const fx=p.fixos||[];
+      const fixoCobre=c=>fx.some(x=>catRotulo(x.d||"")===c||normTxt(x.d).includes(normTxt(c)));
+      p.itens=p.itens.filter(x=>{
+        if(x.medTipo==="mes") return false;
+        if(x.medTipo==="manual"){
+          x.tipo="var"; x.aPagar=+x.media>0.005?-cent(+x.media):null; x.pago=null;
+          delete x.media; delete x.cat; delete x.medTipo; return true;
+        }
+        return !(x.media!=null && x.cat && fixoCobre(x.cat));
+      });
     });
   }
   let salvando = null;
@@ -2777,49 +2796,22 @@
       return {cat:c, media:Math.round(por[c].v.reduce((a,b)=>a+b,0)/3), dia:ds[Math.floor(ds.length/2)], de:ref[2], ate:ref[0]};
     }).filter(r=>r.media>=20);
   }
-  // gasto do mês que entra na previsão: os da média e também os sem categoria (para aparecerem e serem classificados)
-  const lancGastoMes = l => lancMedia(l) || (l.categoria==="Sem categoria" && !l.ignorado && l.valor<0 && l.origem!=="cartao");
-  const gastoCatMes = (cat,ym) => cent(dados.lancamentos.reduce((s,l)=>s+(l.categoria===cat&&(l.data||"").slice(0,7)===ym&&realizado(l)&&lancGastoMes(l)?-l.valor:0),0));
-  // categoria que a previsão acompanha pelo gasto real (as de "Fora dos cálculos", receitas, IOF etc. não)
-  const catAcompanhavel = c => !!c && (c==="Sem categoria" || (!MEDIA_FORA.has(c) && GRUPO_DE[c] && GRUPO_DE[c]!=="Receitas" && GRUPO_DE[c]!=="Fora dos cálculos"));
-  /* A previsão acompanha os gastos variáveis do mês (conta e dinheiro; o cartão está na fatura) de três jeitos, todos
-     com Pago = gasto real da categoria no mês atual e A pagar = o que falta do previsto:
-     - linha pela média (x.media): categoria que se repete nos 3 meses anteriores e não estava na previsão;
-     - linha digitada e marcada como Variável cujo nome diz a categoria ("Gasolina"): passa a acompanhar o gasto
-       (x.media = o valor previsto nela, x.medTipo="manual");
-     - linha do mês (x.medTipo="mes"): categoria com gasto no mês atual e sem nenhuma linha — antes ficava fora.
-     As transferências fixas (lista "fixos", ex.: "mercado – transferido Tâmara") não contam como cobertura de categoria. */
+  const gastoCatMes = (cat,ym) => cent(dados.lancamentos.reduce((s,l)=>s+(l.categoria===cat&&(l.data||"").slice(0,7)===ym&&realizado(l)&&lancMedia(l)?-l.valor:0),0));
   function syncMediasPrev(){
     const hj=mesAtual(); let mudou=false, rec=null;
     Object.keys(dados.previsoes||{}).filter(ym=>ym>=hj).forEach(ym=>{
       const p=dados.previsoes[ym]; p.itens=p.itens||[];
       rec=rec||gastosRecorrentes();
-      const ign=p.mediaIgnorar||[];
-      // linha variável digitada que diz a categoria: passa a acompanhar o gasto real
-      p.itens.forEach(x=>{
-        if(x.media!=null||x.tipo!=="var"||x.ext||x.auto) return;
-        const c=catRotulo(x.d||""); if(!catAcompanhavel(c)||c==="Sem categoria") return;
-        x.media=cent(Math.abs(+x.aPagar||0)+(+x.pago||0)); x.cat=c; x.medTipo="manual"; delete x.tipo; mudou=true;
-      });
-      const tem=c=>p.itens.some(x=>x.media!=null?x.cat===c:(catRotulo(x.d||"")===c||normTxt(x.d).includes(normTxt(c))));
-      const [a,m]=ym.split("-").map(Number), dias=new Date(a,m,0).getDate();
+      const ign=p.mediaIgnorar||[], todas=p.itens.concat(p.fixos||[]);
+      const tem=c=>todas.some(x=>x.media!=null?x.cat===c:(catRotulo(x.d||"")===c||normTxt(x.d).includes(normTxt(c))));
       rec.forEach(r=>{
         if(ign.includes(r.cat)||tem(r.cat)) return;
+        const [a,m]=ym.split("-").map(Number), dias=new Date(a,m,0).getDate();
         p.itens.push({data:ym+"-"+String(Math.min(r.dia||15,dias)).padStart(2,"0"), d:r.cat+" (média)", cat:r.cat, media:r.media,
           mediaBase:r.media, mediaRef:r.de+"|"+r.ate, aPagar:-r.media, pago:null});
         mudou=true;
       });
-      // mês atual: categoria com gasto e sem linha nenhuma entra como linha do mês (só o que já foi gasto)
-      if(ym===hj){
-        const cats=new Set();
-        dados.lancamentos.forEach(l=>{ if((l.data||"").slice(0,7)===ym&&realizado(l)&&lancGastoMes(l)&&catAcompanhavel(l.categoria)) cats.add(l.categoria); });
-        cats.forEach(c=>{
-          if(ign.includes(c)||tem(c)||gastoCatMes(c,ym)<=0.005) return;
-          p.itens.push({data:hojeISO(), d:c+" (no mês)", cat:c, media:0, medTipo:"mes", aPagar:null, pago:null});
-          mudou=true;
-        });
-      }
-      // mês atual: Pago = gasto real da categoria; A pagar = o que falta do previsto
+      // mês atual: Pago = gasto real da categoria; A pagar = o que falta da média
       p.itens.forEach(x=>{
         if(x.media==null) return;
         const g=ym===hj?gastoCatMes(x.cat,ym):0, falta=cent(Math.max(0,x.media-g));
@@ -4813,10 +4805,9 @@
     // copia as linhas do mês de origem com o valor que está lá: o que foi pago vira previsto; nada marcado como pago.
     // Linhas pela média: vale o valor ajustado no mês (x.media), não a média original; encerrada (0) continua encerrada.
     // Conta paga em parte: previsto = pago + o que faltava.
-    const copia=l=>(l||[]).filter(x=>!(x.medTipo==="mes"&&!(+x.media>0.005))).map(x=>{
+    const copia=l=>(l||[]).map(x=>{
       if(x.media!=null){ const mv=cent(+x.media||0);
-        return {data:mover(x.data), d:x.d, cat:x.cat, media:mv, mediaBase:x.mediaBase, mediaRef:x.mediaRef, aPagar:mv>0.005?-mv:null, pago:null,
-          ...(x.medTipo==="manual"?{medTipo:"manual"}:{})}; }
+        return {data:mover(x.data), d:x.d, cat:x.cat, media:mv, mediaBase:x.mediaBase, mediaRef:x.mediaRef, aPagar:mv>0.005?-mv:null, pago:null}; }
       const tot=x.aPagar!=null&&x.aPagar>0?x.aPagar:(x.aPagar!=null||x.pago?-cent(Math.abs(x.aPagar||0)+(+x.pago||0)):null);
       return {data:mover(x.data), d:x.d, ...(x.tipo?{tipo:x.tipo}:{}), ...(x.grupo?{grupo:x.grupo}:{}), aPagar:tot, pago:null}; });
     const novo={aba:"criado no app", saldo:0, fixos:copia(base&&base.fixos), itens:copia(base&&base.itens),
@@ -4857,16 +4848,12 @@
       const hj=hojeISO(), d3=new Date(hj+"T12:00:00"); d3.setDate(d3.getDate()+3);
       const aberto=x.media==null&&x.aPagar!=null&&x.aPagar<0&&x.data, venc=aberto&&x.data<hj, logo=aberto&&!venc&&x.data<=d3.toISOString().slice(0,10);
       const ttMedia=x.media!=null?(()=>{ const r=(x.mediaRef||"").split("|");
-        if(x.medTipo==="manual") return 'Linha variável: o Pago acompanha o gasto real de '+x.cat+' no mês. Previsto: R$ '+brl(x.media)+
-          (x.pago?' · já gasto: R$ '+brl(x.pago):'')+'. Digite em A pagar quanto ainda falta gastar para ajustar.';
-        if(x.medTipo==="mes") return 'Gasto de '+x.cat+' neste mês que não estava na previsão'+(x.pago?' (R$ '+brl(x.pago)+')':'')+
-          '. Se ainda vai gastar mais, digite em A pagar quanto falta.'+(x.cat==="Sem categoria"?' Classifique esses lançamentos para irem à categoria certa.':'');
         return 'Gasto que se repete todo mês e não estava na previsão. Média de '+(r[0]?rotuloMes(r[0])+' a '+rotuloMes(r[1]):'3 meses')+': R$ '+brl(x.mediaBase!=null?x.mediaBase:x.media)+
           ' · previsto para o mês: R$ '+brl(x.media)+(x.pago?' · já gasto: R$ '+brl(x.pago):'')+'. Digite em A pagar quanto ainda falta gastar para ajustar.'; })():'';
       if(x.media!=null) return '<tr class="pv-media" title="'+esc(ttMedia)+'">'+
         '<td><input type="date" class="campo"'+at("data")+' value="'+esc(x.data||"")+'" aria-label="Data"></td>'+
         '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes"></td>'+
-        '<td><span class="pv-tipo var" title="Acompanha o gasto real da categoria: sempre variável">Variável</span></td>'+
+        '<td><span class="pv-tipo var" title="Gasto pela média: sempre variável">Variável</span></td>'+
         '<td class="valor"><input class="campo"'+at("aPagar")+' value="'+val(x.aPagar,true)+'" placeholder="—" inputmode="decimal" aria-label="A pagar (média ajustável)"></td>'+
         '<td class="valor"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês" title="Gasto real da categoria no mês (pelos lançamentos)"></td>'+
         '<td class="acao">'+(x.aPagar!=null?'<button class="pv-pagar" data-ppagar="'+lista+':'+i+'" title="Encerrar: não falta mais nada deste gasto no mês">✓</button>':'')+
@@ -4964,7 +4951,7 @@
       '<div class="pv-grid"><div>'+
         tabela("itens","Contas a pagar").replace('<div class="rolagem">',filtroTipo()+chipsPrev("itens")+'<div class="rolagem">')+
         (ui.pvTipo&&!separaBlocos("itens").length?'<p class="sub" style="margin:4px 0 0">Nenhuma conta '+(ui.pvTipo==="fixo"?"fixa":"variável")+' neste mês.</p>':'')+
-        (p.itens.some(x=>x.media!=null)?'<p class="sub" style="margin:4px 0 0;font-size:12px"><span class="pv-leg-media"></span>Linhas em azul acompanham o gasto real da categoria (conta e dinheiro; o cartão já está na fatura): gastos que se repetem, pela média dos 3 últimos meses; linhas variáveis digitadas com o nome da categoria; e “(no mês)”, gasto do mês que não estava previsto. '+
+        (p.itens.some(x=>x.media!=null)?'<p class="sub" style="margin:4px 0 0;font-size:12px"><span class="pv-leg-media"></span>Linhas em azul: gastos que se repetem todo mês e não estavam na previsão, pela média dos 3 últimos meses (conta e dinheiro; o cartão já está na fatura). '+
           'Digite em <b>A pagar</b> quanto ainda falta gastar; no mês atual o <b>Pago</b> acompanha o gasto real. O × tira a sugestão deste mês.</p>':'')+
         '<div style="height:30px"></div>'+
         tabela("fixos","Separado no início do mês","Transferências fixas — não entram no “a pagar” (como as linhas 3 a 9 da planilha).")+
@@ -5010,7 +4997,7 @@
         const x=p[lista][+el.dataset.i];
         if(k==="tipo"){ if(x.media==null){ if(el.value==="var") x.tipo="var"; else delete x.tipo; } salvar(); renderPrevisao(); return; }
         if(k==="d"||k==="data") x[k]=el.value;
-        else if(k==="aPagar"&&x.media!=null){ if(x.medTipo==="mes") delete x.medTipo; x.media=cent((x.pago||0)+(n==null?0:Math.abs(n))); x.aPagar=n==null||!Math.abs(n)?null:-Math.abs(n); }
+        else if(k==="aPagar"&&x.media!=null){ x.media=cent((x.pago||0)+(n==null?0:Math.abs(n))); x.aPagar=n==null||!Math.abs(n)?null:-Math.abs(n); }
         else if(k==="aPagar"){ x.aPagar = n==null?null : (/^\+/.test(txt)?Math.abs(n):-Math.abs(n)); if(x.ext) x.valorManual=true; }
         else if(k==="pago"){ x.pago = n==null?null:Math.abs(n); el.value=val(x.pago); }
         else if(k==="v"){ x.v=n; el.value=val(x.v); }
