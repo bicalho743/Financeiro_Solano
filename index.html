@@ -946,6 +946,7 @@
   tr.pv-media input{color:#1F4E8C}
   tr.pv-media input[data-k="pago"]{cursor:default}
   input.pv-acomp{color:#1F4E8C;cursor:default}
+  td.pv-lanc{cursor:pointer} td.pv-lanc input{cursor:pointer!important;pointer-events:none} td.pv-lanc:hover input{text-decoration:underline}
   .pv-leg-media{display:inline-block;width:10px;height:10px;background:#EEF4FB;border-left:3px solid #3B6FB6;margin-right:4px;vertical-align:middle}
   .selo-venc{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:999px;margin-left:6px;vertical-align:1px}
   .selo-venc.v{background:#FEE2E2;color:#B42318}.selo-venc.h{background:#FEF3C7;color:#92400E}
@@ -1286,7 +1287,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 31;
+  const BUILD = 32;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -2529,7 +2530,7 @@
       const ln=e.target.closest("[data-dcat]");
       if(ln){
         const cat=ln.dataset.dcat;
-        ui.conta="cpf"; ui.view="mes"; ui.busca=""; ui.origem=""; ui.fat=""; ui.errada="";
+        ui.conta="cpf"; ui.view="mes"; ui.busca=""; ui.origem=""; ui.fat=""; ui.errada="";ui.catsLista="";ui.semCartao="";
         ui.cat=cat; ui.tipo=cat==="Sem categoria"?(ln.dataset.dtipo||""):"";
         render();
         try{ document.getElementById("tabelaLanc").scrollIntoView({behavior:"smooth",block:"start"}); }catch(_){}
@@ -4402,6 +4403,8 @@
     const base=doMes().filter(l=>{
       if(b && !(l.hist.toLowerCase().includes(b)||(l.obs||"").toLowerCase().includes(b))) return false;
       if(ui.cat && l.categoria!==ui.cat) return false;
+      if(ui.catsLista && ui.catsLista.length && !ui.catsLista.includes(l.categoria)) return false;
+      if(ui.semCartao && l.origem==="cartao") return false;
       if(ui.origem && l.origem!==ui.origem) return false;
       if(ui.tipo==="e" && l.valor<=0) return false;
       if(ui.tipo==="s" && l.valor>=0) return false;
@@ -4932,7 +4935,7 @@
         '<td><input class="campo" value="'+esc(x.d+(x.cats?' ('+x.cats.join(', ')+')':''))+'" readonly tabindex="-1" aria-label="Detalhes"></td>'+
         '<td><span class="pv-tipo var" title="Gasto real do mês: sempre variável">Variável</span></td>'+
         '<td class="valor"><input class="campo"'+(x.cats?' readonly tabindex="-1"':at("aPagar"))+' value="" placeholder="—" inputmode="decimal" aria-label="A pagar"></td>'+
-        '<td class="valor"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês" title="Gasto real no mês (pelos lançamentos)"></td>'+
+        '<td class="valor pv-lanc" data-pvlanc="'+esc((x.cats||[x.cat]).join("|"))+'" title="Ver os lançamentos"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês — ver lançamentos"></td>'+
         '<td class="acao"><button class="apagar" data-pdel="'+lista+':'+i+'" title="Tirar e não mostrar de novo neste mês" aria-label="Apagar linha">×</button></td></tr>';
       }
       if(x.media!=null) return '<tr class="pv-media" title="'+esc(ttMedia)+'">'+
@@ -4940,7 +4943,7 @@
         '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes"></td>'+
         '<td><span class="pv-tipo var" title="Gasto pela média: sempre variável">Variável</span></td>'+
         '<td class="valor"><input class="campo"'+at("aPagar")+' value="'+val(x.aPagar,true)+'" placeholder="—" inputmode="decimal" aria-label="A pagar (média ajustável)"></td>'+
-        '<td class="valor"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês" title="Gasto real da categoria no mês (pelos lançamentos)"></td>'+
+        '<td class="valor pv-lanc" data-pvlanc="'+esc(x.cat||"")+'" title="Ver os lançamentos de '+esc(x.cat||"")+'"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês — ver lançamentos"></td>'+
         '<td class="acao">'+(x.aPagar!=null?'<button class="pv-pagar" data-ppagar="'+lista+':'+i+'" title="Encerrar: não falta mais nada deste gasto no mês">✓</button>':'')+
           '<button class="apagar" data-pdel="'+lista+':'+i+'" title="Apagar e não sugerir de novo neste mês" aria-label="Apagar linha">×</button></td></tr>';
       return '<tr'+(venc?' class="pv-vencida" title="Vencida e ainda em aberto"':logo?' class="pv-hoje" title="Vence em até 3 dias"':'')+'>'+
@@ -4948,7 +4951,7 @@
         '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes"></td>'+
         '<td><select class="pv-tipo '+tipoPrev(x)+'"'+at("tipo")+' aria-label="Fixo ou variável"><option value="fixo"'+(tipoPrev(x)==="fixo"?" selected":"")+'>Fixo</option><option value="var"'+(tipoPrev(x)==="var"?" selected":"")+'>Variável</option></select></td>'+
         '<td class="valor"><input class="campo'+(x.aPagar>0?' pos':'')+'"'+at("aPagar")+' value="'+val(x.aPagar,true)+'" placeholder="—" inputmode="decimal" aria-label="A pagar"></td>'+
-        (x.acCat?'<td class="valor"><input class="campo pv-acomp" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês" title="Gasto real de '+esc(x.acCat)+' no mês (pelos lançamentos). Previsto: R$ '+brl(+x.acPrev||0)+'; o A pagar é o que falta."></td>'
+        (x.acCat?'<td class="valor pv-lanc" data-pvlanc="'+esc(x.acCat)+'" title="Gasto real de '+esc(x.acCat)+' no mês. Previsto: R$ '+brl(+x.acPrev||0)+'; o A pagar é o que falta. Clique para ver os lançamentos."><input class="campo pv-acomp" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês — ver lançamentos"></td>'
           :'<td class="valor"><input class="campo"'+at("pago")+' value="'+val(x.pago)+'" placeholder="—" inputmode="decimal" aria-label="Pago"></td>')+
         '<td class="acao">'+(x.aPagar!=null&&x.aPagar<0?'<button class="pv-pagar" data-ppagar="'+lista+':'+i+'" title="'+(x.acCat?'Encerrar: não falta mais nada deste gasto no mês':'Marcar como pago')+'">✓</button>':'')+
           '<button class="apagar" data-pdel="'+lista+':'+i+'" title="Apagar linha" aria-label="Apagar linha">×</button></td></tr>';
@@ -5097,6 +5100,17 @@
       if(k==="aPagar") manterFoco(renderPrevisao);
     };
     corpo.onclick=e=>{
+      // Pago de linha que acompanha o gasto real: abre os lançamentos do mês dessa(s) categoria(s), sem o cartão
+      const pl=e.target.closest("[data-pvlanc]");
+      if(pl&&pl.dataset.pvlanc){
+        const cats=pl.dataset.pvlanc.split("|").filter(Boolean);
+        ui.conta="cpf"; ui.view="mes"; ui.mes=ui.prevMes; ui.busca=""; ui.origem=""; ui.fat=""; ui.errada=""; ui.tipo="s"; ui.vinculo=""; ui.soMov="";
+        ui.cat=cats.length===1?cats[0]:""; ui.catsLista=cats.length>1?cats:""; ui.semCartao=true;
+        render(); window.scrollTo(0,0);
+        try{ document.getElementById("tabelaLanc").scrollIntoView({behavior:"smooth",block:"start"}); }catch(_){}
+        avisar("Lançamentos de "+cats.join(", ")+" em "+rotuloMes(ui.prevMes)+". Para voltar, clique em Previsão do mês.");
+        return;
+      }
       const ft=e.target.closest("[data-pvtipo]");
       if(ft){ ui.pvTipo=ft.dataset.pvtipo||""; renderPrevisao(); return; }
       const ch=e.target.closest("[data-pchip]");
@@ -5972,7 +5986,7 @@
     if(conta!==ui.conta){ ui.conta=conta; ui.view="mes"; }
     if(d.irMes){ if(conta==="prev") ui.prevMes=d.irMes; else ui.mes=d.irMes; }
     if(lanc && d.irTipo!=null){
-      ui.busca=""; ui.cat=""; ui.origem=""; ui.fat=""; ui.errada=""; ui.vinculo="";
+      ui.busca=""; ui.cat=""; ui.origem=""; ui.fat=""; ui.errada="";ui.catsLista="";ui.semCartao=""; ui.vinculo="";
       ui.tipo=d.irTipo; ui.soMov=d.irMov==="1";
       if(d.irCat) ui.cat=d.irCat;
     }
@@ -8289,6 +8303,8 @@
     const chips=[];
     if(ui.busca) chips.push(["busca","“"+ui.busca+"”"]);
     if(ui.cat) chips.push(["cat",ui.cat]);
+    if(ui.catsLista && ui.catsLista.length) chips.push(["catsLista",ui.catsLista.join(", ")]);
+    if(ui.semCartao) chips.push(["semCartao","Conta e dinheiro (sem cartão)"]);
     if(ui.tipo) chips.push(["tipo",ui.tipo==="e"?"Só entradas":"Só saídas"]);
     if(ui.origem) chips.push(["origem",NOMES_ORIGEM[ui.origem]||ui.origem]);
     if(ui.soMov) chips.push(["soMov","Só o que entra no total"]);
@@ -8367,7 +8383,7 @@
       if(vm){ const k=vm.dataset.vermais==="sai"?"verTodasSai":"verTodasEnt"; ui[k]=!ui[k]; render(); return; }
       const chip=e.target.closest("[data-chip]");
       if(chip){ const k=chip.dataset.chip;
-        if(k==="*"){ ui.busca="";ui.cat="";ui.tipo="";ui.vinculo="";ui.origem="";ui.fat="";ui.errada="";ui.soMov=""; } else ui[k]="";
+        if(k==="*"){ ui.busca="";ui.cat="";ui.tipo="";ui.vinculo="";ui.origem="";ui.fat="";ui.errada="";ui.catsLista="";ui.semCartao="";ui.soMov=""; } else ui[k]="";
         render(); try{document.getElementById("tabelaLanc").scrollIntoView({block:"start"});}catch(_){ } return; }
       const th=e.target.closest("th[data-sort]"); if(!th||e.target.closest(".col-drag")) return;
       const col=th.dataset.sort;
@@ -8487,7 +8503,7 @@
     const linha=e.target.closest("[data-filtrar]"); if(!linha) return;
     const cat=linha.dataset.filtrar;
     ui.cat = ui.cat===cat ? "" : cat;
-    ui.busca=""; ui.tipo=""; ui.vinculo=""; ui.fat=""; ui.errada="";
+    ui.busca=""; ui.tipo=""; ui.vinculo=""; ui.fat=""; ui.errada="";ui.catsLista="";ui.semCartao="";
     render();
     try{const tb=document.getElementById("corpoTabela");
       if(tb) tb.closest("table").scrollIntoView({behavior:"smooth",block:"start"});}catch(e){}
@@ -8511,7 +8527,7 @@
     const bt=e.target.closest(".conta-tab"); if(!bt) return;
     if(ui.conta==="dash"||bt.dataset.conta==="dash") ui.mes=null; // dashboard abre em "todos os meses"; contas abrem no mês atual
     ui.conta=bt.dataset.conta; ui.view="mes"; if(bt.dataset.cartao) ui.cartao=bt.dataset.cartao;
-    ui.busca=""; ui.cat=""; ui.tipo=""; ui.vinculo=""; ui.origem=""; ui.fat=""; ui.errada=""; ui.soMov="";
+    ui.busca=""; ui.cat=""; ui.tipo=""; ui.vinculo=""; ui.origem=""; ui.fat=""; ui.errada="";ui.catsLista="";ui.semCartao=""; ui.soMov="";
     render();
   });
 
