@@ -1287,7 +1287,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 32;
+  const BUILD = 33;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -1500,7 +1500,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:18,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:19,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],viagens:[],ir:null,salarios:null,conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -1735,6 +1735,13 @@
       dados.regras.forEach(r=>{ if(/RENDE\s*F[AÁ]CIL/i.test(r.termo)) r.categoria="Aplicação e resgate"; });
       dados.versao=18; dados._migrou=true;
       if(n) setTimeout(()=>avisar(n+" BB Rende Fácil reclassificado"+(n===1?"":"s")+" como Aplicação e resgate."),2000);
+    }
+    if(dados.versao<19){
+      // "Contr BB Consig em Folha" (crédito do consignado contratado no BB) é empréstimo, não receita
+      let n=0;
+      dados.lancamentos.forEach(l=>{ if((l.origem==="itau"||l.origem==="bb")&&ehEmprestimoRecebido(l.hist,l.valor)&&l.categoria!=="Empréstimo recebido"&&(!l.catManual||l.categoria==="Sem categoria")){ l.categoria="Empréstimo recebido"; n++; } });
+      dados.versao=19; dados._migrou=true;
+      if(n) setTimeout(()=>avisar(n+" crédito"+(n===1?"":"s")+" de consignado classificado"+(n===1?"":"s")+" como Empréstimo recebido."),2200);
     }
     garantirViagens();
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
@@ -2682,7 +2689,7 @@
   // débito de consignado no extrato = adiantamento de parcela ou quitação (a parcela mensal é descontada em folha)
   const ehQuitacaoConsignado = (hist,valor) => valor<0 && /CR[EÉ]D(ITO)?\.?\s*CONSIG/i.test(String(hist));
   // dinheiro que entra emprestado (crediário, consignado, empréstimo): não é receita
-  const ehEmprestimoRecebido = (hist,valor) => valor>0 && /CREDIARIO|CR[EÉ]D(ITO)?\.?\s*CONSIG|EMPR[EÉ]STIMO|CR[EÉ]D(ITO)? PESSOAL|\bCDC\b|BB CR[EÉ]DITO|CR[EÉ]D(ITO)?\.? AUTOM/i.test(String(hist).normalize("NFD").replace(/[\u0300-\u036f]/g,""));
+  const ehEmprestimoRecebido = (hist,valor) => valor>0 && /CREDIARIO|CR[EÉ]D(ITO)?\.?\s*CONSIG|\bCONTR\.?\s*(BB\s*)?CONSIG|EMPR[EÉ]STIMO|CR[EÉ]D(ITO)? PESSOAL|\bCDC\b|BB CR[EÉ]DITO|CR[EÉ]D(ITO)?\.? AUTOM/i.test(String(hist).normalize("NFD").replace(/[\u0300-\u036f]/g,""));
   /* Empréstimo sem juros em aberto (ex.: CDC do BB cancelado em até 7 dias), achado sozinho pelo extrato do BB:
      o crédito do empréstimo abre a dívida; um débito de mesmo valor com CDC/empréstimo/cancelamento/estorno/liquidação a fecha.
      Passado o prazo (dias do empréstimo), deixa de contar. */
@@ -2839,6 +2846,32 @@
   // categoria de uma linha digitada: o nome exato da categoria ("Almoço", "Supermercado (no mês)") ou pelo texto ("E social Doméstica")
   const catDaLinha = d => { const t=String(d||"").replace(/\s*\(no m[êe]s\)\s*$/i,"").trim(); return t && (t in GRUPO_DE) ? t : catRotulo(t); };
   const catGastoMes = c => !!c && (c==="Sem categoria" || (!MEDIA_FORA.has(c) && !!GRUPO_DE[c] && GRUPO_DE[c]!=="Receitas" && GRUPO_DE[c]!=="Fora dos cálculos"));
+  /* Contas a pagar (não os fixos "Separado no início do mês") sem agendamento ligado — ex.: "Consórcio BB 1" — dão baixa sozinhas
+     quando o extrato do mês traz um débito da mesma categoria com valor praticamente igual (até R$ 2 ou 1%).
+     Cada lançamento baixa uma linha só; o Pago fica com o valor real do extrato. */
+  function baixarPorCategoria(){
+    const ym=mesAtual(), p=(dados.previsoes||{})[ym]; if(!p) return false;
+    p.itens=p.itens||[];
+    const usados=new Set(p.itens.concat(p.fixos||[]).map(x=>x.baixaLanc).filter(Boolean));
+    const linhas=p.itens.filter(x=>!x.mes&&!x.ext&&!x.auto&&x.media==null&&!x.acCat&&x.pago==null&&+x.aPagar<0&&catDaLinha(x.d));
+    if(!linhas.length) return false;
+    const cands=[];
+    linhas.forEach(x=>{
+      const c=catDaLinha(x.d);
+      dados.lancamentos.forEach(l=>{
+        if(l.ignorado||l.valor>=0||l.origem==="cartao"||l.categoria!==c||(l.data||"").slice(0,7)!==ym||!realizado(l)||usados.has(l.id)) return;
+        if(quaseIgual(l.valor,x.aPagar)) cands.push({x:x,l:l,dif:Math.abs(Math.abs(l.valor)-Math.abs(x.aPagar))});
+      });
+    });
+    let mudou=false; const feitas=new Set();
+    cands.sort((a,b)=>a.dif-b.dif).forEach(({x,l})=>{
+      if(feitas.has(x)||usados.has(l.id)) return;
+      x.pago=cent(Math.abs(l.valor)); x.aPagar=null; x.baixaLanc=l.id; x.data=l.data;
+      feitas.add(x); usados.add(l.id); mudou=true;
+    });
+    if(mudou) ordenarPrev(p);
+    return mudou;
+  }
   function syncGastosMes(){
     const ym=mesAtual(), p=(dados.previsoes||{})[ym]; if(!p) return false;
     p.itens=p.itens||[];
@@ -7870,7 +7903,7 @@
     corpo.classList.toggle("largo", ui.conta==="fluxo"||ui.conta==="fluxoreal"||ui.conta==="salario");
     if(ui.conta!=="fluxo"&&ui.conta!=="fluxoreal") ui.fxScroll=null;
     marcarConta();
-    if(syncChequePrev()|syncMediasPrev()|syncGastosMes()) salvar();
+    if(syncChequePrev()|syncMediasPrev()|baixarPorCategoria()|syncGastosMes()) salvar();
     if(ui.conta==="dash"){ renderDashboard(); return; }
     if(ui.conta==="dividas"){ renderDividas(); return; }
     if(ui.conta==="prev"){ renderPrevisao(); return; }
