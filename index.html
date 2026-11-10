@@ -331,8 +331,7 @@
   table.matriz td.n{font-family:var(--serif);font-size:16.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
   table.matriz td.forte{color:var(--tinta);font-weight:500}
   table.matriz td.media{color:var(--cinza)}
-  .pv-cartao{font-size:11px;color:var(--cinza);padding:0 8px 4px;cursor:pointer;white-space:nowrap}
-  .pv-cartao.est{color:#B42318;font-weight:600}
+  .pv-tab .campo.pv-cart{color:#1F4E8C;cursor:pointer}
   table.matriz td.fraco{color:var(--cinza);font-size:12.5px}
   table.matriz .zero{color:var(--linha)}
   tr.somatoria td{border-top:1px solid var(--verde);border-bottom:none;padding-top:11px;font-weight:500}
@@ -1289,7 +1288,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 38;
+  const BUILD = 39;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -2919,12 +2918,12 @@
         (x.tipo==="var"||(x.acCat?!(+x.acPrev>0.005):(x.aPagar==null&&x.pago==null)));
       if(!pode){
         // deixou de acompanhar (virou fixo, mudou o nome, ou a linha fixa ganhou valor digitado): o gasto fica como pago
-        if(x.acCat){ const falta=cent(Math.max(0,(+x.acPrev||0)-(+x.pago||0))); x.aPagar=falta>0.005?-falta:null; delete x.acCat; delete x.acPrev; }
+        if(x.acCat){ const falta=cent(Math.max(0,(+x.acPrev||0)-(+x.pago||0))); x.aPagar=falta>0.005?-falta:null; delete x.acCat; delete x.acPrev; delete x.cartao; }
         if(c) cobre.add(c); return;
       }
       if(x.acCat!==c){ x.acPrev=x.acCat?+x.acPrev||0:cent(Math.abs(Math.min(0,+x.aPagar||0))+(+x.pago||0)); x.acCat=c; }
-      const g=gasto[c]||0, falta=cent(Math.max(0,x.acPrev-g));
-      x.pago=g>0.005?g:null; x.aPagar=falta>0.005?-falta:null;
+      const g=gasto[c]||0, ct=Math.max(0,gastoCartaoCatMes(c,ym)), falta=cent(Math.max(0,x.acPrev-g-ct));
+      x.pago=g>0.005?g:null; x.aPagar=falta>0.005?-falta:null; if(ct>0.005) x.cartao=ct; else delete x.cartao;
       ligada.add(c); cobre.add(c);
     });
     // categorias com gasto e sem linha: uma linha cada (≥ R$ 150) ou juntas em "Outros gastos do mês"
@@ -5008,11 +5007,12 @@
     ym=ym||ymDaPrev(p);
     const soma=(a,f)=>(a||[]).reduce((s,x)=>s+(+f(x)||0),0);
     const doFx=!!receitasFluxo(ym);
-    const aPagar=soma(p.itens,x=>x.aPagar), pago=soma(p.itens,x=>x.pago);
+    // gasto no cartão (coluna Cartão) continua a pagar: entra no A pagar do mês
+    const cartao=soma(p.itens,x=>x.cartao), aPagar=cent(soma(p.itens,x=>x.aPagar)-cartao), pago=soma(p.itens,x=>x.pago);
     const receber=soma(receitasPrev(p,ym).filter(x=>!recebida(p,x,doFx)),x=>x.v);
     const outras=soma((p.notas||[]).filter(x=>!x.recebido),x=>x.v);
     const saldo=saldoPrev(p,ym);
-    return {aPagar:aPagar, pago:pago, receber:receber, outras:outras, saldo:saldo, resultado:cent(saldo+receber+outras+aPagar)};
+    return {aPagar:aPagar, pago:pago, cartao:cartao, receber:receber, outras:outras, saldo:saldo, resultado:cent(saldo+receber+outras+aPagar)};
   }
   const mesesPrev = () => Object.keys(dados.previsoes||{}).sort();
   function proxMes(ym){ const [a,m]=ym.split("-").map(Number); return m===12?(a+1)+"-01":a+"-"+String(m+1).padStart(2,"0"); }
@@ -5079,6 +5079,10 @@
     }
     const p=dados.previsoes[ui.prevMes];
     const val=(v,sinal)=>v==null?"":(sinal?brlS(v):brl(v));
+    // coluna Cartão: compras no cartão da categoria no mês (consomem o previsto e continuam a pagar, na fatura)
+    const celCartao=(x,cat)=>x.cartao&&cat
+      ? '<td class="valor pv-lanc" data-pvlanc="'+esc(cat)+'" data-pvcart="1" title="Compras no cartão de '+esc(cat)+' no mês: contam como gasto e continuam a pagar (fatura). Clique para ver."><input class="campo pv-cart" value="'+brl(x.cartao)+'" readonly tabindex="-1" aria-label="No cartão — ver compras"></td>'
+      : '<td class="valor"><input class="campo" value="" placeholder="—" readonly tabindex="-1" aria-label="No cartão"></td>';
     const linha=(lista,x,i)=>{
       const at=k=>' data-pv="'+lista+'" data-i="'+i+'" data-k="'+k+'" data-foco="'+lista+':'+i+':'+k+'"';
       // conta em aberto: vencida (vermelho) ou vencendo em até 3 dias (âmbar)
@@ -5087,7 +5091,7 @@
       const ttMedia=x.media!=null?(()=>{ const r=(x.mediaRef||"").split("|");
         return 'Gasto que se repete todo mês e não estava na previsão. Média de '+(r[0]?rotuloMes(r[0])+' a '+rotuloMes(r[1]):'3 meses')+': R$ '+brl(x.mediaBase!=null?x.mediaBase:x.media)+
           ' · previsto para o mês: R$ '+brl(x.media)+(x.pago?' · gasto na conta: R$ '+brl(x.pago):'')+
-          (x.cartao?' · no cartão: R$ '+brl(x.cartao)+' (sai na fatura do mês seguinte)':'')+
+          (x.cartao?' · no cartão: R$ '+brl(x.cartao)+' (continua a pagar, na fatura)':'')+
           ((x.pago||0)+(x.cartao||0)>x.media+0.005?' · passou R$ '+brl(cent((x.pago||0)+(x.cartao||0)-x.media))+' da previsão':'')+'. Digite em A pagar quanto ainda falta gastar para ajustar.'; })():'';
       // gasto do mês que não estava previsto: só o Pago (gasto real); digitar em A pagar passa a acompanhar a categoria
       if(x.mes){
@@ -5099,18 +5103,15 @@
         '<td><input class="campo" value="'+esc(x.d+(x.cats?' ('+x.cats.join(', ')+')':''))+'" readonly tabindex="-1" aria-label="Detalhes"></td>'+
         '<td><span class="pv-tipo var" title="Gasto real do mês: sempre variável">Variável</span></td>'+
         '<td class="valor"><input class="campo"'+(x.cats?' readonly tabindex="-1"':at("aPagar"))+' value="" placeholder="—" inputmode="decimal" aria-label="A pagar"></td>'+
-        '<td class="valor pv-lanc" data-pvlanc="'+esc((x.cats||[x.cat]).join("|"))+'" title="Ver os lançamentos"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês — ver lançamentos"></td>'+
+        '<td class="valor pv-lanc" data-pvlanc="'+esc((x.cats||[x.cat]).join("|"))+'" title="Ver os lançamentos"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês — ver lançamentos"></td>'+celCartao(x,null)+
         '<td class="acao"><button class="apagar" data-pdel="'+lista+':'+i+'" title="Tirar e não mostrar de novo neste mês" aria-label="Apagar linha">×</button></td></tr>';
       }
       if(x.media!=null) return '<tr class="pv-media" title="'+esc(ttMedia)+'">'+
         '<td><input type="date" class="campo"'+at("data")+' value="'+esc(x.data||"")+'" aria-label="Data"></td>'+
-        '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes">'+
-          (x.cartao?(()=>{ const tot=cent((x.pago||0)+x.cartao), est=tot>x.media+0.005;
-            return '<div class="pv-cartao'+(est?' est':'')+'" data-pvlanc="'+esc(x.cat||"")+'" data-pvcart="1" title="Compras no cartão este mês (pagas na fatura). Conta + cartão = R$ '+brl(tot)+' de R$ '+brl(x.media)+'">'+
-              '💳 cartão '+brl(x.cartao)+' · total '+brl(tot)+' de '+brl(x.media)+(est?' · passou '+brl(cent(tot-x.media)):'')+'</div>'; })():'')+'</td>'+
+        '<td><input class="campo"'+at("d")+' value="'+esc(x.d||"")+'" placeholder="Detalhes" aria-label="Detalhes"></td>'+
         '<td><span class="pv-tipo var" title="Gasto pela média: sempre variável">Variável</span></td>'+
         '<td class="valor"><input class="campo"'+at("aPagar")+' value="'+val(x.aPagar,true)+'" placeholder="—" inputmode="decimal" aria-label="A pagar (média ajustável)"></td>'+
-        '<td class="valor pv-lanc" data-pvlanc="'+esc(x.cat||"")+'" title="Ver os lançamentos de '+esc(x.cat||"")+'"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês — ver lançamentos"></td>'+
+        '<td class="valor pv-lanc" data-pvlanc="'+esc(x.cat||"")+'" title="Ver os lançamentos de '+esc(x.cat||"")+'"><input class="campo" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês — ver lançamentos"></td>'+celCartao(x,x.cat)+
         '<td class="acao">'+(x.aPagar!=null?'<button class="pv-pagar" data-ppagar="'+lista+':'+i+'" title="Encerrar: não falta mais nada deste gasto no mês">✓</button>':'')+
           '<button class="apagar" data-pdel="'+lista+':'+i+'" title="Apagar e não sugerir de novo neste mês" aria-label="Apagar linha">×</button></td></tr>';
       return '<tr'+(venc?' class="pv-vencida" title="Vencida e ainda em aberto"':logo?' class="pv-hoje" title="Vence em até 3 dias"':'')+'>'+
@@ -5119,7 +5120,7 @@
         '<td><select class="pv-tipo '+tipoPrev(x)+'"'+at("tipo")+' aria-label="Fixo ou variável"><option value="fixo"'+(tipoPrev(x)==="fixo"?" selected":"")+'>Fixo</option><option value="var"'+(tipoPrev(x)==="var"?" selected":"")+'>Variável</option></select></td>'+
         '<td class="valor"><input class="campo'+(x.aPagar>0?' pos':'')+'"'+at("aPagar")+' value="'+val(x.aPagar,true)+'" placeholder="—" inputmode="decimal" aria-label="A pagar"></td>'+
         (x.acCat?'<td class="valor pv-lanc" data-pvlanc="'+esc(x.acCat)+'" title="Gasto real de '+esc(x.acCat)+' no mês. Previsto: R$ '+brl(+x.acPrev||0)+'; o A pagar é o que falta. Clique para ver os lançamentos."><input class="campo pv-acomp" value="'+val(x.pago)+'" placeholder="—" readonly tabindex="-1" aria-label="Gasto no mês — ver lançamentos"></td>'
-          :'<td class="valor"><input class="campo"'+at("pago")+' value="'+val(x.pago)+'" placeholder="—" inputmode="decimal" aria-label="Pago"></td>')+
+          :'<td class="valor"><input class="campo"'+at("pago")+' value="'+val(x.pago)+'" placeholder="—" inputmode="decimal" aria-label="Pago"></td>')+celCartao(x,x.acCat)+
         '<td class="acao">'+(x.aPagar!=null&&x.aPagar<0?'<button class="pv-pagar" data-ppagar="'+lista+':'+i+'" title="'+(x.acCat?'Encerrar: não falta mais nada deste gasto no mês':'Marcar como pago')+'">✓</button>':'')+
           '<button class="apagar" data-pdel="'+lista+':'+i+'" title="Apagar linha" aria-label="Apagar linha">×</button></td></tr>';
     };
@@ -5131,6 +5132,7 @@
         : o.k==="tipo" ? tipoPrev(x)
         : o.k==="data" ? (x.data||"")
         : o.k==="aPagar" ? (x.aPagar==null?null:Math.abs(x.aPagar))
+        : o.k==="cartao" ? (x.cartao==null?null:+x.cartao)
         : (x.pago==null?null:+x.pago);
       return arr.sort((a,b)=>{
         const A=chave(p[lista][a]), B=chave(p[lista][b]);
@@ -5142,8 +5144,8 @@
     };
     const tabela=(lista,titulo,nota)=>
       '<div class="tit-secao" id="pv-'+lista+'" style="margin:0 0 6px"><h3>'+titulo+'</h3></div>'+(nota?'<p class="sub" style="margin:0 0 10px">'+nota+'</p>':'')+
-      '<div class="rolagem"><table class="pv-tab pv-contas"><colgroup><col class="c-data"><col><col class="c-tipo"><col class="c-val"><col class="c-val"><col class="c-acao"></colgroup>'+
-      '<thead><tr>'+[["data","Data",""],["d","Detalhes",""],["tipo","Tipo",""],["aPagar","A pagar","n"],["pago","Pago","n"]].map(([k,r,c])=>{
+      '<div class="rolagem"><table class="pv-tab pv-contas"><colgroup><col class="c-data"><col><col class="c-tipo"><col class="c-val"><col class="c-val"><col class="c-val"><col class="c-acao"></colgroup>'+
+      '<thead><tr>'+[["data","Data",""],["d","Detalhes",""],["tipo","Tipo",""],["aPagar","A pagar","n"],["pago","Pago","n"],["cartao","Cartão","n"]].map(([k,r,c])=>{
         const o=ordPrev(lista), on=o.k===k;
         return '<th class="pv-ord'+(c?" "+c:"")+(on?" on":"")+'" data-pvsort="'+lista+':'+k+'" title="Ordenar por '+r.toLowerCase()+'">'+r+
           '<span class="seta">'+(on?(o.dir>0?" ↑":" ↓"):" ↕")+'</span></th>'; }).join("")+'<th></th></tr></thead><tbody>'+
@@ -5156,7 +5158,8 @@
       const por={}; idxOrdenados(lista).filter(i=>!ui.pvTipo||tipoPrev(p[lista][i])===ui.pvTipo).forEach(i=>{ const g=grupoPrev(p[lista][i]); (por[g]=por[g]||[]).push(i); });
       return ORD_G.filter(g=>por[g]).map(g=>({g:g, is:por[g],
         aPagar:cent(por[g].reduce((a,i)=>a+(p[lista][i].aPagar<0?-p[lista][i].aPagar:0),0)),
-        pago:cent(por[g].reduce((a,i)=>a+(+p[lista][i].pago||0),0))}));
+        pago:cent(por[g].reduce((a,i)=>a+(+p[lista][i].pago||0),0)),
+        cartao:cent(por[g].reduce((a,i)=>a+(+p[lista][i].cartao||0),0))}));
     }
     const opGrupo=(lista,i,g)=>'<select class="pv-gsel" data-pgrupo="'+lista+':'+i+'" title="Mudar o bloco desta linha" aria-label="Bloco">'+
       ORD_G.map(x=>'<option'+(x===g?" selected":"")+'>'+esc(x)+'</option>').join("")+'</select>';
@@ -5164,12 +5167,12 @@
       return separaBlocos(lista).map(b=>
         '<tr class="pv-bloco" id="pvb-'+lista+'-'+ORD_G.indexOf(b.g)+'" style="'+estiloBloco(b.g)+'"><td colspan="3"><span class="pv-bn">'+esc(b.g)+'</span>'+
           '<span class="pv-bq">'+b.is.length+' conta'+(b.is.length===1?'':'s')+'</span></td>'+
-          '<td class="n" title="A pagar no bloco">'+(b.aPagar?brl(b.aPagar):'—')+'</td><td class="n" title="Pago no bloco" style="opacity:.75">'+(b.pago?brl(b.pago):'—')+'</td><td></td></tr>'+
+          '<td class="n" title="A pagar no bloco">'+(b.aPagar?brl(b.aPagar):'—')+'</td><td class="n" title="Pago no bloco" style="opacity:.75">'+(b.pago?brl(b.pago):'—')+'</td><td class="n" title="No cartão no bloco (ainda a pagar)" style="opacity:.75">'+(b.cartao?brl(b.cartao):'—')+'</td><td></td></tr>'+
         b.is.map(i=>linha(lista,p[lista][i],i).replace(/^<tr/,'<tr style="'+estiloBloco(b.g)+'"').replace(/^(<tr[^>]*?)( class="([^"]*)")/,'$1 class="pv-gl $3"').replace(/^(<tr(?![^>]*class=)[^>]*)>/,'$1 class="pv-gl">')
           .replace('placeholder="Detalhes" aria-label="Detalhes"></td>','placeholder="Detalhes" aria-label="Detalhes">'+opGrupo(lista,i,b.g)+'</td>')).join("")).join("");
     }
     // totais do filtro: só as contas a pagar (como o "fixos · variáveis" do resumo ao lado)
-    const filtroTipo=()=>{ const sm=tp=>cent(p.itens.reduce((a,x)=>a+((!tp||tipoPrev(x)===tp)&&x.aPagar<0?-x.aPagar:0),0)),
+    const filtroTipo=()=>{ const sm=tp=>cent(p.itens.reduce((a,x)=>a+((!tp||tipoPrev(x)===tp)?(x.aPagar<0?-x.aPagar:0)+(+x.cartao||0):0),0)),
         n=tp=>p.itens.filter(x=>!tp||tipoPrev(x)===tp).length;
       return '<div class="pv-filtro" role="radiogroup" aria-label="Filtrar por tipo">'+[["","Todos"],["fixo","Fixos"],["var","Variáveis"]].map(([k,r])=>
         '<button role="radio" aria-checked="'+((ui.pvTipo||"")===k)+'" class="'+((ui.pvTipo||"")===k?"on ":"")+(k||"todos")+'" data-pvtipo="'+k+'">'+r+
@@ -5186,8 +5189,9 @@
           '<td class="acao"><button class="pv-pagar" data-precebe="'+lista+':'+i+'" title="'+(x.recebido?"Ainda não recebido (volta para a soma)":"Marcar como recebido (sai da soma)")+'">'+(x.recebido?"↺":"✓")+'</button>'+
           '<button class="apagar" data-pdel="'+lista+':'+i+'" aria-label="Apagar">×</button></td></tr>'; }).join("")+
       '</tbody></table><button class="ver-mais" data-padd="'+lista+'">+ Adicionar</button>';
-    const fixVar=()=>{ const sm=tp=>cent(p.itens.reduce((a,x)=>a+(tipoPrev(x)===tp&&x.aPagar<0?-x.aPagar:0),0));
-      return 'fixos R$ '+brl(sm("fixo"))+' · <span style="color:#1F4E8C">variáveis R$ '+brl(sm("var"))+'</span>'; };
+    const fixVar=()=>{ const sm=tp=>cent(p.itens.reduce((a,x)=>a+(tipoPrev(x)===tp?(x.aPagar<0?-x.aPagar:0)+(+x.cartao||0):0),0));
+      const ct=cent(p.itens.reduce((a,x)=>a+(+x.cartao||0),0));
+      return 'fixos R$ '+brl(sm("fixo"))+' · <span style="color:#1F4E8C">variáveis R$ '+brl(sm("var"))+'</span>'+(ct?'<br>inclui no cartão R$ '+brl(ct):''); };
     const t=totaisPrev(p,ui.prevMes), recFx=receitasFluxo(ui.prevMes);
     const receitasHTML = recFx
       ? '<div class="tit-secao" id="pv-receitas" style="margin:26px 0 6px"><h3>Receitas esperadas</h3></div>'+
@@ -5257,7 +5261,7 @@
         if(k==="d"||k==="data") x[k]=el.value;
         else if(k==="aPagar"&&x.mes&&x.cat){ const v=n==null?0:Math.abs(n);
           x.d=x.cat; x.acCat=x.cat; x.acPrev=cent((x.pago||0)+v); x.aPagar=v>0.005?-v:null; delete x.mes; delete x.cat; }
-        else if(k==="aPagar"&&x.acCat){ const v=n==null?0:Math.abs(n); x.acPrev=cent((x.pago||0)+v); x.aPagar=v>0.005?-v:null; }
+        else if(k==="aPagar"&&x.acCat){ const v=n==null?0:Math.abs(n); x.acPrev=cent((x.pago||0)+(x.cartao||0)+v); x.aPagar=v>0.005?-v:null; }
         else if(k==="aPagar"&&x.media!=null){ x.media=cent((x.pago||0)+(x.cartao||0)+(n==null?0:Math.abs(n))); x.aPagar=n==null||!Math.abs(n)?null:-Math.abs(n); }
         else if(k==="aPagar"){ x.aPagar = n==null?null : (/^\+/.test(txt)?Math.abs(n):-Math.abs(n)); if(x.ext) x.valorManual=true; }
         else if(k==="pago"){ x.pago = n==null?null:Math.abs(n); el.value=val(x.pago); }
@@ -5312,7 +5316,7 @@
       if(pg){
         const [l,i]=pg.dataset.ppagar.split(":"), x=p[l][+i];
         if(x.media!=null){ x.media=cent((x.pago||0)+(x.cartao||0)); x.aPagar=null; salvar(); renderPrevisao(); avisar(x.d+": encerrado no mês."); return; }
-        if(x.acCat){ x.acPrev=cent(x.pago||0); x.aPagar=null; salvar(); renderPrevisao(); avisar(x.d+": encerrado no mês."); return; }
+        if(x.acCat){ x.acPrev=cent((x.pago||0)+(x.cartao||0)); x.aPagar=null; salvar(); renderPrevisao(); avisar(x.d+": encerrado no mês."); return; }
         x.pago=Math.round(((x.pago||0)+Math.abs(x.aPagar))*100)/100; x.aPagar=null;
         salvar(); renderPrevisao(); avisar(x.d+" marcado como pago."); return;
       }
