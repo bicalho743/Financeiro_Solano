@@ -1287,7 +1287,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 36;
+  const BUILD = 37;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -4534,7 +4534,11 @@
     if(ui.conta==="itau"||ui.conta==="bb") return dados.lancamentos.filter(l=>l.origem===ui.conta);
     return dados.lancamentos;
   }
-  const nomeOrigem = l => NOMES_ORIGEM[l.origem]||"Outro";
+  const nomeOrigem = l => l.origem==="cartao" ? (famCartao(l)==="bb"?"Cartão BB":"Cartão Itaú") : (NOMES_ORIGEM[l.origem]||"Outro");
+  // filtro de origem nos Lançamentos: cada cartão separado
+  const ORIGENS_FILTRO = [["itau","Itaú"],["bb","BB"],["cartao_itau","Cartão Itaú"],["cartao_bb","Cartão BB"],["manual","Dinheiro / outro"]];
+  const nomeFiltroOrigem = k => (ORIGENS_FILTRO.find(x=>x[0]===k)||[k,NOMES_ORIGEM[k]||k])[1];
+  const passaOrigem = (l,k) => !k || (k==="cartao_itau"||k==="cartao_bb" ? l.origem==="cartao"&&famCartao(l)===k.slice(7) : k==="cartao" ? l.origem==="cartao" : l.origem===k);
   /* Nos cartões, o mês é o da FATURA (vencimento), não o da compra: a fatura de outubro tem as compras de ~28/08 a ~28/09.
      Lançamentos importados de fatura guardam l.fatura; os outros: fecha dia 28 (Infinite) / 29 (Altus), vence no mês seguinte. */
   function faturaDe(l){
@@ -4558,7 +4562,7 @@
       if(ui.cat && l.categoria!==ui.cat) return false;
       if(ui.catsLista && ui.catsLista.length && !ui.catsLista.includes(l.categoria)) return false;
       if(ui.semCartao && l.origem==="cartao") return false;
-      if(ui.origem && l.origem!==ui.origem) return false;
+      if(ui.origem && !passaOrigem(l,ui.origem)) return false;
       if(ui.tipo==="e" && l.valor<=0) return false;
       if(ui.tipo==="s" && l.valor>=0) return false;
       if(ui.soMov && (l.ignorado || !ehMov(l))) return false;
@@ -7509,7 +7513,7 @@
       '<thead><tr><th>Data</th><th>Descrição</th><th>Conta</th><th class="n">Valor</th><th>Categoria da viagem</th><th></th></tr></thead><tbody>'+
       (LV.length?LV.map(l=>{ const i=dados.lancamentos.indexOf(l);
         return '<tr><td class="sub">'+diaMes(dataReal(l))+'</td><td>'+esc(l.hist)+(l.obs&&!l.obs.startsWith("✈")?'<small class="vg-dica">'+esc(l.obs)+'</small>':'')+'</td>'+
-          '<td class="sub">'+esc(NOMES_ORIGEM[l.origem]||l.origem||"")+'</td><td class="n vg-num" style="color:#B42318">'+brl(l.valor)+'</td>'+
+          '<td class="sub">'+esc(nomeOrigem(l))+'</td><td class="n vg-num" style="color:#B42318">'+brl(l.valor)+'</td>'+
           '<td><select class="campo" data-vglc="'+i+'">'+CATS_VIAGEM.map(c=>'<option'+(c===l.catViagem?" selected":"")+'>'+esc(c)+'</option>').join("")+'</select></td>'+
           '<td class="acao"><button class="apagar" data-vgldes="'+i+'" title="Tirar desta viagem (volta à categoria anterior)" aria-label="Desvincular">×</button></td></tr>'; }).join("")
         :'<tr><td colspan="6" class="sub" style="padding:10px 6px">Nenhum lançamento vinculado. Use “Buscar lançamentos do período”.</td></tr>')+
@@ -7749,7 +7753,7 @@
           '<td>'+esc(r.prest||"—")+'<small class="vg-dica">'+r.n+' pagamento'+(r.n===1?"":"s")+(r.semDoc?' · falta conferir comprovante':'')+'</small></td>'+
           '<td'+(r.doc?'':' class="ir-falta-t"')+'>'+esc(r.doc||"falta")+'</td><td class="n vg-num">'+brl(r.valor)+'</td><td class="n vg-num">'+(r.reemb?brl(r.reemb):"—")+'</td></tr>'+
           (ab?r.itens.slice().sort((a,b)=>(a.data||"").localeCompare(b.data||"")).map(x=>{ const l=x.lanc&&porId[x.lanc];
-            return '<tr class="ir-sub"><td class="sub">'+(x.data?diaMes(x.data)+"/"+x.data.slice(0,4):"—")+'</td><td class="sub">'+(l?esc(NOMES_ORIGEM[l.origem]||l.origem||""):"lançado à mão")+'</td>'+
+            return '<tr class="ir-sub"><td class="sub">'+(x.data?diaMes(x.data)+"/"+x.data.slice(0,4):"—")+'</td><td class="sub">'+(l?esc(nomeOrigem(l)):"lançado à mão")+'</td>'+
               '<td>'+esc(l?l.hist:(x.prest||""))+(x.obs?'<small class="vg-dica">'+esc(x.obs)+'</small>':'')+'</td>'+
               '<td class="sub">'+(x.comp?"✓ comprovante":"sem comprovante")+'</td><td class="n vg-num">'+brl(+x.valor||0)+'</td><td class="n vg-num">'+(+x.reemb?brl(+x.reemb):"")+'</td></tr>'; }).join(""):''); }).join("")
         :'<tr><td colspan="6" class="sub" style="padding:10px 6px">Sem despesas dedutíveis em '+ano+'.</td></tr>')+
@@ -8194,7 +8198,7 @@
         '<input type="search" id="fBusca" placeholder="Buscar estabelecimento ou observação" value="'+esc(ui.busca)+'">'+
         '<select id="fCat">'+opcoesCat(ui.cat,"Todas as categorias")+'</select>'+
         selectFiltro("fTipo",ui.tipo,"Entradas e saídas",[["e","Só entradas"],["s","Só saídas"]])+
-        (natureza?selectFiltro("fOrig",ui.origem||"","Todas as origens",Object.keys(NOMES_ORIGEM).map(k=>[k,NOMES_ORIGEM[k]])):'')+
+        (natureza?selectFiltro("fOrig",ui.origem||"","Todas as origens",ORIGENS_FILTRO):'')+
         '<span class="conta" id="conta"></span>'+
       '</div>'+
       '<div class="chips" id="chips"></div>'+
@@ -8459,7 +8463,7 @@
     if(ui.catsLista && ui.catsLista.length) chips.push(["catsLista",ui.catsLista.join(", ")]);
     if(ui.semCartao) chips.push(["semCartao","Conta e dinheiro (sem cartão)"]);
     if(ui.tipo) chips.push(["tipo",ui.tipo==="e"?"Só entradas":"Só saídas"]);
-    if(ui.origem) chips.push(["origem",NOMES_ORIGEM[ui.origem]||ui.origem]);
+    if(ui.origem) chips.push(["origem",nomeFiltroOrigem(ui.origem)]);
     if(ui.soMov) chips.push(["soMov","Só o que entra no total"]);
     const ch=$("#chips");
     if(ch) ch.innerHTML = chips.length ? '<span class="sub" style="margin:0">Filtrando:</span>'+
