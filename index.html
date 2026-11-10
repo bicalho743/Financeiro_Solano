@@ -1213,7 +1213,7 @@
         </div>
       </div>
       <div id="barraUsuario"></div>
-      <input type="file" id="arqCsv" accept=".csv,.txt,.ofx,.xlsx,.xls,.xlsm,.excel,.pdf" multiple hidden>
+      <input type="file" id="arqCsv" accept=".csv,.txt,.ofx,.xlsx,.xls,.xlsm,.excel,.pdf,image/*" multiple hidden>
       <input type="file" id="arqPdf" accept=".pdf,application/pdf" hidden>
       <input type="file" id="arqJson" accept=".json,application/json" hidden>
     </div>
@@ -1287,7 +1287,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 34;
+  const BUILD = 35;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -3468,6 +3468,7 @@
   }
 
   async function lerArquivo(arq,origemFixa){
+    if(ehImagem(arq)){ ui._origemImport=null; await importarPrintsBB([arq]); return; }
     const origem=origemFixa||ui._origemImport||"auto"; ui._origemImport=null;
     const nome=arq.name.toLowerCase();
     if(nome.endsWith(".pdf")){ await importarFaturaPDF(arq); return; }
@@ -4018,6 +4019,103 @@
   /* ================= fatura do cartão BB em TXT/PDF (SISBB — "Fatura do Cartão de Crédito", ex.: Altus) =================
      Linha: DD/MM  DESCRIÇÃO  CIDADE  PAÍS  Valor R$  Valor US$. Seções: Pagamentos (fora), Créditos diversos (estorno),
      Compras... "LANÇAMENTOS FUTUROS" = fatura em aberto; com "Vencimento" no cabeçalho = fatura fechada. */
+  /* Prints da fatura em aberto do app do BB (lidos por OCR): "07 de novembro, sábado" / "Google One   R$ 120,90 >" /
+     "Cartão virtual • Final 3844" / "04:36". Vários prints de uma vez, em qualquer ordem e com partes repetidas.
+     O OCR às vezes perde a vírgula (R$12090): o valor sempre tem centavos, então os 2 últimos dígitos são os centavos. */
+  function lerPrintsFaturaBB(textos,hojeIso){
+    const MESES={janeiro:1,fevereiro:2,marco:3,abril:4,maio:5,junho:6,julho:7,agosto:8,setembro:9,outubro:10,novembro:11,dezembro:12};
+    const sem=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"");
+    const [aH,mH]=hojeIso.split("-").map(Number);
+    const prints=textos.map(txt=>{
+      const ls=String(txt||"").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      let data=null, ult=null; const itens=[], datas=[];
+      ls.forEach(s=>{
+        const md=sem(s).match(/^([0-9OoIl|]{1,2})\s+de\s+([a-z]+)/i);
+        if(md&&MESES[md[2].toLowerCase()]){
+          const d=+md[1].replace(/[Oo]/g,"0").replace(/[Il|]/g,"1"), m=MESES[md[2].toLowerCase()];
+          if(d>=1&&d<=31){ const a=m>mH+1?aH-1:aH; data=a+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0"); datas.push(data); ult=null; return; }
+        }
+        const mv=s.match(/^(.*?[A-Za-zÀ-ú].*?)\s*R\s*\$\s*([\d.,/\s]+\d)/);
+        if(mv){
+          const hist=mv[1].replace(/\s{2,}/g," ").trim(), dig=mv[2].replace(/\D/g,"");
+          if(dig.length<3||/^(pagamento|pgto|pagto|total|saldo|limite)/i.test(sem(hist))){ ult=null; return; }
+          ult={data:data, hist:hist, valor:-(+dig/100), hora:null}; itens.push(ult); return;
+        }
+        const mh=s.match(/^(\d{2}):(\d{2})\b/);
+        if(mh&&ult&&!ult.hora&&+mh[1]<24&&!/^\d{2}:\d{2}\s+[A-Z]{2,}\s*-/.test(s)) ult.hora=mh[0];
+      });
+      return {itens:itens, datas:datas};
+    }).filter(p=>p.itens.length);
+    // ordem dos prints: do mais recente para o mais antigo (o app lista do mais novo para o mais velho)
+    prints.sort((a,b)=>{ const x=a.datas[0]||"", y=b.datas[0]||""; return x<y?1:x>y?-1:0; });
+    // compras no topo de um print, antes do 1º título de data: são do dia da última compra do print anterior
+    prints.forEach((p,i)=>{
+      const q=i>0?prints[i-1].itens.filter(x=>x.data):[], ant=q.length?q[q.length-1].data:null;
+      p.itens.forEach(x=>{ if(!x.data){ x.data=ant||(p.datas[0]||null); x.aprox=true; } });
+    });
+    // partes repetidas entre prints: a mesma compra (dia, descrição, valor) conta pelo print que mais a mostra
+    const norm=s=>sem(s).toUpperCase().replace(/[^A-Z0-9]/g,"");
+    const k=x=>x.data+"|"+norm(x.hist)+"|"+x.valor.toFixed(2), max={}, rep={};
+    prints.forEach(p=>{
+      const c={}; p.itens.forEach(x=>{ if(!x.data) return; const kk=k(x); (c[kk]=c[kk]||[]).push(x); });
+      Object.keys(c).forEach(kk=>{ if(!max[kk]||c[kk].length>max[kk].length) max[kk]=c[kk]; });
+    });
+    return Object.values(max).flat().sort((a,b)=>a.data<b.data?1:a.data>b.data?-1:0);
+  }
+
+  const ehImagem = f => /^image\//i.test(f.type||"") || /\.(png|jpe?g|webp|heic|bmp)$/i.test(f.name||"");
+  let tesseractPronto=null;
+  function carregarTesseract(){
+    if(window.Tesseract) return Promise.resolve();
+    return tesseractPronto||(tesseractPronto=new Promise((ok,erro)=>{
+      const sc=document.createElement("script"); sc.src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+      sc.onload=()=>ok(); sc.onerror=()=>{ tesseractPronto=null; erro(new Error("tesseract")); }; document.head.appendChild(sc);
+    }));
+  }
+  /* Fatura em aberto do cartão BB por print do app (antes de fechar o banco não dá outro arquivo).
+     As compras entram no Altus sem "conferido na fatura": quando a fatura fechada for importada, ela confere cada uma
+     (mesmo valor, até 4 dias) e troca a descrição pela do banco — não duplica. Importar os prints de novo só acrescenta o que é novo. */
+  async function importarPrintsBB(arqs){
+    avisar("Lendo "+(arqs.length===1?"o print":"os "+arqs.length+" prints")+" da fatura do BB…");
+    let textos=[];
+    try{
+      await carregarTesseract();
+      const w=await Tesseract.createWorker("por");
+      await w.setParameters({tessedit_pageseg_mode:"6"});
+      for(let i=0;i<arqs.length;i++){
+        if(arqs.length>1) avisar("Lendo print "+(i+1)+" de "+arqs.length+"…");
+        const {data}=await w.recognize(arqs[i]); textos.push(data.text||"");
+      }
+      await w.terminate();
+    }catch(e){ console.error(e); avisar("Não consegui ler o print (verifique a internet e tente de novo).",true); return; }
+    const lidos=lerPrintsFaturaBB(textos,hojeISO()).filter(x=>x.data&&x.valor<0);
+    if(!lidos.length){ avisar("Não encontrei compras nesse print. Use o print da tela Faturas do app do BB.",true); return; }
+    const norm=t=>String(t||"").toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g,"");
+    const bb=dados.lancamentos.filter(l=>l.origem==="cartao"&&!l.ignorado&&famCartao(l)==="bb");
+    // o que já está no app: mesma data e valor (print anterior com a mesma descrição, ou compra já conferida na fatura)
+    const usados=new Set(); let novos=0, ja=0, prontos=0;
+    const ids=new Set(dados.lancamentos.map(l=>l.id));
+    lidos.forEach(x=>{
+      const e=bb.find(l=>!usados.has(l)&&l.data===x.data&&Math.abs(l.valor-x.valor)<0.005&&(!l.print||norm(l.hist)===norm(x.hist)));
+      if(e){ usados.add(e); ja++; return; }
+      const base="print|"+x.data+"|"+x.valor.toFixed(2)+"|"+norm(x.hist).slice(0,30); let id=base, n=2;
+      while(ids.has(id)) id=base+"#"+(n++);
+      ids.add(id);
+      const c=classificar(x.hist,x.valor); if(c.categoria!=="Sem categoria") prontos++;
+      const obs=["print do app BB"+(x.hora?" · "+x.hora:"")]; if(x.aprox) obs.push("data do print anterior — conferir");
+      dados.lancamentos.push({id:id, data:x.data, hist:x.hist, valor:cent(x.valor), doc:"Altus (print do app BB)",
+        categoria:c.categoria, vinculo:"PF", obs:obs.join(" · "), origem:"cartao", print:true});
+      novos++;
+    });
+    dados.lancamentos.sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+    ui.conta="cartao"; ui.cartao="bb"; ui.view="mes";
+    ui.mes=lidos.map(x=>faturaDe({data:x.data,doc:"Altus"})).sort().pop();
+    salvar(); render();
+    const tot=cent(-lidos.reduce((a,x)=>a+x.valor,0));
+    avisar("Altus (print): "+novos+" compra"+(novos===1?"":"s")+" nova"+(novos===1?"":"s")+
+      (novos?" · "+prontos+" já classificada"+(prontos===1?"":"s"):"")+
+      (ja?" · "+ja+" já existia"+(ja===1?"":"m"):"")+" · lido nos prints: R$ "+brl(tot));
+  }
   function importarFaturaBBTexto(linhasTxt,textoTotal){
     const NUM="(-?\\d{1,3}(?:\\.\\d{3})*,\\d{2})";
     const RE=new RegExp("^\\s*(\\d{2})\\/(\\d{2})\\s+(.+?)(?:\\s+([A-Z]{2}))?\\s+"+NUM+"\\s+"+NUM+"\\s*$");
@@ -8650,7 +8748,13 @@
   $("#arqPdf").onchange=e=>{ if(e.target.files[0]) importarFaturaPDF(e.target.files[0]); e.target.value=""; };
   const abrirImport = o => { ui._origemImport=o; $("#arqCsv").click(); };
   $("#btImportarMenu").onclick=()=>abrirImport("auto");
-  $("#arqCsv").onchange=e=>{ const fs=e.target.files; if(fs&&fs.length) (fs.length>1?lerArquivos(fs):lerArquivo(fs[0])); e.target.value=""; };
+  $("#arqCsv").onchange=async e=>{
+    const fs=[...(e.target.files||[])]; e.target.value=""; if(!fs.length) return;
+    // prints (imagens) vão juntos para o leitor de prints da fatura do BB; o resto segue o caminho normal
+    const imgs=fs.filter(ehImagem), outros=fs.filter(f=>!ehImagem(f));
+    if(imgs.length) await importarPrintsBB(imgs);
+    if(outros.length) (outros.length>1?lerArquivos(outros):lerArquivo(outros[0]));
+  };
   $("#btBackup").onclick=exportarBackup;
   /* Backups diários na nuvem: tabela livro_caixa_backup, preenchida todo dia pelo Supabase (supabase/backup-diario.sql).
      Guarda os últimos 30 dias e o dia 1º de cada mês. Aqui dá para baixar ou voltar o app para um dia. */
