@@ -1287,7 +1287,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 35;
+  const BUILD = 36;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -1449,7 +1449,7 @@
     // assinatura do carro (Mobi) por 24 meses, cobrada no cartão BB
     ["UNIDAS LIVRE","Aluguel Mobi"],
     // fora dos cálculos
-    ["PAGTO CARTAO","Cartão de crédito"],["PAG FATURA","Cartão de crédito"],["FATURA CARTAO","Cartão de crédito"],
+    ["PAG TIT BANCO 001","Cartão de crédito"],["PAGTO CARTAO","Cartão de crédito"],["PAG FATURA","Cartão de crédito"],["FATURA CARTAO","Cartão de crédito"],
     ["CARTÃO CRÉDITO","Cartão de crédito"],["CARTAO CREDITO","Cartão de crédito"],["ITAU BLACK","Cartão de crédito"],
     ["REND PAGO","Rendimentos"],["RENDIMENTO","Rendimentos"],["DIVIDENDO","Rendimentos"],["JCP","Rendimentos"],
     ["APLIC AUT","Aplicação e resgate"],["APLICACAO","Aplicação e resgate"],["RESGATE","Aplicação e resgate"],
@@ -1500,7 +1500,7 @@
   ]).map(r=>({termo:r[0],categoria:r[1],vinculo:"PF",padrao:true}));
 
   /* ================= estado ================= */
-  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:19,
+  let dados = {lancamentos:[],regras:REGRAS_PADRAO.slice(),saldos:{},saldosDia:{},invest:null,orcamento:null,versao:20,
                orcamentoMes:{},contas:{},dividas:null,previsoes:{},fluxo:null,metas:[],viagens:[],ir:null,salarios:null,conferencia:{}};
   let ui = {mes:null,view:"mes",busca:"",cat:"",tipo:"",vinculo:"",sortCol:"data",sortDir:1,_contaAtual:"itau",conta:"dash"};
 
@@ -1742,6 +1742,22 @@
       dados.lancamentos.forEach(l=>{ if((l.origem==="itau"||l.origem==="bb")&&ehEmprestimoRecebido(l.hist,l.valor)&&l.categoria!=="Empréstimo recebido"&&(!l.catManual||l.categoria==="Sem categoria")){ l.categoria="Empréstimo recebido"; n++; } });
       dados.versao=19; dados._migrou=true;
       if(n) setTimeout(()=>avisar(n+" crédito"+(n===1?"":"s")+" de consignado classificado"+(n===1?"":"s")+" como Empréstimo recebido."),2200);
+    }
+    if(dados.versao<20){
+      // "INT PAG TIT BANCO 001" no Itaú = boleto do BB = pagamento da fatura do cartão BB (Altus), não gasto pessoal:
+      // as compras já estão no cartão. A regra aprendida mandava para "Solano – pessoal" e a linha da média contava como pago.
+      const T="PAG TIT BANCO 001", ehFatBB=l=>l.origem==="itau"&&l.valor<0&&String(l.hist).toUpperCase().includes(T);
+      let n=0;
+      dados.regras.forEach(r=>{ if(String(r.termo).toUpperCase()===T) r.categoria=CAT_FATURA; });
+      if(!dados.regras.some(r=>String(r.termo).toUpperCase()===T)) dados.regras.unshift({termo:T,categoria:CAT_FATURA,vinculo:"PF",padrao:true});
+      const exts=new Set();
+      dados.lancamentos.forEach(l=>{ if(ehFatBB(l)){ exts.add(chaveExt(l.hist,l.valor)); if(l.categoria!==CAT_FATURA){ l.categoria=CAT_FATURA; delete l.catManual; n++; } } });
+      // agendamento desse boleto ligado a uma linha da previsão de outra categoria: desliga (a linha volta a acompanhar o gasto real)
+      Object.values(dados.previsoes||{}).forEach(p=>(p.itens||[]).concat(p.fixos||[]).forEach(x=>{
+        if(x.ext&&exts.has(x.ext)&&x.media!=null){ delete x.ext; delete x.origem; }
+      }));
+      dados.versao=20; dados._migrou=true;
+      if(n) setTimeout(()=>avisar(n+" pagamento"+(n===1?"":"s")+" de fatura do cartão BB reclassificado"+(n===1?"":"s")+" como Cartão de crédito."),2400);
     }
     garantirViagens();
     dados.regras.forEach(r=>{ r.vinculo="PF"; if(!CATEGORIAS.includes(r.categoria)) r.categoria="Sem categoria"; });
