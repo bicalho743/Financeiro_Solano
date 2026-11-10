@@ -1287,7 +1287,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 33;
+  const BUILD = 34;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -3348,12 +3348,16 @@
       if(banco && banco!==origem){ trocou=" (o arquivo é do "+NOMES_ORIGEM[banco]+", não do "+NOMES_ORIGEM[origem]+" — importado na conta certa)"; origem=banco; }
     }
     let itens=r.itens;
+    // fatura do cartão: "cartao:bb" / "cartao:itau" quando escolhido no aviso; sem escolha, o banco do arquivo decide (padrão Itaú)
+    let cartao=null;
+    if(/^cartao/.test(origem)){ cartao=origem.split(":")[1]||(bancoDoArquivo(txtBruto)==="bb"?"bb":"itau"); origem="cartao"; }
     if(origem==="cartao"){
       // fatura: pagamento da fatura não é compra; compras vêm positivas no arquivo do banco
       itens=itens.filter(i=>!/^(PAGAMENTO|PGTO|PAGTO|PAG\s*FATURA|SALDO|TOTAL)/i.test(i.hist));
       const pos=itens.filter(i=>i.valor>0).length;
       if(pos>itens.length-pos) itens.forEach(i=>{ i.valor=-i.valor; });
-      itens.forEach(i=>{ i.iso=ajustarParc(i.iso,i.hist); if(!i.doc) i.doc="Cartão Itaú"; });
+      const docC=cartao==="bb"?"Cartão BB Altus":"Cartão Itaú";
+      itens.forEach(i=>{ i.iso=ajustarParc(i.iso,i.hist); if(!i.doc||famCartao(i)!==cartao) i.doc=docC; });
     }
     if(!itens.length && !(r.futuros||[]).length){ avisar("Não encontrei lançamentos nesse arquivo.",true); return; }
     if(origem!=="cartao") gravarSaldos(r,origem);
@@ -3369,9 +3373,10 @@
       if(b) fut+=" · "+b+" previsto"+(b===1?"":"s")+" marcado"+(b===1?"":"s")+" como pago"+(b===1?"":"s");
     }
     if(origem!=="cartao" && (ui.conta==="itau"||ui.conta==="bb")) ui.conta=origem;
+    if(origem==="cartao"){ ui.conta="cartao"; ui.cartao=cartao; }
     if(g.meses.length){ ui.mes=g.meses.sort().pop(); ui.view="mes"; }
     salvar(); render();
-    avisar(NOMES_ORIGEM[origem]+": "+textoImport(g)+fut+trocou, !!trocou);
+    avisar((cartao==="bb"?"Cartão BB":NOMES_ORIGEM[origem])+": "+textoImport(g)+fut+trocou, !!trocou);
   }
 
   /* Saldos do banco: tudo o que o extrato informa fica gravado.
@@ -3454,7 +3459,8 @@
       '<div class="modal-acoes" style="flex-wrap:wrap">'+
         '<button class="bt" data-modal="itau">Extrato Itaú</button>'+
         '<button class="bt" data-modal="bb">Extrato BB</button>'+
-        '<button class="bt" data-modal="cartao">Fatura do cartão</button>'+
+        '<button class="bt" data-modal="cartao:itau">Fatura cartão Itaú</button>'+
+        '<button class="bt" data-modal="cartao:bb">Fatura cartão BB</button>'+
         '<button class="bt vazado" data-modal="cancelar">Cancelar</button>'+
       '</div>');
     if(!v) avisar("Importação cancelada.",true);
