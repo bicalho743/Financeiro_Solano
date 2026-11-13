@@ -2,7 +2,17 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Financeiro">
+<meta name="application-name" content="Financeiro">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icones/favicon-32.png">
+<link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
 <title>Financeiro — Solano Bicalho</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1174,6 +1184,49 @@
     #lc .nav-mais:active{background:var(--ac-hover)}
     #lc .topo #btLancar{display:none}
   }
+
+  /* ================= celular: jeito de app =================
+     Barra de cima fixa e compacta (nome da tela + Importar + ⋯), opções da seção todas à vista (sem faixa cortada),
+     barra de baixo com nomes curtos e áreas de toque grandes. No computador e no tablet nada muda. */
+  .tit-tela,.rot-curto,#lc .menu .so-cel{display:none}
+  .rot-longo{font-weight:inherit}
+  @media (max-width:700px){
+    html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+    #lc,#lc button,#lc a,#lc select{-webkit-tap-highlight-color:transparent}
+    #lc button,#lc select,#lc a{touch-action:manipulation}
+    body{background:var(--bg)}
+    #lc{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+    #lc .topo{position:sticky;top:0;z-index:55;flex-wrap:nowrap;align-items:center;gap:10px;
+      padding:calc(10px + env(safe-area-inset-top)) 12px 10px 16px;background:rgba(255,255,255,.94);
+      -webkit-backdrop-filter:saturate(180%) blur(12px);backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--bd)}
+    #lc .topo .marca{min-width:0;flex:1}
+    #lc .topo .marca h1,#lc .topo .marca p{display:none}
+    #lc .tit-tela{display:block;font:700 19px/1.2 var(--sans);letter-spacing:-.01em;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #lc .topo .acoes{width:auto;flex-wrap:nowrap;align-items:center;gap:6px}
+    #lc .topo .acoes .bt{min-width:40px;height:40px;padding:0 12px;border-radius:12px;font-size:14px}
+    #lc #btImportarMenu{font-size:0!important;width:40px;padding:0!important}
+    #lc #btImportarMenu::before{content:"↓";font-size:19px;font-weight:700}
+    #lc #barraUsuario span span,#lc #btLogout{display:none}
+    #lc .menu .so-cel{display:block}
+    #lc .menu{min-width:220px}
+    #lc .menu button{padding:12px 14px;font-size:15px}
+    /* opções da seção: todas visíveis, quebrando linha (antes uma faixa que cortava à direita) */
+    #lc #contaTabs.conta-tabs:not([hidden]){display:flex;flex-wrap:wrap;gap:8px;overflow:visible;padding:12px 16px 4px;background:transparent;border:0}
+    #lc #contaTabs .conta-tab:not([hidden]){flex:0 0 auto;min-height:38px;padding:7px 14px;border:1px solid var(--bd);border-radius:999px;
+      background:var(--sf);font-size:14px;font-weight:500;color:var(--tx2);box-shadow:none;display:inline-flex;align-items:center;gap:6px}
+    #lc #contaTabs .conta-tab.ativa{background:var(--ac);border-color:var(--ac);color:#fff!important;font-weight:600}
+    #lc #contaTabs .conta-tab.ativa .ic-nav{color:#fff}
+    /* barra de baixo */
+    #lc #navGrupos{padding:6px 4px calc(6px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);
+      -webkit-backdrop-filter:saturate(180%) blur(12px);backdrop-filter:saturate(180%) blur(12px)}
+    #lc .nav-grupo{min-height:52px;font-size:11.5px;font-weight:500;white-space:nowrap;color:var(--tx3);border-radius:14px}
+    #lc .nav-grupo .rot-longo{display:none}
+    #lc .nav-grupo .rot-curto{display:block;font-weight:inherit}
+    #lc .nav-grupo.ativa{color:var(--ac);background:transparent;font-weight:700}
+    #lc .nav-grupo.ativa span{background:var(--ac-bg);border-radius:999px;padding:3px 16px;opacity:1}
+    #lc .nav-grupo span{padding:3px 16px}
+    #lc .nav-mais{width:54px;height:54px;border-radius:18px;margin-top:-14px;box-shadow:0 6px 16px rgba(29,59,110,.35)}
+  }
 </style>
 
 <div id="telaLogin">
@@ -1195,6 +1248,7 @@
     <div class="marca">
       <h1>Financeiro</h1>
       <p>Solano Bicalho · Família</p>
+      <div class="tit-tela" id="tituloTela" aria-live="polite">Visão geral</div>
     </div>
     <div class="acoes">
       <button class="bt" id="btImportarMenu" title="Extrato do Itaú ou BB, fatura do cartão, financiamento, B3, contracheque SEF (PDF ou planilha histórica) ou planilha de orçamento — o app reconhece o arquivo">Importar</button>
@@ -1209,6 +1263,7 @@
           <button id="btRestaurar">Restaurar backup</button>
           <button id="btBackupNuvem">Backups diários na nuvem…</button>
           <hr>
+          <button id="btSairMenu" class="so-cel">Sair da conta</button>
           <button id="btLimpar" class="perigo">Limpar tudo…</button>
         </div>
       </div>
@@ -1222,12 +1277,12 @@
   <!-- navegação: no computador, menu lateral com todas as telas; no tablet, 2 níveis no topo; no celular, seções na barra de baixo -->
   <aside class="lateral">
   <nav class="nav-grupos" id="navGrupos" aria-label="Seções">
-    <button class="nav-grupo ativa" data-grupo="geral"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span>Visão geral</button>
+    <button class="nav-grupo ativa" data-grupo="geral"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span><b class="rot-longo">Visão geral</b><b class="rot-curto">Início</b></button>
     <button class="nav-grupo" data-grupo="dia"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>Dia a dia</button>
     <button class="nav-mais" id="btLancarNav" aria-label="Novo lançamento"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
-    <button class="nav-grupo" data-grupo="plan"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>Planejamento</button>
-    <button class="nav-grupo" data-grupo="patri"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg></span>Patrimônio e IR</button>
-    <button class="nav-grupo" data-grupo="contas"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg></span>Conferir contas</button>
+    <button class="nav-grupo" data-grupo="plan"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span><b class="rot-longo">Planejamento</b><b class="rot-curto">Planejar</b></button>
+    <button class="nav-grupo" data-grupo="patri"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg></span><b class="rot-longo">Patrimônio e IR</b><b class="rot-curto">Patrimônio</b></button>
+    <button class="nav-grupo" data-grupo="contas"><span aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg></span><b class="rot-longo">Conferir contas</b><b class="rot-curto">Contas</b></button>
   </nav>
   <nav class="conta-tabs" id="contaTabs" aria-label="Telas da seção" hidden>
     <button class="conta-tab ativa" data-g="geral" data-conta="dash"><svg class="ic-nav" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Visão geral</button>
@@ -1287,7 +1342,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 40;
+  const BUILD = 41;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -4919,6 +4974,9 @@
     document.querySelectorAll("#navGrupos .nav-grupo").forEach(b=>{ const on=b.dataset.grupo===g; b.classList.toggle("ativa",on); b.setAttribute("aria-expanded",on); });
     document.querySelectorAll("#contaTabs .conta-tab").forEach(b=>{ b.hidden=b.dataset.g!==g; });
     $("#contaTabs").hidden=g==="geral";
+    // celular: nome da tela atual na barra de cima (como num app)
+    const at=document.querySelector("#contaTabs .conta-tab.ativa"), tt=$("#tituloTela");
+    if(tt){ let n=at?[...at.childNodes].filter(x=>x.nodeType===3).map(x=>x.textContent).join("").trim():""; tt.textContent=n||"Visão geral"; }
   }
   function mesPadrao(meses){
     const ok=meses.filter(m=>m<=mesAtual()), l=ok.length?ok:meses;
@@ -8773,6 +8831,10 @@
   $("#arqPdf").onchange=e=>{ if(e.target.files[0]) importarFaturaPDF(e.target.files[0]); e.target.value=""; };
   const abrirImport = o => { ui._origemImport=o; $("#arqCsv").click(); };
   $("#btImportarMenu").onclick=()=>abrirImport("auto");
+  $("#btSairMenu").onclick=()=>{ const b=document.getElementById("btLogout"); if(b) b.click(); };
+  // instalável como app (tela cheia, ícone na tela inicial). Só em https (GitHub Pages); arquivo local não registra
+  if("serviceWorker" in navigator && location.protocol==="https:")
+    window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
   $("#arqCsv").onchange=async e=>{
     const fs=[...(e.target.files||[])]; e.target.value=""; if(!fs.length) return;
     // prints (imagens) vão juntos para o leitor de prints da fatura do BB; o resto segue o caminho normal
