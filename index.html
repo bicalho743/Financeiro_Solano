@@ -1342,7 +1342,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 42;
+  const BUILD = 43;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -2005,7 +2005,9 @@
     const tot=sal.reduce((s,l)=>s+l.valor,0);
     let cm=Object.keys(S.tot).find(m=>Math.abs((S.tot[m].liq||0)-tot)<1||sal.some(l=>Math.abs((S.tot[m].liq||0)-l.valor)<1));
     if(!cm){ const [a,m]=ym.split("-").map(Number); cm=m===1?(a-1)+"-12":a+"-"+String(m-1).padStart(2,"0"); }
-    if(!S.tot[cm]) return 0;
+    // contracheque do mês ainda não importado: usa o último anterior (a parcela do consignado muda pouco)
+    if(!S.tot[cm]) cm=Object.keys(S.tot).filter(m=>m<=cm&&salMes(m).consig).sort().pop();
+    if(!cm) return 0;
     const c=salMes(cm).consig||0;
     return Math.round(c*100)/100;
   }
