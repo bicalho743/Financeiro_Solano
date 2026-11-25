@@ -1342,7 +1342,7 @@
 
   // versão deste código: grava junto com os dados. Um app aberto há tempo (outra aba, celular) com versão antiga
   // não deve salvar por cima — ele perderia o que a versão nova guarda (ex.: viagens). Antes de salvar, confere.
-  const BUILD = 41;
+  const BUILD = 42;
   async function buildNaNuvem(){
     try{ const {data}=await sb.from("livro_caixa").select("b:valor->build").eq("user_id",sbUser.id).eq("chave",CHAVE).maybeSingle(); return +(data&&data.b)||0; }
     catch(e){ return 0; }
@@ -1996,6 +1996,19 @@
   }
   const ehReceita = c => GRUPO_DE[c]==="Receitas";
 
+  // consignado descontado em folha no salário que caiu no mês ym: vem do contracheque.
+  // O contracheque certo é o de líquido igual ao salário recebido no mês; sem ele, o do mês anterior (salário cai no 5º dia útil).
+  function consigFolha(ym){
+    const S=dados.salarios; if(!S||!S.tot) return 0;
+    const sal=dados.lancamentos.filter(l=>!l.ignorado&&l.categoria==="Salário"&&l.valor>0&&l.data.slice(0,7)===ym&&realizado(l));
+    if(!sal.length) return 0;
+    const tot=sal.reduce((s,l)=>s+l.valor,0);
+    let cm=Object.keys(S.tot).find(m=>Math.abs((S.tot[m].liq||0)-tot)<1||sal.some(l=>Math.abs((S.tot[m].liq||0)-l.valor)<1));
+    if(!cm){ const [a,m]=ym.split("-").map(Number); cm=m===1?(a-1)+"-12":a+"-"+String(m-1).padStart(2,"0"); }
+    if(!S.tot[cm]) return 0;
+    const c=salMes(cm).consig||0;
+    return Math.round(c*100)/100;
+  }
   // entradas e gastos por categoria, líquidos (estorno abate o gasto da própria categoria)
   function entSai(ls){
     const liq={};
@@ -2467,6 +2480,9 @@
         '<p class="sub">Escolha um mês no seletor acima para comparar com o previsto.</p>'};
       const o=orcamento(), real={};
       base.forEach(l=>{ real[l.categoria]=(real[l.categoria]||0)+l.valor; });
+      // consignado descontado em folha: entra no realizado e o salário fica bruto do consignado (líquido + consignado)
+      const cgF=consigFolha(ui.mes);
+      if(cgF){ real["Consignado"]=(real["Consignado"]||0)-cgF; real["Salário"]=(real["Salário"]||0)+cgF; }
       const alertas=[]; let linhas="", pR=0,rR=0,pD=0,rD=0;
       // ritmo: no mês corrente, a partir do 7º dia, projeta o gasto das categorias variáveis até o fim do mês
       const dHoje=+hojeISO().slice(8,10), dMes=+fimDoMes(ui.mes).slice(8,10);
@@ -2512,7 +2528,7 @@
         '<tr class="orc-t forte"><td>Resultado</td><td style="color:'+corDif(pR-pD)+'">'+brl(pR-pD)+'</td>'+(futuro?tr:'<td style="color:'+corDif(rR-rD)+'">'+brl(rR-rD)+'</td>')+cel((rR-rD)-(pR-pD))+'</tr>';
       return {alertas:alertas, html:
         '<div class="tit-secao" style="margin-top:36px"><h3>Previsto × realizado · '+rotuloMes(ui.mes)+'</h3></div>'+
-        '<p class="sub" style="margin:-8px 0 12px">'+(doFluxo?'O previsto vem do <b>Fluxo anual projetado</b> — altere lá. ':'Clique no previsto para alterar. ')+'Na diferença, em vermelho só o que estourou o previsto.</p>'+
+        '<p class="sub" style="margin:-8px 0 12px">'+(doFluxo?'O previsto vem do <b>Fluxo anual projetado</b> — altere lá. ':'Clique no previsto para alterar. ')+'Na diferença, em vermelho só o que estourou o previsto.'+(cgF?' Consignado de R$ '+brl(cgF)+' descontado em folha (contracheque): está no realizado e somado ao Salário.':'')+'</p>'+
         '<div class="rolagem"><table class="dash-mes orc-tab"><thead><tr><th>Categoria</th><th>Previsto</th><th>Realizado</th><th>Diferença</th></tr></thead>'+
         '<tbody>'+linhas+'</tbody></table></div>'+
         '<button class="ver-mais" data-orctodas="1">'+(ui.orcTodas?"Mostrar só as categorias com valor":"Mostrar todas as categorias (para definir previsto)")+'</button>'};
@@ -5516,6 +5532,8 @@
       const x=entSai(ls), o={};
       Object.keys(x.ent).forEach(c=>{ o[c]=(o[c]||0)+x.ent[c]; });
       Object.keys(x.sai).forEach(c=>{ o[c]=(o[c]||0)-x.sai[c]; });
+      const cgF=consigFolha(m);   // consignado descontado em folha
+      if(cgF){ o["Consignado"]=(o["Consignado"]||0)-cgF; o["Salário"]=(o["Salário"]||0)+cgF; }
       porMes[m]=o;
     });
     const v=(c,m)=>porMes[m]?(porMes[m][c]||0):0;
